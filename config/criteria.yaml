@@ -6,7 +6,11 @@ user_profile:
   name: "Facundo Varas"
   email: "varas.cundo@gmail.com"
   current_location: "Paris 20e (75020)"
-  experience_years: 1
+
+  # Important : dissocier expérience tech et expérience globale (utile à 46 ans)
+  tech_experience_years: 1
+  overall_experience_years: 15
+
   education: "BAC+2 + Bootcamp Web Dev 2020"
 
   skills:
@@ -41,6 +45,25 @@ text_normalization:
       - "chef(fe) de projet"
       - "cp digital"
       - "project manager"
+      - "project lead"
+    "charge de projet":
+      - "chef de projet"
+      - "project manager"
+      - "coordinateur"
+      - "coordination"
+    "coordinateur numerique":
+      - "referent numerique"
+      - "referent outils"
+      - "support outils"
+      - "support applicatif"
+      - "support fonctionnel"
+      - "gestion des outils"
+    "webmaster":
+      - "gestionnaire de contenu"
+      - "administrateur de contenu"
+      - "admin cms"
+      - "gestion de site"
+      - "gestion de portail"
     "teletravail":
       - "télétravail"
       - "remote"
@@ -54,67 +77,104 @@ text_normalization:
 
 # Postes Recherchés (ordre de priorité)
 target_positions:
-  - name: "Formateur développement web"
+  # --- POSTES CIBLES "STABLES" (ton tableau ✅/⚖️/faible risque) ---
+  - name: "Chargé de projet web"
     priority: 1
     keywords:
+      - "charge de projet web"
+      - "chargé de projet web"
+      - "chef de projet web"
+      - "chef de projet digital"
+      - "chef de projet numerique"
+      - "chef de projet site web"
+      - "gestion de projet web"
+      - "coordination projet web"
+      - "pilotage de prestataires"
+      - "cahier des charges"
+      - "recette"
+      - "suivi de production"
+      - "maintenance evolutive"
+      - "amoe"
+      - "amoa"
+    score_weight: 55
+
+  - name: "Coordinateur numérique"
+    priority: 2
+    keywords:
+      - "coordinateur numerique"
+      - "coordonnateur numerique"
+      - "referent numerique"
+      - "referent outils"
+      - "referent digital"
+      - "support applicatif"
+      - "support fonctionnel"
+      - "gestion des outils"
+      - "accompagnement utilisateurs"
+      - "formation utilisateurs"
+      - "documentation"
+      - "gestion du parc applicatif"
+      - "outils collaboratifs"
+      - "microsoft 365"
+      - "google workspace"
+      - "intranet"
+      - "crm"
+    score_weight: 50
+
+  - name: "Webmaster institutionnel"
+    priority: 3
+    keywords:
+      - "webmaster"
+      - "webmestre"
+      - "administrateur cms"
+      - "admin cms"
+      - "gestionnaire de contenu"
+      - "administrateur de site"
+      - "gestion de site"
+      - "maintenance site"
+      - "drupal"
+      - "wordpress"
+      - "joomla"
+      - "accessibilite"
+      - "rgaa"
+      - "service public"
+      - "portail"
+      - "site institutionnel"
+    score_weight: 48
+    sector_restriction: ["Public", "ESS", "Impact"]
+
+  # --- OPTIONNEL : formation web (si tu veux garder cette piste) ---
+  - name: "Formateur développement web"
+    priority: 4
+    keywords:
       - "formateur web"
-      - "formateur développement"
-      - "enseignant développement web"
-      - "professeur web"
+      - "formateur developpement"
+      - "enseignant developpement web"
       - "intervenant web"
-      - "formateur numérique"
-      - "formateur digital"
+      - "formateur numerique"
       - "animation d'ateliers"
-      - "ateliers numériques"
+      - "ateliers numeriques"
       - "mentorat"
       - "tutorat"
       - "bootcamp"
-      - "ingénierie pédagogique"
-      - "concepteur pédagogique"
-      - "conception pédagogique"
+      - "ingenierie pedagogique"
+      - "concepteur pedagogique"
       - "titre professionnel"
-      - "RNCP"
-    score_weight: 50
+      - "rncp"
+    score_weight: 38
 
-  - name: "Responsable formation digitale"
-    priority: 2
+  # --- OPTIONNEL : dev web uniquement en ESS/Public/Impact ---
+  - name: "Développeur web (ESS/Public/Impact)"
+    priority: 5
     keywords:
-      - "responsable formation digitale"
-      - "coordinateur pédagogique"
-      - "coordinateur numérique"
-      - "responsable formation numérique"
-      - "support utilisateur"
-      - "ingénieur pédagogique"
-      - "learning manager"
-      - "LMS"
-      - "moodle"
-      - "scorm"
-    score_weight: 40
-
-  - name: "Chef de projet digital/web"
-    priority: 3
-    keywords:
-      - "chef de projet digital"
-      - "chef de projet web"
-      - "chef de projet numérique"
-      - "responsable projet digital"
-      - "chef de projet technique"
-      - "product owner"
-      - "AMOA"
-    score_weight: 33
-
-  - name: "Développeur web (ESS)"
-    priority: 4
-    keywords:
-      - "développeur web"
-      - "développeur fullstack"
-      - "développeur symfony"
-      - "développeur react"
-      - "développeur vue"
-      - "développeur php"
-      - "développeur frontend"
-      - "développeur backend"
-    score_weight: 28
+      - "developpeur web"
+      - "developpeur fullstack"
+      - "developpeur symfony"
+      - "developpeur react"
+      - "developpeur vue"
+      - "developpeur php"
+      - "developpeur frontend"
+      - "developpeur backend"
+    score_weight: 24
     sector_restriction: ["ESS", "Public", "Impact"]
 
 # Scoring par compétences (bonus/malus)
@@ -147,10 +207,10 @@ skills_matching:
 
   soft_bonus:
     - skill: "pédagogie"
-      points: 10
+      points: 8
       variants: ["pédagogie", "andragogie", "formation adultes", "animation", "atelier", "facilitation"]
     - skill: "formation"
-      points: 8
+      points: 6
       variants: ["formateur", "formation", "enseignement", "mentorat", "tutorat"]
 
   mismatch_penalties:
@@ -158,7 +218,7 @@ skills_matching:
       points: -18
       keywords: ["c#", ".net", "dotnet", "sap", "cobol"]
     - keyword_group: "devops_lourd"
-      points: -10
+      points: -12
       keywords: ["kubernetes", "k8s", "terraform", "sre", "site reliability", "on-call", "astreinte"]
 
 # Secteurs Acceptés
@@ -167,48 +227,66 @@ sectors:
     priority: 1
     score_weight: 30
     keywords:
-      - "ESS"
-      - "économie sociale et solidaire"
+      - "ess"
+      - "economie sociale et solidaire"
       - "association"
       - "fondation"
       - "coopérative"
-      - "SCOP"
-      - "SCIC"
+      - "cooperative"
+      - "scop"
+      - "scic"
+      - "ong"
+      - "non-profit"
       - "entreprise adaptée"
-      - "ESAT"
+      - "entreprise adaptee"
+      - "esat"
+      - "insertion"
       - "insertion professionnelle"
-      - "insertion par l'activité économique"
-      - "IAE"
+      - "insertion par l'activite economique"
+      - "iae"
+      - "education populaire"
+      - "centre social"
+      - "mission locale"
+      - "tiers-lieu"
+      - "tiers lieu"
 
   public:
     priority: 2
     score_weight: 25
     keywords:
       - "secteur public"
-      - "collectivité"
+      - "collectivite"
+      - "collectivités"
       - "mairie"
-      - "conseil régional"
-      - "conseil départemental"
-      - "établissement public"
-      - "université"
-      - "hôpital public"
-      - "ministère"
+      - "ville de"
+      - "conseil regional"
+      - "conseil departemental"
+      - "etablissement public"
+      - "universite"
+      - "hopital"
+      - "hopital public"
+      - "ministere"
       - "fonction publique"
+      - "service public"
+      - "education nationale"
 
   impact:
     priority: 3
     score_weight: 22
     keywords:
+      - "startup a impact"
       - "startup à impact"
-      - "B-Corp"
+      - "b-corp"
+      - "b corp"
+      - "entreprise a mission"
       - "entreprise à mission"
       - "impact social"
       - "impact environnemental"
-      - "EdTech"
+      - "edtech"
       - "innovation sociale"
       - "culture"
+      - "education"
       - "science"
-      - "éducation"
 
 # Localisation
 location:
@@ -218,7 +296,13 @@ location:
     - "Paris 20e"
     - "75020"
     - "Île-de-France"
+    - "Ile-de-France"
     - "IDF"
+    - "91"
+    - "92"
+    - "93"
+    - "94"
+    - "95"
   remote_accepted: true
   hybrid_accepted: true
   score_weights:
@@ -240,12 +324,12 @@ contracts:
       min_duration_months: 6
     - type: "Freelance"
       priority: 3
-      score_weight: 10
+      score_weight: 7
       min_hours_per_week: 15
       required_volume_guarantee: true
     - type: "Bénévolat"
       priority: 4
-      score_weight: 2
+      score_weight: 1
 
   rejected:
     - "Stage"
@@ -255,6 +339,7 @@ contracts:
 
 # Red Flags (Exclusions Automatiques + Malus)
 red_flags:
+  # Exclusions strictes : uniquement ce qui est vraiment incompatible
   hard_exclude_keywords:
     - "stage"
     - "stagiaire"
@@ -263,24 +348,59 @@ red_flags:
     - "apprenti"
     - "contrat de professionnalisation"
 
+  # Surcharge / annonce Frankenstein (on ne bloque pas forcément, mais gros malus)
+  soft_penalty_keywords:
+    - keyword: "bac+5"
+      points: -10
+    - keyword: "bac +5"
+      points: -10
+    - keyword: "master"
+      points: -10
+    - keyword: "mobilisable en urgence"
+      points: -10
+    - keyword: "pics d'activité"
+      points: -8
+    - keyword: "rythme irrégulier"
+      points: -8
+    - keyword: "r&d"
+      points: -8
+    - keyword: "recherche appliquee"
+      points: -8
+    - keyword: "data science"
+      points: -10
+    - keyword: "machine learning"
+      points: -10
+    - keyword: "ia"
+      points: -8
+    - keyword: "automatisation marketing"
+      points: -12
+    - keyword: "strategie marketing"
+      points: -12
+    - keyword: "seo"
+      points: -6
+    - keyword: "sea"
+      points: -8
+    - keyword: "social ads"
+      points: -10
+    - keyword: "prospection"
+      points: -12
+    - keyword: "cold calling"
+      points: -14
+    - keyword: "vente"
+      points: -8
+    - keyword: "rémunération selon profil"
+      points: -6
+    - keyword: "remuneration selon profil"
+      points: -6
+
   hard_exclude_keywords_tech:
     - "crypto"
     - "cryptocurrency"
     - "blockchain"
     - "web3"
-    - "NFT"
+    - "nft"
     - "token"
     - "metaverse"
-
-  soft_penalty_keywords:
-    - keyword: "growth"
-      points: -8
-    - keyword: "prospection"
-      points: -10
-    - keyword: "cold calling"
-      points: -12
-    - keyword: "vente"
-      points: -8
 
   sectors_to_exclude:
     - "banque commerciale"
@@ -290,18 +410,38 @@ red_flags:
     - "gaming"
     - "paris sportifs"
     - "publicité pure"
+    - "publicite pure"
     - "marketing agressif"
 
-  companies_to_exclude:
-    # - "Entreprise X"
-    []
+  companies_to_exclude: []
 
-# Salaire (pas de filtre strict, juste pour info)
+  exclude_if_contains:
+    - "inscription"
+    - "catalogue"
+    - "cpf"
+    - "programme de formation"
+    - "tarif"
+    - "session de formation"
+
+  keep_if_contains:
+    - "formateur"
+    - "formatrice"
+    - "poste de formateur"
+
+# Salaire (soft filter + scoring)
 salary:
-  filter_enabled: false
+  filter_enabled: true
+  # Objectif : viser 1800–2500 net ≈ 2300–3300 brut selon contextes
   preferences:
-    cdi_min_annual: null
-    freelance_min_hourly: null
+    min_gross_monthly: 2300
+    target_gross_monthly: 2800
+    max_gross_monthly: 3600
+  scoring:
+    salary_mentioned_bonus: 5
+    in_range_bonus: 8
+    below_min_penalty: -12
+    far_below_min_penalty: -20
+    missing_salary_penalty: -2
 
 # Scoring Configuration
 scoring:
@@ -311,7 +451,6 @@ scoring:
     detailed_ai_analysis: 70
 
   bonus_points:
-    salary_mentioned: 5
     company_known_in_ess: 5
     recent_post_last_48h: 3
 
@@ -389,6 +528,8 @@ google_sheets:
     - "score_secteur"
     - "score_location"
     - "skills_bonus"
+    - "salary_score"
+    - "salary_gross_monthly"
     - "red_flags_count"
     - "raison_resume"
     - "statut"
@@ -402,7 +543,7 @@ email:
   recipient: "varas.cundo@gmail.com"
 
   content:
-    max_jobs_in_email: 10
+    max_jobs_in_email: 15
     include_maybe_jobs: true
     include_statistics: true
 

@@ -19,7 +19,15 @@ from filters import (
     filter_by_sector,
 )
 from notifications import EmailSender
-from scrapers import APECScraper, EmploiAssoScraper, IndeedScraper, WTTJScraper, FranceTravailScraper
+from scrapers import (
+    APECScraper,
+    EmploiAssoScraper,
+    IndeedScraper,
+    WTTJScraper,
+    FranceTravailScraper,
+    AdzunaScraper,
+    EmploiTerritorialRssScraper,
+)
 from storage import GoogleSheetsStorage, JSONStorage
 from utils.logger import setup_logger
 
@@ -33,6 +41,8 @@ def main() -> None:
 
     scrapers = [
         FranceTravailScraper(),  # API officielle - fonctionne
+        AdzunaScraper(),  # API agrégateur
+        EmploiTerritorialRssScraper(),  # Flux RSS
         # Les autres scrapers sont bloqués par les sites
         # IndeedScraper(),
         # EmploiAssoScraper(),
@@ -81,7 +91,10 @@ def main() -> None:
 
         try:
             email = EmailSender()
-            top_jobs = sorted(filtered, key=lambda x: x.get("score", 0), reverse=True)[:5]
+            max_email_jobs = int(
+                criteria.get("email", {}).get("content", {}).get("max_jobs_in_email", 5)
+            )
+            top_jobs = sorted(filtered, key=lambda x: x.get("score", 0), reverse=True)[:max_email_jobs]
             sheet_id = os.getenv("GOOGLE_SHEET_ID")
             sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit" if sheet_id else "#"
             stats = {

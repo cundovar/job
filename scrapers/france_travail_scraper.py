@@ -64,7 +64,11 @@ class FranceTravailScraper(BaseScraper):
             timeout=self.timeout_seconds,
         )
         resp.raise_for_status()
-        return resp.json()
+        try:
+            return resp.json()
+        except ValueError:
+            # API sometimes returns empty/invalid JSON for some keywords.
+            return {"resultats": []}
 
     def _parse_job(self, raw: Dict) -> Dict:
         # Extraire la localisation
