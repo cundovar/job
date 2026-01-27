@@ -1,0 +1,301 @@
+# Configuration des Critères de Recherche d'Emploi
+# Ce fichier est utilisé par le système pour filtrer et scorer les offres
+
+# Informations Utilisateur
+user_profile:
+  name: "Claude Varas"
+  email: "varas.cundo@gmail.com"
+  current_location: "Pantin, 93"
+  experience_years: 1
+  education: "BAC+2 + Bootcamp Web Dev 2020"
+  
+  skills:
+    frontend:
+      - HTML5
+      - CSS3
+      - JavaScript
+      - React
+      - Vue.js
+    backend:
+      - PHP
+      - Symfony
+      - Node.js
+    other:
+      - SQL
+      - Git
+      - Pédagogie
+      - Formation adultes
+
+# Postes Recherchés (ordre de priorité)
+target_positions:
+  - name: "Formateur développement web"
+    priority: 1
+    keywords:
+      - "formateur web"
+      - "formateur développement"
+      - "enseignant développement web"
+      - "professeur web"
+      - "intervenant web"
+      - "formateur numérique"
+      - "formateur digital"
+    score_weight: 40
+    
+  - name: "Chef de projet digital/web"
+    priority: 2
+    keywords:
+      - "chef de projet digital"
+      - "chef de projet web"
+      - "chef de projet numérique"
+      - "responsable projet digital"
+      - "chef de projet technique"
+      - "product owner"
+    score_weight: 35
+    
+  - name: "Développeur web (ESS)"
+    priority: 3
+    keywords:
+      - "développeur web"
+      - "développeur fullstack"
+      - "développeur symfony"
+      - "développeur react"
+      - "développeur vue"
+      - "développeur php"
+    score_weight: 30
+    sector_restriction: ["ESS", "Public", "Impact"]
+    
+  - name: "Responsable formation digitale"
+    priority: 4
+    keywords:
+      - "responsable formation digitale"
+      - "coordinateur pédagogique"
+      - "coordinateur numérique"
+      - "responsable formation numérique"
+      - "support utilisateur"
+      - "ingénieur pédagogique"
+    score_weight: 35
+
+# Secteurs Acceptés
+sectors:
+  ess:
+    priority: 1
+    score_weight: 30
+    keywords:
+      - "ESS"
+      - "économie sociale et solidaire"
+      - "association"
+      - "fondation"
+      - "coopérative"
+      - "entreprise adaptée"
+      - "ESAT"
+      - "insertion professionnelle"
+      - "insertion par l'activité économique"
+      - "IAE"
+      
+  public:
+    priority: 2
+    score_weight: 25
+    keywords:
+      - "secteur public"
+      - "collectivité"
+      - "mairie"
+      - "conseil régional"
+      - "conseil départemental"
+      - "établissement public"
+      - "université"
+      - "hôpital public"
+      - "ministère"
+      - "fonction publique"
+      
+  impact:
+    priority: 3
+    score_weight: 20
+    keywords:
+      - "startup à impact"
+      - "B-Corp"
+      - "entreprise à mission"
+      - "impact social"
+      - "impact environnemental"
+      - "EdTech social"
+      - "innovation sociale"
+      - "culture"
+      - "science"
+      - "éducation"
+
+# Localisation
+location:
+  accepted_zones:
+    - "Paris"
+    - "Île-de-France"
+    - "IDF"
+    - "Pantin"
+    - "Seine-Saint-Denis"
+    - "93"
+  remote_accepted: true
+  hybrid_accepted: true
+  score_weights:
+    paris: 10
+    pantin: 10
+    idf: 8
+    remote: 10
+    hybrid: 9
+
+# Types de Contrat
+contracts:
+  accepted:
+    - type: "CDI"
+      priority: 1
+      score_weight: 15
+    - type: "CDD"
+      priority: 2
+      score_weight: 10
+      min_duration_months: 6
+    - type: "Freelance"
+      priority: 3
+      score_weight: 10
+      min_hours_per_week: 15
+      required_volume_guarantee: true
+      
+  rejected:
+    - "Stage"
+    - "Alternance"
+    - "Apprentissage"
+    - "Contrat pro"
+    - "Bénévolat"
+
+# Red Flags (Exclusions Automatiques)
+red_flags:
+  keywords:
+    - "stage"
+    - "stagiaire"
+    - "alternance"
+    - "apprentissage"
+    - "apprenti"
+    - "contrat de professionnalisation"
+    - "bénévole"
+    - "bénévolat"
+    - "volontaire"
+    - "crypto"
+    - "cryptocurrency"
+    - "blockchain"
+    - "web3"
+    - "NFT"
+    - "token"
+    - "metaverse"
+    
+  sectors_to_exclude:
+    - "banque commerciale"
+    - "assurance commerciale"
+    - "grande distribution"
+    - "luxe"
+    - "gaming"
+    - "paris sportifs"
+    - "publicité pure"
+    - "marketing agressif"
+    
+  companies_to_exclude:
+    # Liste noire d'entreprises si nécessaire
+    # - "Entreprise X"
+
+# Salaire (pas de filtre strict, juste pour info)
+salary:
+  filter_enabled: false
+  preferences:
+    cdi_min_annual: null  # Sera évalué au cas par cas
+    freelance_min_hourly: null
+
+# Scoring Configuration
+scoring:
+  thresholds:
+    ignore: 49  # Score < 50 = ignoré
+    basic_ai_analysis: 50  # Score 50-69 = analyse IA basique
+    detailed_ai_analysis: 70  # Score >= 70 = analyse détaillée + lettre
+    
+  bonus_points:
+    salary_mentioned: 5
+    company_known_in_ess: 5
+    recent_post_last_48h: 3
+
+# Configuration IA
+ai_analysis:
+  provider: "deepseek"
+  model: "deepseek-chat"
+  temperature: 0.3  # Bas pour analyse objective
+  max_tokens: 1000
+  
+  prompt_language: "french"
+  
+  required_fields:
+    - "pertinence_score"
+    - "points_forts"
+    - "points_faibles"
+    - "red_flags"
+    - "recommandation"
+    - "angle_motivation"
+    - "raison_breve"
+
+# Configuration Scraping
+scraping:
+  enabled_sites:
+    - indeed
+    - apec
+    - welcome_to_the_jungle
+    - emploi_asso
+    # - pole_emploi  # Optionnel, beaucoup de bruit
+    # - linkedin  # Complexe, à implémenter plus tard
+    
+  rate_limiting:
+    delay_between_requests_seconds: 2
+    max_retries: 3
+    timeout_seconds: 30
+    
+  max_jobs_per_site: 50
+  max_job_age_days: 14  # Ignorer offres > 14 jours
+
+# Configuration Google Sheets
+google_sheets:
+  main_sheet_name: "Job Search Automation - Claude Varas"
+  tabs:
+    - name: "Nouvelles Offres"
+      keep_days: 7
+    - name: "À Postuler"
+      filter_status: ["À POSTULER", "POSTULÉ"]
+    - name: "Statistiques"
+      auto_graphs: true
+    - name: "Configuration"
+      editable: true
+
+# Configuration Email
+email:
+  send_daily: true
+  send_time_utc: "07:00"  # 8h Paris hiver
+  recipient: "varas.cundo@gmail.com"
+  
+  content:
+    max_jobs_in_email: 5
+    include_maybe_jobs: false
+    include_statistics: true
+    
+  triggers:
+    send_even_if_no_jobs: true
+    alert_on_high_priority_job: true
+    high_priority_threshold_score: 85
+
+# Configuration Cache
+cache:
+  enabled: true
+  deduplicate_by:
+    - "url"
+    - "title + company"
+  cache_duration_days: 30
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  save_to_file: true
+  file_path: "data/logs/"
+  
+# Notifications
+notifications:
+  email_on_error: true
+  email_on_success: false
+  slack_webhook: null  # Optionnel pour futures intégrations

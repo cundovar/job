@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rapport Quotidien - Recherche d'Emploi</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+        .header .date {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+        .summary {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-left: 4px solid #667eea;
+            margin: 20px;
+        }
+        .summary h2 {
+            margin-top: 0;
+            color: #667eea;
+            font-size: 20px;
+        }
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 15px;
+        }
+        .stat {
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+        }
+        .jobs-section {
+            padding: 20px;
+        }
+        .jobs-section h2 {
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .job-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+            transition: box-shadow 0.3s ease;
+        }
+        .job-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .job-card.postuler {
+            border-left: 4px solid #27ae60;
+            background-color: #f1f9f4;
+        }
+        .job-card.peut-etre {
+            border-left: 4px solid #f39c12;
+            background-color: #fef9f0;
+        }
+        .job-card.passer {
+            border-left: 4px solid #95a5a6;
+            background-color: #f9f9f9;
+        }
+        .job-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        .job-meta {
+            color: #7f8c8d;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+        .job-meta strong {
+            color: #34495e;
+        }
+        .score-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .score-badge.high {
+            background-color: #27ae60;
+            color: white;
+        }
+        .score-badge.medium {
+            background-color: #f39c12;
+            color: white;
+        }
+        .score-badge.low {
+            background-color: #95a5a6;
+            color: white;
+        }
+        .recommendation-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .recommendation-badge.postuler {
+            background-color: #27ae60;
+            color: white;
+        }
+        .recommendation-badge.peut-etre {
+            background-color: #f39c12;
+            color: white;
+        }
+        .recommendation-badge.passer {
+            background-color: #95a5a6;
+            color: white;
+        }
+        .section-content {
+            margin: 15px 0;
+        }
+        .section-title {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-top: 15px;
+            margin-bottom: 5px;
+        }
+        ul {
+            margin: 5px 0;
+            padding-left: 20px;
+        }
+        ul li {
+            margin: 5px 0;
+        }
+        .motivation-box {
+            background-color: #e8f4fd;
+            border-left: 3px solid #3498db;
+            padding: 12px;
+            margin: 15px 0;
+            font-style: italic;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+            margin-top: 10px;
+            transition: background-color 0.3s ease;
+        }
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        .red-flag {
+            background-color: #fee;
+            border-left: 3px solid #e74c3c;
+            padding: 10px;
+            margin: 10px 0;
+            color: #c0392b;
+        }
+        .footer {
+            background-color: #2c3e50;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            font-size: 14px;
+        }
+        .footer a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        .divider {
+            height: 1px;
+            background-color: #e0e0e0;
+            margin: 30px 0;
+        }
+        .no-jobs {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+        .no-jobs-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 Votre Rapport Quotidien</h1>
+            <div class="date">{{ date }}</div>
+        </div>
+        
+        <div class="summary">
+            <h2>📊 Résumé du Jour</h2>
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-number">{{ total_jobs }}</div>
+                    <div class="stat-label">Offres Trouvées</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number" style="color: #27ae60;">{{ postuler_count }}</div>
+                    <div class="stat-label">À Postuler</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number" style="color: #f39c12;">{{ peut_etre_count }}</div>
+                    <div class="stat-label">Peut-Être</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number" style="color: #95a5a6;">{{ passer_count }}</div>
+                    <div class="stat-label">À Passer</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="jobs-section">
+            {% if top_jobs %}
+            <h2>🌟 Top {{ top_jobs|length }} Opportunités</h2>
+            
+            {% for job in top_jobs %}
+            <div class="job-card {{ job.recommandation|lower }}">
+                <div class="job-title">{{ job.title }}</div>
+                
+                <div class="job-meta">
+                    <strong>{{ job.company }}</strong> • {{ job.location }} • {{ job.contract_type }}
+                    {% if job.sector %} • {{ job.sector }}{% endif %}
+                    {% if job.salary %} • {{ job.salary }}{% endif %}
+                </div>
+                
+                <div>
+                    {% if job.score >= 70 %}
+                    <span class="score-badge high">Score: {{ job.score }}/100</span>
+                    {% elif job.score >= 50 %}
+                    <span class="score-badge medium">Score: {{ job.score }}/100</span>
+                    {% else %}
+                    <span class="score-badge low">Score: {{ job.score }}/100</span>
+                    {% endif %}
+                    
+                    {% if job.ai_analysis and job.ai_analysis.pertinence_score %}
+                    <span class="score-badge {% if job.ai_analysis.pertinence_score >= 8 %}high{% elif job.ai_analysis.pertinence_score >= 6 %}medium{% else %}low{% endif %}">
+                        IA: {{ job.ai_analysis.pertinence_score }}/10
+                    </span>
+                    {% endif %}
+                    
+                    <span class="recommendation-badge {{ job.recommandation|lower }}">
+                        {{ job.recommandation }}
+                    </span>
+                </div>
+                
+                {% if job.ai_analysis %}
+                <div class="section-content">
+                    {% if job.ai_analysis.raison_breve %}
+                    <p><strong>Résumé :</strong> {{ job.ai_analysis.raison_breve }}</p>
+                    {% endif %}
+                    
+                    {% if job.ai_analysis.points_forts %}
+                    <div class="section-title">✅ Points Forts</div>
+                    <ul>
+                        {% for point in job.ai_analysis.points_forts %}
+                        <li>{{ point }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    
+                    {% if job.ai_analysis.points_faibles %}
+                    <div class="section-title">⚠️ Points d'Attention</div>
+                    <ul>
+                        {% for point in job.ai_analysis.points_faibles %}
+                        <li>{{ point }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    
+                    {% if job.ai_analysis.red_flags %}
+                    <div class="red-flag">
+                        <strong>🚩 Red Flags Détectés :</strong>
+                        <ul>
+                            {% for flag in job.ai_analysis.red_flags %}
+                            <li>{{ flag }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                    
+                    {% if job.ai_analysis.angle_motivation and job.recommandation == 'POSTULER' %}
+                    <div class="motivation-box">
+                        <strong>💡 Angle pour la Motivation :</strong><br>
+                        {{ job.ai_analysis.angle_motivation }}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+                
+                <a href="{{ job.url }}" class="btn" target="_blank">Voir l'Offre Complète</a>
+            </div>
+            {% endfor %}
+            
+            {% else %}
+            <div class="no-jobs">
+                <div class="no-jobs-icon">😴</div>
+                <h3>Pas de nouvelles offres aujourd'hui</h3>
+                <p>Le système continue de surveiller pour vous. À demain !</p>
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="footer">
+            <p>
+                📊 <a href="{{ google_sheet_url }}" target="_blank">Consulter toutes les offres dans Google Sheets</a>
+            </p>
+            <p style="margin-top: 20px; font-size: 12px; opacity: 0.8;">
+                Ce rapport est généré automatiquement par votre système de recherche d'emploi.<br>
+                Pour modifier vos critères, éditez l'onglet "Configuration" dans Google Sheets.
+            </p>
+        </div>
+    </div>
+</body>
+</html>
