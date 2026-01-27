@@ -402,7 +402,7 @@ email:
   recipient: "varas.cundo@gmail.com"
 
   content:
-    max_jobs_in_email: 7
+    max_jobs_in_email: 10
     include_maybe_jobs: true
     include_statistics: true
 
