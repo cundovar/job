@@ -3,12 +3,12 @@
 
 # Informations Utilisateur
 user_profile:
-  name: "Claude Varas"
+  name: "Facundo Varas"
   email: "varas.cundo@gmail.com"
-  current_location: "Pantin, 93"
+  current_location: "Paris 20e (75020)"
   experience_years: 1
   education: "BAC+2 + Bootcamp Web Dev 2020"
-  
+
   skills:
     frontend:
       - HTML5
@@ -26,6 +26,32 @@ user_profile:
       - Pédagogie
       - Formation adultes
 
+# Normalisation / synonymes pour améliorer le matching
+text_normalization:
+  enabled: true
+  lowercase: true
+  remove_accents: true
+  collapse_spaces: true
+  synonyms:
+    "product owner":
+      - "po"
+      - "product-owner"
+      - "productowner"
+    "chef de projet":
+      - "chef(fe) de projet"
+      - "cp digital"
+      - "project manager"
+    "teletravail":
+      - "télétravail"
+      - "remote"
+      - "full remote"
+      - "100% remote"
+      - "distanciel"
+    "hybride":
+      - "hybrid"
+      - "mixte"
+      - "partiel"
+
 # Postes Recherchés (ordre de priorité)
 target_positions:
   - name: "Formateur développement web"
@@ -38,33 +64,20 @@ target_positions:
       - "intervenant web"
       - "formateur numérique"
       - "formateur digital"
-    score_weight: 40
-    
-  - name: "Chef de projet digital/web"
-    priority: 2
-    keywords:
-      - "chef de projet digital"
-      - "chef de projet web"
-      - "chef de projet numérique"
-      - "responsable projet digital"
-      - "chef de projet technique"
-      - "product owner"
-    score_weight: 35
-    
-  - name: "Développeur web (ESS)"
-    priority: 3
-    keywords:
-      - "développeur web"
-      - "développeur fullstack"
-      - "développeur symfony"
-      - "développeur react"
-      - "développeur vue"
-      - "développeur php"
-    score_weight: 30
-    sector_restriction: ["ESS", "Public", "Impact"]
-    
+      - "animation d'ateliers"
+      - "ateliers numériques"
+      - "mentorat"
+      - "tutorat"
+      - "bootcamp"
+      - "ingénierie pédagogique"
+      - "concepteur pédagogique"
+      - "conception pédagogique"
+      - "titre professionnel"
+      - "RNCP"
+    score_weight: 50
+
   - name: "Responsable formation digitale"
-    priority: 4
+    priority: 2
     keywords:
       - "responsable formation digitale"
       - "coordinateur pédagogique"
@@ -72,7 +85,81 @@ target_positions:
       - "responsable formation numérique"
       - "support utilisateur"
       - "ingénieur pédagogique"
-    score_weight: 35
+      - "learning manager"
+      - "LMS"
+      - "moodle"
+      - "scorm"
+    score_weight: 40
+
+  - name: "Chef de projet digital/web"
+    priority: 3
+    keywords:
+      - "chef de projet digital"
+      - "chef de projet web"
+      - "chef de projet numérique"
+      - "responsable projet digital"
+      - "chef de projet technique"
+      - "product owner"
+      - "AMOA"
+    score_weight: 33
+
+  - name: "Développeur web (ESS)"
+    priority: 4
+    keywords:
+      - "développeur web"
+      - "développeur fullstack"
+      - "développeur symfony"
+      - "développeur react"
+      - "développeur vue"
+      - "développeur php"
+      - "développeur frontend"
+      - "développeur backend"
+    score_weight: 28
+    sector_restriction: ["ESS", "Public", "Impact"]
+
+# Scoring par compétences (bonus/malus)
+skills_matching:
+  enabled: true
+  sources_to_scan:
+    - "title"
+    - "description"
+    - "requirements"
+
+  hard_bonus:
+    - skill: "symfony"
+      points: 10
+      variants: ["symfony", "symfony 5", "symfony 6", "symfony 7"]
+    - skill: "react"
+      points: 8
+      variants: ["react", "reactjs", "react.js"]
+    - skill: "vue"
+      points: 8
+      variants: ["vue", "vuejs", "vue.js", "nuxt", "nuxtjs"]
+    - skill: "php"
+      points: 6
+      variants: ["php", "php8", "php 8"]
+    - skill: "sql"
+      points: 5
+      variants: ["sql", "mysql", "postgresql", "postgres"]
+    - skill: "git"
+      points: 3
+      variants: ["git", "github", "gitlab"]
+
+  soft_bonus:
+    - skill: "pédagogie"
+      points: 10
+      variants: ["pédagogie", "andragogie", "formation adultes", "animation", "atelier", "facilitation"]
+    - skill: "formation"
+      points: 8
+      variants: ["formateur", "formation", "enseignement", "mentorat", "tutorat"]
+
+  mismatch_penalties:
+    - keyword_group: "stack_hors_scope_fort"
+      points: -18
+      keywords: ["c#", ".net", "dotnet", "sap", "cobol"]
+    - keyword_group: "devops_lourd"
+      points: -10
+      keywords: ["kubernetes", "k8s", "terraform", "sre", "site reliability", "on-call", "astreinte"]
 
 # Secteurs Acceptés
 sectors:
@@ -85,12 +172,14 @@ sectors:
       - "association"
       - "fondation"
       - "coopérative"
+      - "SCOP"
+      - "SCIC"
       - "entreprise adaptée"
       - "ESAT"
       - "insertion professionnelle"
       - "insertion par l'activité économique"
       - "IAE"
-      
+
   public:
     priority: 2
     score_weight: 25
@@ -105,17 +194,17 @@ sectors:
       - "hôpital public"
       - "ministère"
       - "fonction publique"
-      
+
   impact:
     priority: 3
-    score_weight: 20
+    score_weight: 22
     keywords:
       - "startup à impact"
       - "B-Corp"
       - "entreprise à mission"
       - "impact social"
       - "impact environnemental"
-      - "EdTech social"
+      - "EdTech"
       - "innovation sociale"
       - "culture"
       - "science"
@@ -125,16 +214,16 @@ sectors:
 location:
   accepted_zones:
     - "Paris"
+    - "Paris 20"
+    - "Paris 20e"
+    - "75020"
     - "Île-de-France"
     - "IDF"
-    - "Pantin"
-    - "Seine-Saint-Denis"
-    - "93"
   remote_accepted: true
   hybrid_accepted: true
   score_weights:
     paris: 10
-    pantin: 10
+    paris20: 10
     idf: 8
     remote: 10
     hybrid: 9
@@ -154,26 +243,27 @@ contracts:
       score_weight: 10
       min_hours_per_week: 15
       required_volume_guarantee: true
-      
+    - type: "Bénévolat"
+      priority: 4
+      score_weight: 2
+
   rejected:
     - "Stage"
     - "Alternance"
     - "Apprentissage"
     - "Contrat pro"
-    - "Bénévolat"
 
-# Red Flags (Exclusions Automatiques)
+# Red Flags (Exclusions Automatiques + Malus)
 red_flags:
-  keywords:
+  hard_exclude_keywords:
     - "stage"
     - "stagiaire"
     - "alternance"
     - "apprentissage"
     - "apprenti"
     - "contrat de professionnalisation"
-    - "bénévole"
-    - "bénévolat"
-    - "volontaire"
+
+  hard_exclude_keywords_tech:
     - "crypto"
     - "cryptocurrency"
     - "blockchain"
@@ -181,7 +271,17 @@ red_flags:
     - "NFT"
     - "token"
     - "metaverse"
-    
+
+  soft_penalty_keywords:
+    - keyword: "growth"
+      points: -8
+    - keyword: "prospection"
+      points: -10
+    - keyword: "cold calling"
+      points: -12
+    - keyword: "vente"
+      points: -8
+
   sectors_to_exclude:
     - "banque commerciale"
     - "assurance commerciale"
@@ -191,39 +291,46 @@ red_flags:
     - "paris sportifs"
     - "publicité pure"
     - "marketing agressif"
-    
+
   companies_to_exclude:
-    # Liste noire d'entreprises si nécessaire
     # - "Entreprise X"
+    []
 
 # Salaire (pas de filtre strict, juste pour info)
 salary:
   filter_enabled: false
   preferences:
-    cdi_min_annual: null  # Sera évalué au cas par cas
+    cdi_min_annual: null
     freelance_min_hourly: null
 
 # Scoring Configuration
 scoring:
   thresholds:
-    ignore: 49  # Score < 50 = ignoré
-    basic_ai_analysis: 50  # Score 50-69 = analyse IA basique
-    detailed_ai_analysis: 70  # Score >= 70 = analyse détaillée + lettre
-    
+    ignore: 49
+    basic_ai_analysis: 50
+    detailed_ai_analysis: 70
+
   bonus_points:
     salary_mentioned: 5
     company_known_in_ess: 5
     recent_post_last_48h: 3
 
+  email_digest:
+    enabled: true
+    buckets:
+      top_matches_min_score: 80
+      consider_min_score: 65
+      wildcard_min_score: 55
+      wildcard_max_count: 1
+
 # Configuration IA
 ai_analysis:
   provider: "deepseek"
   model: "deepseek-chat"
-  temperature: 0.3  # Bas pour analyse objective
-  max_tokens: 1000
-  
+  temperature: 0.3
+  max_tokens: 1200
   prompt_language: "french"
-  
+
   required_fields:
     - "pertinence_score"
     - "points_forts"
@@ -240,20 +347,25 @@ scraping:
     - apec
     - welcome_to_the_jungle
     - emploi_asso
-    # - pole_emploi  # Optionnel, beaucoup de bruit
-    # - linkedin  # Complexe, à implémenter plus tard
-    
+    # - pole_emploi
+    # - linkedin
+
   rate_limiting:
     delay_between_requests_seconds: 2
     max_retries: 3
     timeout_seconds: 30
-    
-  max_jobs_per_site: 50
-  max_job_age_days: 14  # Ignorer offres > 14 jours
+
+  max_jobs_per_site:
+    indeed: 40
+    apec: 40
+    welcome_to_the_jungle: 30
+    emploi_asso: 60
+
+  max_job_age_days: 14
 
 # Configuration Google Sheets
 google_sheets:
-  main_sheet_name: "Job Search Automation - Claude Varas"
+  main_sheet_name: "Job Search Automation - Facundo Varas"
   tabs:
     - name: "Nouvelles Offres"
       keep_days: 7
@@ -264,17 +376,36 @@ google_sheets:
     - name: "Configuration"
       editable: true
 
+  recommended_columns:
+    - "date_found"
+    - "site"
+    - "title"
+    - "company"
+    - "location"
+    - "contract"
+    - "url"
+    - "score_total"
+    - "score_poste"
+    - "score_secteur"
+    - "score_location"
+    - "skills_bonus"
+    - "red_flags_count"
+    - "raison_resume"
+    - "statut"
+    - "prochaine_action_date"
+    - "lettre_motivation_draft"
+
 # Configuration Email
 email:
   send_daily: true
-  send_time_utc: "07:00"  # 8h Paris hiver
+  send_time_utc: "07:00" # 8h Paris hiver
   recipient: "varas.cundo@gmail.com"
-  
+
   content:
-    max_jobs_in_email: 5
-    include_maybe_jobs: false
+    max_jobs_in_email: 7
+    include_maybe_jobs: true
     include_statistics: true
-    
+
   triggers:
     send_even_if_no_jobs: true
     alert_on_high_priority_job: true
@@ -290,12 +421,12 @@ cache:
 
 # Logging
 logging:
-  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  level: "INFO" # DEBUG, INFO, WARNING, ERROR
   save_to_file: true
   file_path: "data/logs/"
-  
+
 # Notifications
 notifications:
   email_on_error: true
   email_on_success: false
-  slack_webhook: null  # Optionnel pour futures intégrations
+  slack_webhook: null
