@@ -33,6 +33,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip install --upgrade openai httpx
     
     - name: Create data directories
       run: |
@@ -46,6 +47,8 @@ jobs:
         EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
         EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
+        FRANCE_TRAVAIL_CLIENT_ID: ${{ secrets.FRANCE_TRAVAIL_CLIENT_ID }}
+        FRANCE_TRAVAIL_CLIENT_SECRET: ${{ secrets.FRANCE_TRAVAIL_CLIENT_SECRET }}
         SCRAPING_DELAY_SECONDS: 2
         MAX_JOBS_PER_SITE: 50
         SCORE_THRESHOLD_AI_ANALYSIS: 50

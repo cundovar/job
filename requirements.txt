@@ -10,7 +10,7 @@ html5lib==1.1
 selenium==4.15.2  # Si sites dynamiques nécessaires
 
 # AI / LLM
-openai==1.6.1  # Compatible avec DeepSeek API
+openai>=1.12.0  # Compatible avec DeepSeek API
 
 # Google Sheets Integration
 gspread==5.12.0
