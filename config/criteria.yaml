@@ -11,7 +11,14 @@ user_profile:
   tech_experience_years: 1
   overall_experience_years: 15
 
-  education: "BAC+2 + Bootcamp Web Dev 2020"
+  education: "Bac+2 Développement web (Doranco) + expérience support/formation + admin CMS"
+
+  core_strengths:
+    - "administration de solutions existantes"
+    - "support utilisateurs N2"
+    - "documentation/procédures"
+    - "CMS (WordPress/Joomla)"
+    - "qualité web (accessibilité, SEO on-page basique)"
 
   skills:
     frontend:
@@ -77,29 +84,32 @@ text_normalization:
 
 # Postes Recherchés (ordre de priorité)
 target_positions:
-  # --- POSTES CIBLES "STABLES" (ton tableau ✅/⚖️/faible risque) ---
-  - name: "Chargé de projet web"
+  # --- CIBLE MAJEURE (privé / public / parapublic) ---
+  - name: "Administrateur applicatif / ERP (métier)"
     priority: 1
     keywords:
-      - "charge de projet web"
-      - "chargé de projet web"
-      - "chef de projet web"
-      - "chef de projet digital"
-      - "chef de projet numerique"
-      - "chef de projet site web"
-      - "gestion de projet web"
-      - "coordination projet web"
-      - "pilotage de prestataires"
-      - "cahier des charges"
+      - "administrateur applicatif"
+      - "application manager"
+      - "gestionnaire applicatif"
+      - "support applicatif"
+      - "support fonctionnel"
+      - "erp"
+      - "progiciel"
+      - "gestion locative"
+      - "quittancement"
       - "recette"
-      - "suivi de production"
-      - "maintenance evolutive"
-      - "amoe"
-      - "amoa"
-    score_weight: 55
+      - "parametrage"
+      - "exploitation applicative"
+      - "gestion des incidents"
+      - "documentation"
+      - "sql"
+      - "as/400"
+      - "ibm i"
+    score_weight: 62
 
+  # --- POSTES CIBLES "STABLES" ---
   - name: "Coordinateur numérique"
-    priority: 2
+    priority: 1
     keywords:
       - "coordinateur numerique"
       - "coordonnateur numerique"
@@ -118,10 +128,10 @@ target_positions:
       - "google workspace"
       - "intranet"
       - "crm"
-    score_weight: 50
+    score_weight: 52
 
   - name: "Webmaster institutionnel"
-    priority: 3
+    priority: 1
     keywords:
       - "webmaster"
       - "webmestre"
@@ -139,8 +149,29 @@ target_positions:
       - "service public"
       - "portail"
       - "site institutionnel"
-    score_weight: 48
+    score_weight: 55
     sector_restriction: ["Public", "ESS", "Impact"]
+
+  # --- ABAISSÉ : chef/chargé de projet web (trop de faux positifs) ---
+  - name: "Chargé de projet web"
+    priority: 2
+    keywords:
+      - "charge de projet web"
+      - "chargé de projet web"
+      - "chef de projet web"
+      - "chef de projet digital"
+      - "chef de projet numerique"
+      - "chef de projet site web"
+      - "gestion de projet web"
+      - "coordination projet web"
+      - "pilotage de prestataires"
+      - "cahier des charges"
+      - "recette"
+      - "suivi de production"
+      - "maintenance evolutive"
+      - "amoe"
+      - "amoa"
+    score_weight: 40
 
   # --- OPTIONNEL : formation web (si tu veux garder cette piste) ---
   - name: "Formateur développement web"
@@ -157,7 +188,6 @@ target_positions:
       - "tutorat"
       - "bootcamp"
       - "ingenierie pedagogique"
-      - "concepteur pedagogique"
       - "titre professionnel"
       - "rncp"
     score_weight: 38
@@ -186,14 +216,35 @@ skills_matching:
     - "requirements"
 
   hard_bonus:
+    # CMS / institutionnel / continuité
+    - skill: "wordpress"
+      points: 10
+      variants: ["wordpress", "wp", "gutenberg"]
+    - skill: "joomla"
+      points: 9
+      variants: ["joomla"]
+    - skill: "drupal"
+      points: 9
+      variants: ["drupal"]
+    - skill: "accessibilite"
+      points: 10
+      variants: ["rgaa", "wcag", "accessibilité", "accessibilite", "a11y"]
+    - skill: "ticketing"
+      points: 7
+      variants: ["ticketing", "jira", "glpi", "redmine", "service now", "servicenow"]
+    - skill: "microsoft 365"
+      points: 6
+      variants: ["microsoft 365", "office 365", "m365", "sharepoint", "teams"]
+
+    # Stack dev (conservé mais moins “aimant”)
     - skill: "symfony"
       points: 10
       variants: ["symfony", "symfony 5", "symfony 6", "symfony 7"]
     - skill: "react"
-      points: 8
+      points: 4
       variants: ["react", "reactjs", "react.js"]
     - skill: "vue"
-      points: 8
+      points: 4
       variants: ["vue", "vuejs", "vue.js", "nuxt", "nuxtjs"]
     - skill: "php"
       points: 6
@@ -356,6 +407,68 @@ red_flags:
       points: -10
     - keyword: "master"
       points: -10
+
+    # IA/SEO : ne pas tuer les annonces webmaster institutionnelles
+    - keyword: "ia"
+      points: -2
+    - keyword: "seo"
+      points: -2
+
+    # Marketing/growth (à faire chuter)
+    - keyword: "marketing"
+      points: -8
+    - keyword: "campagne"
+      points: -8
+    - keyword: "omnicanal"
+      points: -10
+    - keyword: "growth"
+      points: -12
+    - keyword: "acquisition"
+      points: -10
+    - keyword: "lead"
+      points: -12
+    - keyword: "lead generation"
+      points: -12
+    - keyword: "cpl"
+      points: -10
+    - keyword: "cpa"
+      points: -10
+    - keyword: "sea"
+      points: -8
+    - keyword: "social ads"
+      points: -10
+    - keyword: "social media"
+      points: -10
+    - keyword: "prospection"
+      points: -12
+    - keyword: "cold calling"
+      points: -14
+    - keyword: "vente"
+      points: -8
+
+    # Chef de projet senior / PMO / global
+    - keyword: "pmo"
+      points: -15
+    - keyword: "multiprojets"
+      points: -12
+    - keyword: "global"
+      points: -10
+    - keyword: "international"
+      points: -8
+    - keyword: "reporting comex"
+      points: -15
+    - keyword: "pilotage budget"
+      points: -12
+
+    # Temps partiel (incompatible objectif salaire/stabilité)
+    - keyword: "temps partiel"
+      points: -18
+    - keyword: "mi-temps"
+      points: -18
+    - keyword: "50%"
+      points: -18
+
+    # Autres malus utiles (conservés)
     - keyword: "mobilisable en urgence"
       points: -10
     - keyword: "pics d'activité"
@@ -370,24 +483,6 @@ red_flags:
       points: -10
     - keyword: "machine learning"
       points: -10
-    - keyword: "ia"
-      points: -8
-    - keyword: "automatisation marketing"
-      points: -12
-    - keyword: "strategie marketing"
-      points: -12
-    - keyword: "seo"
-      points: -6
-    - keyword: "sea"
-      points: -8
-    - keyword: "social ads"
-      points: -10
-    - keyword: "prospection"
-      points: -12
-    - keyword: "cold calling"
-      points: -14
-    - keyword: "vente"
-      points: -8
     - keyword: "rémunération selon profil"
       points: -6
     - keyword: "remuneration selon profil"
@@ -402,16 +497,8 @@ red_flags:
     - "token"
     - "metaverse"
 
-  sectors_to_exclude:
-    - "banque commerciale"
-    - "assurance commerciale"
-    - "grande distribution"
-    - "luxe"
-    - "gaming"
-    - "paris sportifs"
-    - "publicité pure"
-    - "publicite pure"
-    - "marketing agressif"
+  # ✅ Ne plus exclure banque/assurance en dur (on garde un tri par scoring/malus)
+  sectors_to_exclude: []
 
   companies_to_exclude: []
 
