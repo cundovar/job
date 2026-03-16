@@ -1,0 +1,21 @@
+UTILISATEUR: _id_utilisateur, username, email, roles, is_verified
+PASSER, 0N UTILISATEUR, 11 COMMANDE
+COMMANDE: _id_commande, email, shipping_address, total, status, created_at
+
+
+CONTENIR, 1N COMMANDE, 0N PRODUIT: product_name, unit_price, quantity
+PRODUIT: _id_produit, titre, description, prix, stock, image
+
+
+CATEGORIE_METIER: _id_categorie_metier, nom, description, image
+CLASSER_METIER, 0N CATEGORIE_METIER, 01 PRODUIT
+
+
+
+CATEGORIE_PROJET: _id_categorie_projet, nom, description, image
+CLASSER_PROJET, 0N CATEGORIE_PROJET, 01 PRODUIT
+
+
+
+CATEGORIE_TRAVEAUX: _id_categorie_traveaux, name, description, image
+CLASSER_TRAVEAUX, 0N CATEGORIE_TRAVEAUX, 01 PRODUIT

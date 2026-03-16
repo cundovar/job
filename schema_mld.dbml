@@ -1,0 +1,73 @@
+Project btpmoussa_mld {
+  database_type: "MySQL"
+  Note: "Schema logique mis a jour a partir de la version corrigee fournie par l'utilisateur le 10 mars 2026."
+}
+
+Table category_metier {
+  id int [pk, increment]
+  nom varchar(150) [not null]
+  description longtext
+  created_at datetime [not null, note: "DC2Type:datetime_immutable"]
+  image varchar(255) [not null]
+}
+
+Table category_projet {
+  id int [pk, increment]
+  nom varchar(150) [not null]
+  description longtext
+  image varchar(255) [not null]
+}
+
+Table category_traveaux {
+  id int [pk, increment]
+  name varchar(255) [not null]
+  description longtext
+  image varchar(255) [not null]
+}
+
+Table "order" {
+  id int [pk, increment]
+  email varchar(180)
+  shipping_address longtext
+  total int [not null]
+  status varchar(32) [not null]
+  created_at datetime [not null, note: "DC2Type:datetime_immutable"]
+  user_id int
+}
+
+Table order_item {
+  id int [pk, increment]
+  order_id int [not null]
+  product_id int
+  product_name varchar(255) [not null]
+  unit_price int [not null]
+  quantity int [not null]
+}
+
+Table product {
+  id int [pk, increment]
+  metier_id int
+  projet_id int
+  traveaux_id int
+  prix double [not null]
+  titre varchar(255) [not null]
+  description longtext [not null]
+  image varchar(255) [not null]
+  stock int [not null, default: 0]
+}
+
+Table "user" {
+  id int [pk, increment]
+  username varchar(180) [not null, unique]
+  email varchar(180) [unique]
+  roles longtext [not null, note: "DC2Type:json"]
+  password varchar(255) [not null]
+  is_verified boolean [not null]
+}
+
+Ref: "order".user_id > "user".id
+Ref: order_item.order_id > "order".id [delete: cascade]
+Ref: order_item.product_id > product.id [delete: set null]
+Ref: product.metier_id > category_metier.id
+Ref: product.projet_id > category_projet.id
+Ref: product.traveaux_id > category_traveaux.id

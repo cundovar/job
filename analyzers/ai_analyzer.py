@@ -15,6 +15,7 @@ class AIAnalyzer:
         self.client = OpenAI(
             api_key=os.getenv("DEEPSEEK_API_KEY"),
             base_url="https://api.deepseek.com",
+            timeout=float(os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "20")),
         )
         self.model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
         self.temperature = float(os.getenv("DEEPSEEK_TEMPERATURE", "0.3"))

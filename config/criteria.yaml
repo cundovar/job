@@ -128,7 +128,7 @@ target_positions:
       - "google workspace"
       - "intranet"
       - "crm"
-    score_weight: 52
+    score_weight: 42
 
   - name: "Webmaster institutionnel"
     priority: 1
@@ -149,39 +149,32 @@ target_positions:
       - "service public"
       - "portail"
       - "site institutionnel"
-    score_weight: 55
+    score_weight: 72
     sector_restriction: ["Public", "ESS", "Impact"]
 
-  # --- ABAISSÉ : chef/chargé de projet web (trop de faux positifs) ---
-  - name: "Chargé de projet web"
+  - name: "Formateur développement web et IA"
     priority: 2
-    keywords:
-      - "charge de projet web"
-      - "chargé de projet web"
-      - "chef de projet web"
-      - "chef de projet digital"
-      - "chef de projet numerique"
-      - "chef de projet site web"
-      - "gestion de projet web"
-      - "coordination projet web"
-      - "pilotage de prestataires"
-      - "cahier des charges"
-      - "recette"
-      - "suivi de production"
-      - "maintenance evolutive"
-      - "amoe"
-      - "amoa"
-    score_weight: 40
-
-  # --- OPTIONNEL : formation web (si tu veux garder cette piste) ---
-  - name: "Formateur développement web"
-    priority: 4
     keywords:
       - "formateur web"
       - "formateur developpement"
+      - "formateur developpement web"
       - "enseignant developpement web"
       - "intervenant web"
       - "formateur numerique"
+      - "formateur ia"
+      - "formateur intelligence artificielle"
+      - "formateur prompt"
+      - "formateur no code ia"
+      - "formation ia"
+      - "atelier ia"
+      - "formateur html"
+      - "formateur javascript"
+      - "formateur php"
+      - "formateur wordpress"
+      - "formateur css"
+      - "formateur react"
+      - "formateur vue"
+      - "formateur symfony"
       - "animation d'ateliers"
       - "ateliers numeriques"
       - "mentorat"
@@ -190,11 +183,15 @@ target_positions:
       - "ingenierie pedagogique"
       - "titre professionnel"
       - "rncp"
-    score_weight: 38
+      - "formation adultes"
+      - "formation continue"
+      - "organisme de formation"
+      - "centre de formation"
+      - "ecole numerique"
+    score_weight: 54
 
-  # --- OPTIONNEL : dev web uniquement en ESS/Public/Impact ---
-  - name: "Développeur web (ESS/Public/Impact)"
-    priority: 5
+  - name: "Développeur web orienté CMS"
+    priority: 3
     keywords:
       - "developpeur web"
       - "developpeur fullstack"
@@ -202,10 +199,15 @@ target_positions:
       - "developpeur react"
       - "developpeur vue"
       - "developpeur php"
+      - "developpeur javascript"
       - "developpeur frontend"
       - "developpeur backend"
-    score_weight: 24
-    sector_restriction: ["ESS", "Public", "Impact"]
+      - "dev web"
+      - "fullstack developer"
+      - "web developer"
+      - "developpeur wordpress"
+      - "developpeur cms"
+    score_weight: 42
 
 # Scoring par compétences (bonus/malus)
 skills_matching:
@@ -216,18 +218,18 @@ skills_matching:
     - "requirements"
 
   hard_bonus:
-    # CMS / institutionnel / continuité
+    # CMS / institutionnel : réduits pour ne pas favoriser chef de projet
     - skill: "wordpress"
-      points: 10
+      points: 6
       variants: ["wordpress", "wp", "gutenberg"]
     - skill: "joomla"
-      points: 9
+      points: 5
       variants: ["joomla"]
     - skill: "drupal"
-      points: 9
+      points: 5
       variants: ["drupal"]
     - skill: "accessibilite"
-      points: 10
+      points: 8
       variants: ["rgaa", "wcag", "accessibilité", "accessibilite", "a11y"]
     - skill: "ticketing"
       points: 7
@@ -236,33 +238,43 @@ skills_matching:
       points: 6
       variants: ["microsoft 365", "office 365", "m365", "sharepoint", "teams"]
 
-    # Stack dev (conservé mais moins “aimant”)
+    # Stack dev : augmentés pour favoriser les annonces dev
     - skill: "symfony"
-      points: 10
+      points: 12
       variants: ["symfony", "symfony 5", "symfony 6", "symfony 7"]
     - skill: "react"
-      points: 4
+      points: 8
       variants: ["react", "reactjs", "react.js"]
     - skill: "vue"
-      points: 4
+      points: 8
       variants: ["vue", "vuejs", "vue.js", "nuxt", "nuxtjs"]
     - skill: "php"
-      points: 6
-      variants: ["php", "php8", "php 8"]
+      points: 8
+      variants: ["php", "php8", "php 8", "php7"]
+    - skill: "javascript"
+      points: 8
+      variants: ["javascript", "js", "es6", "typescript", "ts"]
     - skill: "sql"
       points: 5
       variants: ["sql", "mysql", "postgresql", "postgres"]
     - skill: "git"
       points: 3
       variants: ["git", "github", "gitlab"]
+    - skill: "docker"
+      points: 4
+      variants: ["docker", "containerisation", "containers"]
 
   soft_bonus:
+    # Formation : augmentés pour favoriser formateur
     - skill: "pédagogie"
-      points: 8
+      points: 12
       variants: ["pédagogie", "andragogie", "formation adultes", "animation", "atelier", "facilitation"]
     - skill: "formation"
+      points: 10
+      variants: ["formateur", "formation", "enseignement", "mentorat", "tutorat", "enseignant"]
+    - skill: "accompagnement"
       points: 6
-      variants: ["formateur", "formation", "enseignement", "mentorat", "tutorat"]
+      variants: ["accompagnement", "coaching", "suivi"]
 
   mismatch_penalties:
     - keyword_group: "stack_hors_scope_fort"
@@ -271,6 +283,9 @@ skills_matching:
     - keyword_group: "devops_lourd"
       points: -12
       keywords: ["kubernetes", "k8s", "terraform", "sre", "site reliability", "on-call", "astreinte"]
+    - keyword_group: "data_science"
+      points: -10
+      keywords: ["data science", "machine learning", "deep learning", "ia avancee", "nlp", "computer vision"]
 
 # Secteurs Acceptés
 sectors:
@@ -401,18 +416,41 @@ red_flags:
 
   # Surcharge / annonce Frankenstein (on ne bloque pas forcément, mais gros malus)
   soft_penalty_keywords:
+    # Diplôme trop élevé
     - keyword: "bac+5"
       points: -10
     - keyword: "bac +5"
       points: -10
     - keyword: "master"
       points: -10
+    - keyword: "ingenieur diplome"
+      points: -12
 
-    # IA/SEO : ne pas tuer les annonces webmaster institutionnelles
+    # Chef de projet trop senior / hors scope
+    - keyword: "chef de projet senior"
+      points: -15
+    - keyword: "chef de projet confirme"
+      points: -12
+    - keyword: "gestion d'equipe"
+      points: -8
+    - keyword: "management d'equipe"
+      points: -10
+    - keyword: "pilotage strategique"
+      points: -12
+    - keyword: "vision produit"
+      points: -8
+    - keyword: "product owner"
+      points: -10
+
+    # IA/SEO : léger malus pour ne pas éliminer webmaster institutionnel
     - keyword: "ia"
       points: -2
+    - keyword: "intelligence artificielle"
+      points: -3
     - keyword: "seo"
       points: -2
+    - keyword: "sea"
+      points: -8
 
     # Marketing/growth (à faire chuter)
     - keyword: "marketing"
@@ -433,8 +471,6 @@ red_flags:
       points: -10
     - keyword: "cpa"
       points: -10
-    - keyword: "sea"
-      points: -8
     - keyword: "social ads"
       points: -10
     - keyword: "social media"
@@ -446,7 +482,7 @@ red_flags:
     - keyword: "vente"
       points: -8
 
-    # Chef de projet senior / PMO / global
+    # PMO / multiprojets / global
     - keyword: "pmo"
       points: -15
     - keyword: "multiprojets"
@@ -468,7 +504,7 @@ red_flags:
     - keyword: "50%"
       points: -18
 
-    # Autres malus utiles (conservés)
+    # Autres malus utiles
     - keyword: "mobilisable en urgence"
       points: -10
     - keyword: "pics d'activité"
@@ -479,10 +515,6 @@ red_flags:
       points: -8
     - keyword: "recherche appliquee"
       points: -8
-    - keyword: "data science"
-      points: -10
-    - keyword: "machine learning"
-      points: -10
     - keyword: "rémunération selon profil"
       points: -6
     - keyword: "remuneration selon profil"
@@ -497,7 +529,6 @@ red_flags:
     - "token"
     - "metaverse"
 
-  # ✅ Ne plus exclure banque/assurance en dur (on garde un tri par scoring/malus)
   sectors_to_exclude: []
 
   companies_to_exclude: []
@@ -533,9 +564,9 @@ salary:
 # Scoring Configuration
 scoring:
   thresholds:
-    ignore: 49
-    basic_ai_analysis: 50
-    detailed_ai_analysis: 70
+    ignore: 55
+    basic_ai_analysis: 60
+    detailed_ai_analysis: 75
 
   bonus_points:
     company_known_in_ess: 5

@@ -106,8 +106,15 @@ class FranceTravailScraper(BaseScraper):
         jobs: List[Dict] = []
         seen_ids = set()
 
-        # Utiliser quelques mots-clés principaux
-        search_keywords = ["formateur web", "formateur développement", "chef de projet digital", "développeur web ESS"]
+        search_keywords: List[str] = []
+        for keyword in keywords:
+            cleaned = keyword.strip()
+            if cleaned and cleaned not in search_keywords:
+                search_keywords.append(cleaned)
+
+        # Fallback minimal si la configuration ne fournit rien.
+        if not search_keywords:
+            search_keywords = ["webmaster", "formateur developpement web", "formateur intelligence artificielle"]
 
         for keyword in search_keywords:
             try:

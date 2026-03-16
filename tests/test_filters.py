@@ -41,3 +41,40 @@ def test_filters_basic():
 
     jobs = filter_by_sector(jobs, criteria)
     assert len(jobs) == 1
+
+
+def test_keyword_filter_excludes_unrelated_project_manager_jobs():
+    criteria = {
+        "target_positions": [
+            {"keywords": ["webmaster", "formateur developpement web", "formateur ia"]},
+        ],
+        "red_flags": {
+            "keywords": [],
+            "hard_exclude_keywords": [],
+            "hard_exclude_keywords_tech": [],
+            "exclude_if_contains": [],
+            "keep_if_contains": [],
+        },
+    }
+
+    jobs = [
+        {
+            "title": "Chef de projet digital",
+            "description": "Pilotage de projets web et coordination prestataires",
+        },
+        {
+            "title": "Webmaster WordPress",
+            "description": "Gestion de site institutionnel et accessibilite",
+        },
+        {
+            "title": "Formateur developpement web et IA",
+            "description": "Animation de formations HTML, JavaScript et IA generative",
+        },
+    ]
+
+    filtered = filter_by_keywords(jobs, criteria)
+
+    assert [job["title"] for job in filtered] == [
+        "Webmaster WordPress",
+        "Formateur developpement web et IA",
+    ]

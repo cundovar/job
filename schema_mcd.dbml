@@ -1,0 +1,75 @@
+Project btpmoussa_mcd {
+  database_type: "MySQL"
+  Note: "Version simplifiee orientee metier pour dbdiagram.io. dbdiagram.io ne gere pas un vrai MCD Merise avec verbes d'action sur les associations, donc les cardinalites et verbes sont explicitement notes ici."
+}
+
+Table Utilisateur {
+  id int [pk]
+  username varchar(180)
+  email varchar(180)
+  roles json
+  is_verified boolean
+  Note: "Association PASSER: un Utilisateur passe 0..N Commandes; une Commande est passee par 0..1 Utilisateur"
+}
+
+Table Commande {
+  id int [pk]
+  email varchar(180)
+  shipping_address text
+  total int
+  status varchar(32)
+  created_at datetime
+  user_id int
+  Note: "Association CONTENIR: une Commande contient 1..N LignesCommande; une LigneCommande appartient a 1..1 Commande"
+}
+
+Table LigneCommande {
+  id int [pk]
+  order_id int
+  product_id int
+  product_name varchar(255)
+  unit_price int
+  quantity int
+  Note: "Association CONCERNER: une LigneCommande concerne 0..1 Produit; un Produit peut etre concerne par 0..N LignesCommande"
+}
+
+Table Produit {
+  id int [pk]
+  titre varchar(255)
+  description text
+  prix double
+  stock int
+  image varchar(255)
+  metier_id int
+  projet_id int
+  traveaux_id int
+  Note: "Associations CLASSER: un Produit appartient a 0..1 CategorieMetier, 0..1 CategorieProjet et 0..1 CategorieTraveaux; chaque categorie regroupe 0..N Produits"
+}
+
+Table CategorieMetier {
+  id int [pk]
+  nom varchar(150)
+  description text
+  image varchar(255)
+}
+
+Table CategorieProjet {
+  id int [pk]
+  nom varchar(150)
+  description text
+  image varchar(255)
+}
+
+Table CategorieTraveaux {
+  id int [pk]
+  name varchar(255)
+  description text
+  image varchar(255)
+}
+
+Ref: Commande.user_id > Utilisateur.id
+Ref: LigneCommande.order_id > Commande.id
+Ref: LigneCommande.product_id > Produit.id
+Ref: Produit.metier_id > CategorieMetier.id
+Ref: Produit.projet_id > CategorieProjet.id
+Ref: Produit.traveaux_id > CategorieTraveaux.id

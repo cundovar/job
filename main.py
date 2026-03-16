@@ -70,15 +70,38 @@ def main() -> None:
         job["score"] = calculate_score(job, criteria)
 
     threshold = int(criteria.get("scoring", {}).get("thresholds", {}).get("basic_ai_analysis", 50))
+    max_ai_jobs = int(os.getenv("MAX_AI_JOBS_PER_RUN", "12"))
     ai_analyzer = AIAnalyzer()
-    for job in filtered:
-        if job.get("score", 0) >= threshold:
-            try:
-                job["ai_analysis"] = ai_analyzer.analyze_job(job, criteria.get("user_profile", {}))
-            except Exception as exc:
-                logger.error(f"AI analysis failed: {exc}")
+    ai_candidates = sorted(
+        [job for job in filtered if job.get("score", 0) >= threshold],
+        key=lambda job: job.get("score", 0),
+        reverse=True,
+    )
+    logger.info(f"AI analysis candidates: {len(ai_candidates)}; capped at {max_ai_jobs}")
+    for job in ai_candidates[:max_ai_jobs]:
+        try:
+            job["ai_analysis"] = ai_analyzer.analyze_job(job, criteria.get("user_profile", {}))
+        except Exception as exc:
+            logger.error(f"AI analysis failed: {exc}")
 
-    JSONStorage(cache_days=int(os.getenv("CACHE_DURATION_DAYS", "30"))).save(filtered)
+    for job in filtered:
+        if "ai_analysis" not in job:
+            try:
+                recommendation = "PEUT-ÊTRE" if job.get("score", 0) >= threshold else "PASSER"
+                job["ai_analysis"] = {
+                    "pertinence_score": round(job.get("score", 0) / 10, 1),
+                    "points_forts": [],
+                    "points_faibles": [],
+                    "red_flags": [],
+                    "recommandation": recommendation,
+                    "angle_motivation": "",
+                    "raison_breve": "Analyse IA non disponible sur ce run.",
+                }
+            except Exception:
+                job["ai_analysis"] = {"recommandation": "PEUT-ÊTRE"}
+
+    storage = JSONStorage(cache_days=int(os.getenv("CACHE_DURATION_DAYS", "30")))
+    storage.save(filtered)
 
     dry_run = os.getenv("DRY_RUN", "false").lower() == "true"
     if not dry_run:
@@ -86,6 +109,7 @@ def main() -> None:
             sheets = GoogleSheetsStorage()
             sheets.create_or_update_tabs(criteria.get("google_sheets", {}).get("tabs", []))
             sheets.add_jobs(filtered)
+            logger.info("Google Sheets updated")
         except Exception as exc:
             logger.error(f"Google Sheets failed: {exc}")
 
@@ -94,7 +118,8 @@ def main() -> None:
             max_email_jobs = int(
                 criteria.get("email", {}).get("content", {}).get("max_jobs_in_email", 5)
             )
-            top_jobs = sorted(filtered, key=lambda x: x.get("score", 0), reverse=True)[:max_email_jobs]
+            unsent_jobs = storage.get_unsent_jobs(filtered)
+            top_jobs = sorted(unsent_jobs, key=lambda x: x.get("score", 0), reverse=True)[:max_email_jobs]
             sheet_id = os.getenv("GOOGLE_SHEET_ID")
             sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit" if sheet_id else "#"
             stats = {
@@ -109,9 +134,12 @@ def main() -> None:
                 "passer": sum(
                     1 for j in filtered if j.get("ai_analysis", {}).get("recommandation") == "PASSER"
                 ),
+                "new_for_email": len(top_jobs),
                 "sheet_url": sheet_url,
             }
             email.send_daily_report(top_jobs, stats)
+            storage.mark_jobs_as_sent(top_jobs)
+            logger.info(f"Email sent with {len(top_jobs)} new jobs")
         except Exception as exc:
             logger.error(f"Email failed: {exc}")
 
