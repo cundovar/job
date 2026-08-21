@@ -8,7 +8,11 @@
 
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { PORT } from './config.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ── Repository actif (JSON sur disque) ────────────────────────────────────────
 import JsonApplicationsRepository from './repositories/jsonApplicationsRepository.js';
@@ -18,18 +22,32 @@ import createApplicationsRouter from './routes/applications.js';
 
 const app = express();
 
-// Autorise les requêtes depuis le frontend Vite (localhost:5173)
-app.use(cors({ origin: 'http://localhost:5173' }));
+// CORS : en prod, accepte les requêtes du même origin (VPS)
+const corsOrigin = process.env.NODE_ENV === 'production'
+  ? '*'
+  : 'http://localhost:5173';
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
 
 // Instancie le repository (une seule ligne à changer pour changer de stockage)
 const repo = new JsonApplicationsRepository();
 
-// Monte les routes sous /api
+// Serve front statique depuis dist/ (production build)
+const frontDistPath = path.resolve(__dirname, '../front/dist');
+app.use(express.static(frontDistPath));
+
+// Routes API
 app.use('/api', createApplicationsRouter(repo));
+
+// SPA fallback : redirige vers index.html pour les routes qui n'existent pas
+app.get('*', (req, res) => {
+  res.sendFile(path.join(frontDistPath, 'index.html'));
+});
 
 app.listen(PORT, () => {
   console.log(`✅ Serveur démarré sur http://localhost:${PORT}`);
+  console.log(`📱 Frontend: http://localhost:${PORT}`);
+  console.log(`📡 API:`);
   console.log(`   GET  /api/health`);
   console.log(`   GET  /api/applications`);
   console.log(`   POST /api/applications/prepare`);
