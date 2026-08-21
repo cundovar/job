@@ -96,6 +96,7 @@ class FranceTravailScraper(BaseScraper):
             "description": raw.get("description", ""),
             "url": raw.get("origineOffre", {}).get("urlOrigine", "") or f"https://candidat.francetravail.fr/offres/recherche/detail/{raw.get('id', '')}",
             "source": "france_travail",
+            "published_at": raw.get("dateCreation", ""),
             "scraped_at": datetime.now(timezone.utc).isoformat(),
         }
 

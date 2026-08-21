@@ -56,7 +56,6 @@ class EmailSender:
             peut_etre_count=stats.get("peut_etre", 0),
             passer_count=stats.get("passer", 0),
             top_jobs=top_jobs,
-            google_sheet_url=stats.get("sheet_url", "#"),
         )
 
         msg = MIMEMultipart("alternative")

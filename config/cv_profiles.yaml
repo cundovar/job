@@ -1,0 +1,132 @@
+# CV profiles — real files in Bureau/perso/EMPLOI/CV/
+cvs:
+  - id: dev_fullstack
+    name: "Développeur Full Stack"
+    path: "/home/cundo/Bureau/perso/EMPLOI/CV/Facundo Varas (1).pdf"
+    alternatives:
+      - "/home/cundo/Bureau/perso/EMPLOI/CV/Facundo Varas.pdf"
+      - "/home/cundo/Bureau/perso/EMPLOI/CV/dev (2) (1).pdf"
+    best_for:
+      - developpeur
+      - développeur
+      - dev
+      - fullstack
+      - full-stack
+      - full stack
+      - symfony
+      - php
+      - react
+      - vue
+      - vue.js
+      - vuejs
+      - nuxt
+      - next.js
+      - javascript
+      - typescript
+      - node.js
+      - nodejs
+      - api rest
+      - backend
+      - back-end
+      - frontend
+      - front-end
+      - html
+      - css
+      - tailwind
+      - docker
+      - git
+      - mysql
+      - doctrine
+      - integrateur
+      - intégrateur
+      - intégration
+
+  - id: webmaster
+    name: "Webmaster / Administrateur de Sites Web"
+    path: "/home/cundo/Bureau/perso/EMPLOI/CV/webmaster (1).pdf"
+    alternatives: []
+    best_for:
+      - webmaster
+      - webmestre
+      - administrateur web
+      - administratrice web
+      - admin web
+      - administrateur de site
+      - gestionnaire de contenu
+      - chargé de contenu
+      - charge de contenu
+      - wordpress
+      - cms
+      - maintenance web
+      - maintenance site
+      - hebergement
+      - hébergement
+      - accessibilite
+      - accessibilité
+      - rgaa
+      - google analytics
+      - search console
+      - seo
+      - support web
+      - support utilisateurs
+      - formation utilisateurs
+
+  - id: formateur_web
+    name: "Formateur Développement Web"
+    path: "/home/cundo/Bureau/perso/EMPLOI/CV/formateur (1).pdf"
+    alternatives:
+      - "/home/cundo/Bureau/perso/EMPLOI/CV/formateur.pdf"
+    best_for:
+      - formateur web
+      - formateur developpement
+      - formateur développement
+      - formateur informatique
+      - formateur numerique
+      - formateur numérique
+      - enseignant
+      - intervenant
+      - formation
+      - pédagogie
+      - pedagogie
+      - andragogie
+      - bootcamp
+      - titre professionnel
+      - rncp
+      - formation adultes
+      - formation continue
+      - insertion
+      - public éloigné
+      - reconversion
+      - vulgarisation
+      - accompagnement
+
+  - id: formateur_ia
+    name: "Formateur IA Générative & Accompagnement Numérique"
+    path: "/home/cundo/Bureau/perso/EMPLOI/CV/formateur ia (1).pdf"
+    alternatives:
+      - "/home/cundo/Bureau/perso/EMPLOI/CV/formateur ia.pdf"
+    best_for:
+      - formateur ia
+      - formateur intelligence artificielle
+      - ia générative
+      - ia generative
+      - chatgpt
+      - claude
+      - prompt engineering
+      - prompt
+      - atelier ia
+      - ateliers ia
+      - formation ia
+      - automatisation
+      - n8n
+      - outils ia
+      - accompagnement numérique
+      - accompagnement numerique
+      - médiation numérique
+      - mediation numerique
+      - autonomie numérique
+      - inclusion numérique
+      - référent numérique
+      - referent numerique
+      - coordinateur numérique
+      - coordonnateur numerique

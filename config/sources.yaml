@@ -1,0 +1,26 @@
+# Source activation for job search scraping.
+enabled_sources:
+  france_travail: true
+  adzuna: true
+  emploi_territorial: true
+  apec: true
+  indeed: false
+  wttj: false
+  emploi_asso: false
+  emploi_ess: true
+  lesjeudis: true
+  jooble: false
+  remoteok: false
+
+remoteok:
+  max_jobs: 50
+  tags:
+    - support
+    - admin
+    - education
+    - dev
+
+jooble:
+  country: "fr"
+  location: "Île-de-France"
+  max_jobs: 50

@@ -2,6 +2,7 @@ from filters.keyword_filter import filter_by_keywords
 from filters.location_filter import filter_by_location
 from filters.contract_filter import filter_by_contract
 from filters.sector_filter import filter_by_sector
+from analyzers.scoring_engine import _score_location
 
 
 def test_filters_basic():
@@ -78,3 +79,45 @@ def test_keyword_filter_excludes_unrelated_project_manager_jobs():
         "Webmaster WordPress",
         "Formateur developpement web et IA",
     ]
+
+
+def test_location_filter_accepts_all_idf_departments_and_accented_zones():
+    criteria = {
+        "location": {
+            "accepted_zones": [
+                "Île-de-France",
+                "75", "77", "78", "91", "92", "93", "94", "95",
+                "Hauts-de-Seine", "Yvelines", "Val-d'Oise", "Essonne",
+                "Nanterre", "Versailles", "Cergy", "Massy",
+            ],
+            "remote_accepted": True,
+            "hybrid_accepted": True,
+        }
+    }
+    jobs = [
+        {"title": "Dev", "location": "Nanterre (92)", "description": ""},
+        {"title": "Dev", "location": "Versailles - Yvelines", "description": ""},
+        {"title": "Dev", "location": "Cergy, Val-d'Oise", "description": ""},
+        {"title": "Dev", "location": "Massy (91)", "description": ""},
+        {"title": "Dev", "location": "Lyon", "description": ""},
+    ]
+
+    filtered = filter_by_location(jobs, criteria)
+
+    assert [job["location"] for job in filtered] == [
+        "Nanterre (92)",
+        "Versailles - Yvelines",
+        "Cergy, Val-d'Oise",
+        "Massy (91)",
+    ]
+
+
+def test_location_scoring_accepts_west_south_north_idf():
+    criteria = {"location": {"score_weights": {"paris": 10, "idf": 8, "remote": 10, "hybrid": 9}}}
+
+    assert _score_location({"location": "Paris 15", "description": ""}, criteria) == 10
+    assert _score_location({"location": "Nanterre (92)", "description": ""}, criteria) == 8
+    assert _score_location({"location": "Versailles - Yvelines", "description": ""}, criteria) == 8
+    assert _score_location({"location": "Massy (91)", "description": ""}, criteria) == 8
+    assert _score_location({"location": "Cergy, Val-d'Oise", "description": ""}, criteria) == 8
+    assert _score_location({"location": "Lyon", "description": ""}, criteria) == 0

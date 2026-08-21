@@ -218,6 +218,25 @@ python main.py
 4. ✅ Met à jour Google Sheet
 5. ✅ Envoie email avec résumé
 
+### Commandes Hermes
+
+Les commandes utilisables par Hermes sont documentees ici :
+
+```text
+docs/HERMES_COMMANDS.md
+```
+
+Commandes principales :
+
+```bash
+python3 -m hermes_commands.job_top
+python3 -m hermes_commands.job_today
+python3 -m hermes_commands.job_prepare 1
+python3 -m hermes_commands.job_apply 1
+python3 -m hermes_commands.job_relance
+python3 -m hermes_commands.job_status
+```
+
 **Durée** : 5-10 minutes selon le nombre d'offres
 
 ### Vérifier les Résultats

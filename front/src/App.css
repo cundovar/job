@@ -1,0 +1,249 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f1a; color: #e0e0e0; }
+
+.app-layout { display: flex; min-height: 100vh; }
+
+/* Sidebar */
+.sidebar {
+  width: 280px; background: #1a1a2e; border-right: 1px solid #2a2a4a;
+  padding: 1rem; overflow-y: auto; position: sticky; top: 0; height: 100vh;
+}
+.sidebar h2 { font-size: 1rem; color: #8b8bff; margin-bottom: 1rem; }
+.search-btn {
+  display: block; width: 100%; text-align: left; padding: .6rem .8rem;
+  background: transparent; border: 1px solid #2a2a4a; border-radius: 6px;
+  color: #c0c0d0; cursor: pointer; margin-bottom: .4rem; font-size: .85rem;
+}
+.search-btn:hover, .search-btn.active { background: #2a2a4a; border-color: #6366f1; }
+.search-date { display: block; font-weight: 600; }
+.search-stats { font-size: .75rem; color: #888; }
+
+/* Main */
+.main-content { flex: 1; padding: 1.5rem 2rem; max-width: 900px; }
+.search-header { margin-bottom: 1.5rem; }
+.search-header h1 { font-size: 1.3rem; margin-bottom: .5rem; }
+.stats { display: flex; gap: 1rem; font-size: .9rem; }
+.stats .postuler { color: #4ade80; }
+.stats .peut-etre { color: #fbbf24; }
+
+/* Tabs */
+.tabs { display: flex; gap: .4rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+.tab {
+  padding: .5rem 1rem; border: 1px solid #333; border-radius: 20px;
+  background: transparent; color: #aaa; cursor: pointer; font-size: .85rem;
+}
+.tab:hover { border-color: #6366f1; color: #fff; }
+.tab.active { background: #6366f1; border-color: #6366f1; color: #fff; }
+.badge { margin-left: .4rem; padding: .1rem .4rem; border-radius: 10px; background: #333; font-size: .7rem; }
+
+/* Job cards */
+.job-list { display: flex; flex-direction: column; gap: .8rem; }
+.job-card {
+  background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 8px;
+  padding: 1rem 1.2rem; border-left: 3px solid #6366f1;
+}
+.job-card.postuler { border-left-color: #4ade80; }
+.job-card.passer { border-left-color: #ef4444; opacity: .7; }
+.job-header { display: flex; justify-content: space-between; align-items: start; gap: .5rem; }
+.job-header h3 { font-size: .95rem; font-weight: 600; }
+.badge-postuler, .badge-peut-etre, .badge-passer {
+  font-size: .7rem; padding: .2rem .5rem; border-radius: 10px; white-space: nowrap;
+}
+.badge-postuler { background: #14532d; color: #4ade80; }
+.badge-peut-etre { background: #78350f; color: #fbbf24; }
+.badge-passer { background: #3f0a0a; color: #ef4444; }
+
+.job-meta { display: flex; flex-wrap: wrap; gap: .8rem; margin: .5rem 0; font-size: .8rem; color: #999; }
+.job-analysis { font-size: .85rem; color: #bbb; font-style: italic; margin: .5rem 0; }
+.job-points { margin: .4rem 0; font-size: .8rem; }
+.job-points strong { color: #888; }
+.job-points ul { margin: .2rem 0 0 1.2rem; }
+.job-points li { margin-bottom: .1rem; color: #aaa; }
+.job-points.warning strong { color: #fbbf24; }
+.job-points.warning li { color: #d4a017; }
+.job-link { display: inline-block; margin-top: .5rem; font-size: .8rem; color: #818cf8; text-decoration: none; }
+.job-link:hover { text-decoration: underline; }
+.prepare-actions { margin-top: .7rem; display: flex; align-items: center; gap: .5rem; }
+.prepare-btn {
+  background: #312e81; color: #c7d2fe; border: 1px solid #4f46e5;
+  border-radius: 6px; padding: .45rem .9rem; cursor: pointer; font-size: .82rem;
+  font-weight: 700; transition: background .15s, border-color .15s;
+}
+.prepare-btn:hover { background: #3730a3; border-color: #6366f1; }
+.prepare-btn:disabled { opacity: .6; cursor: default; }
+.prepare-message {
+  margin-top: .8rem; border-radius: 6px; padding: .55rem .8rem; font-size: .82rem;
+}
+.prepare-message.success { background: #102a1a; border: 1px solid #166534; color: #4ade80; }
+.prepare-message.error { background: #3f0a0a; border: 1px solid #7f1d1d; color: #f87171; }
+
+.loading, .empty-state { text-align: center; padding: 3rem; color: #666; }
+/* Candidatures */
+.mode-btn { margin-bottom: .3rem; }
+.candidatures-list h1, .candidature-detail h1 { font-size: 1.2rem; margin-bottom: 1rem; }
+.candidature-detail h2 { font-size: 1rem; margin: 1.5rem 0 .5rem; color: #8b8bff; }
+.candidature-meta { display: flex; gap: 1rem; margin-bottom: 1rem; color: #999; font-size: .85rem; }
+.copy-btn {
+  background: #2a2a4a; color: #818cf8; border: 1px solid #444; border-radius: 6px;
+  padding: .4rem .8rem; cursor: pointer; font-size: .8rem; margin-bottom: .8rem;
+}
+.copy-btn:hover { background: #3a3a5a; }
+.lettre-content {
+  background: #0f0f1a; border: 1px solid #2a2a4a; border-radius: 8px;
+  padding: 1.2rem 1.5rem; font-family: inherit; font-size: .85rem; line-height: 1.7;
+  white-space: pre-wrap; color: #ccc; max-height: 70vh; overflow-y: auto;
+}
+.back-btn { margin-bottom: 1rem; }
+
+/* Bouton "J'ai postulé" */
+.postule-btn {
+  background: #14532d; color: #4ade80; border: 1px solid #166534;
+  border-radius: 6px; padding: .4rem .9rem; cursor: pointer; font-size: .82rem;
+  font-weight: 600; transition: background .15s;
+}
+.postule-btn:hover { background: #166534; }
+.postule-btn:disabled { opacity: .6; cursor: default; }
+
+/* Badge "Postulé le JJ/MM" — version grande (vue détail) */
+.badge-applied {
+  display: inline-block; background: #14532d; color: #4ade80;
+  border-radius: 20px; padding: .3rem .8rem; font-size: .82rem; font-weight: 600;
+}
+
+/* Badge "Postulé" — version compacte (vue liste) */
+.badge-applied-small {
+  font-size: .7rem; padding: .2rem .5rem; border-radius: 10px; white-space: nowrap;
+  background: #14532d; color: #4ade80;
+}
+
+/* Bouton "annuler" discret */
+.annuler-btn {
+  background: transparent; color: #888; border: 1px solid #444;
+  border-radius: 6px; padding: .2rem .6rem; cursor: pointer; font-size: .75rem;
+  margin-left: .5rem;
+}
+.annuler-btn:hover { color: #ccc; border-color: #666; }
+.annuler-btn:disabled { opacity: .5; cursor: default; }
+
+/* Zone bouton "J'ai postulé" dans la vue liste */
+.postule-actions { margin-top: .6rem; }
+
+/* Zone bouton dans la vue détail */
+.postule-zone {
+  display: flex; align-items: center; gap: .7rem; flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.postule-applied { display: flex; align-items: center; gap: .5rem; }
+
+/* Message d'erreur discret */
+.postule-error { font-size: .78rem; color: #f87171; }
+.postule-offline { font-size: .78rem; color: #888; font-style: italic; }
+
+/* Bandeau d'avertissement backend hors-ligne */
+.backend-warning {
+  background: #2d1a0a; border: 1px solid #78350f; border-radius: 6px;
+  color: #fbbf24; padding: .6rem 1rem; font-size: .82rem; margin-bottom: 1rem;
+}
+.backend-warning code {
+  background: #1a0f00; padding: .1rem .4rem; border-radius: 4px; font-size: .8rem;
+}
+
+/* Carte postulée : légère teinte verte sur le bord */
+.job-card.is-applied { border-left-color: #22c55e; }
+
+/* Métadonnée "Postulé le..." dans la liste */
+.meta-applied { color: #4ade80; font-weight: 600; }
+
+/* Badge "À relancer" — date de relance dépassée ou aujourd'hui */
+.badge-relance-due {
+  font-size: .7rem; padding: .2rem .5rem; border-radius: 10px; white-space: nowrap;
+  background: #7c2d12; color: #fb923c; font-weight: 600;
+}
+
+/* Agences web */
+.agency-card { border-left-color: #38bdf8; }
+.badge-agency {
+  font-size: .7rem; padding: .2rem .5rem; border-radius: 10px; white-space: nowrap;
+  background: #0c4a6e; color: #7dd3fc; font-weight: 700;
+}
+.agency-actions { margin-top: .7rem; display: flex; gap: 1rem; flex-wrap: wrap; }
+
+/* Météo */
+.weather-view h2 {
+  font-size: 1rem; margin: 1.4rem 0 .7rem; color: #8b8bff;
+}
+.weather-search {
+  display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem;
+}
+.weather-search input {
+  min-width: 240px; flex: 1; background: #10101d; border: 1px solid #2a2a4a;
+  border-radius: 8px; color: #e0e0e0; padding: .55rem .75rem; font-size: .9rem;
+}
+.weather-search input:focus {
+  outline: none; border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99, 102, 241, .18);
+}
+.weather-location-btn {
+  margin-bottom: 0;
+}
+.weather-current {
+  background: linear-gradient(135deg, #1a1a2e 0%, #18203a 100%);
+  border: 1px solid #2a2a4a; border-radius: 14px; padding: 1.2rem;
+  display: grid; gap: 1rem; box-shadow: 0 18px 40px rgba(0, 0, 0, .18);
+}
+.weather-place {
+  font-size: 1.05rem; font-weight: 700; color: #fff;
+}
+.weather-place span, .weather-updated {
+  color: #999; font-weight: 400; font-size: .82rem;
+}
+.weather-updated { margin-top: .2rem; }
+.weather-main {
+  display: flex; align-items: center; gap: 1rem;
+}
+.weather-icon {
+  font-size: 4rem; line-height: 1;
+}
+.weather-temp {
+  font-size: 3.2rem; font-weight: 800; color: #fff; line-height: 1;
+}
+.weather-desc {
+  color: #c7d2fe; margin-top: .3rem;
+}
+.weather-metrics {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem;
+}
+.weather-metrics span, .weather-mini-card, .weather-day-card {
+  background: #10101d; border: 1px solid #2a2a4a; border-radius: 10px; padding: .75rem;
+}
+.weather-metrics span {
+  color: #c0c0d0; font-size: .85rem;
+}
+.weather-hourly {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: .6rem;
+}
+.weather-mini-card {
+  display: flex; flex-direction: column; gap: .35rem; min-height: 126px;
+}
+.weather-mini-card span, .weather-mini-card small, .weather-day-card span {
+  color: #999; font-size: .78rem;
+}
+.weather-mini-card strong {
+  color: #fff; font-size: .95rem;
+}
+.weather-daily {
+  display: grid; gap: .6rem;
+}
+.weather-day-card {
+  display: grid; grid-template-columns: 90px 1fr 90px 80px; gap: .7rem; align-items: center;
+}
+.weather-day-card strong {
+  color: #ddd; font-size: .9rem;
+}
+
+@media (max-width: 720px) {
+  .app-layout { flex-direction: column; }
+  .sidebar { width: 100%; height: auto; position: static; }
+  .main-content { padding: 1rem; }
+  .weather-metrics { grid-template-columns: 1fr; }
+  .weather-day-card { grid-template-columns: 1fr; gap: .35rem; }
+}

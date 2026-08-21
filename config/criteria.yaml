@@ -3,39 +3,57 @@
 
 # Informations Utilisateur
 user_profile:
-  name: "Facundo Varas"
+  name: "Facundo Varas (Cundo)"
   email: "varas.cundo@gmail.com"
   current_location: "Paris 20e (75020)"
 
-  # Important : dissocier expérience tech et expérience globale (utile à 46 ans)
-  tech_experience_years: 1
-  overall_experience_years: 15
+  tech_experience_years: 2
+  overall_experience_years: 4
 
-  education: "Bac+2 Développement web (Doranco) + expérience support/formation + admin CMS"
+  education: "RNCP niveau 5 / Bac+2 (Titre Développeur Web et Web Mobile, Doranco, 2022). VAE en cours : CDA Concepteur Développeur d'Applications (RNCP 37873, niveau 6 / Bac+3)"
+
+  status: "CSP - en recherche active d'emploi (CDI)"
+  portfolio: "varascundo.com"
+  tjm_cible: 450
+  salaire_cible: "35 000 – 45 000 € brut/an"
 
   core_strengths:
-    - "administration de solutions existantes"
-    - "support utilisateurs N2"
-    - "documentation/procédures"
-    - "CMS (WordPress/Joomla)"
-    - "qualité web (accessibilité, SEO on-page basique)"
+    - "Développeur full-stack freelance PHP/Symfony et Vue.js/React"
+    - "Ancien formateur en développement web (publics en insertion)"
+    - "Automatisation IA (n8n, Claude Code, agents MCP)"
+    - "WordPress headless / WooCommerce"
 
   skills:
     frontend:
       - HTML5
       - CSS3
       - JavaScript
+      - TypeScript (notions)
       - React
+      - Next.js
       - Vue.js
+      - Nuxt
+      - Twig
     backend:
-      - PHP
+      - PHP 8
       - Symfony
-      - Node.js
+      - Node.js (bases)
+      - MySQL / MariaDB
     other:
-      - SQL
       - Git
+      - Docker
       - Pédagogie
       - Formation adultes
+      - WordPress / WooCommerce
+      - n8n / automatisation IA
+      - Figma / Canva
+
+  experiences:
+    - "Le Pôle S (2023-2024) : Encadrant Technique Développeur — formateur web full-stack (1,5 an)"
+    - "DevDoc (varascundo.com) : plateforme pédagogique Vue.js, 15+ technos"
+    - "La Magicieuse (en cours) : freelance redesign WordPress/WooCommerce headless"
+    - "Qualiscope Formation (en cours) : mission bénévole Symfony 7.4, PHPStan, PHPUnit"
+    - "Pipeline n8n IA : génération automatique de sites WP via agents IA"
 
 # Normalisation / synonymes pour améliorer le matching
 text_normalization:
@@ -84,130 +102,358 @@ text_normalization:
 
 # Postes Recherchés (ordre de priorité)
 target_positions:
-  # --- CIBLE MAJEURE (privé / public / parapublic) ---
-  - name: "Administrateur applicatif / ERP (métier)"
+  # --- PRIORITÉ 1 : dev backend Symfony / PHP ---
+  - name: "Développeur Backend PHP / Symfony"
     priority: 1
     keywords:
-      - "administrateur applicatif"
-      - "application manager"
-      - "gestionnaire applicatif"
-      - "support applicatif"
-      - "support fonctionnel"
-      - "erp"
-      - "progiciel"
-      - "gestion locative"
-      - "quittancement"
-      - "recette"
-      - "parametrage"
-      - "exploitation applicative"
-      - "gestion des incidents"
-      - "documentation"
-      - "sql"
-      - "as/400"
-      - "ibm i"
+      - "developpeur symfony"
+      - "dev symfony"
+      - "developpeur php symfony"
+      - "developpeur php"
+      - "dev php"
+      - "developpeur backend"
+      - "dev backend"
+      - "developpeur back"
+      - "dev back"
+      - "developpeur fullstack"
+      - "developpeur full-stack"
+      - "fullstack developer"
+      - "developpeur web"
+      - "dev web"
+      - "web developer"
+      - "developpeur ia"
+      - "developpeur intelligence artificielle"
+      - "prompt engineer"
+    score_weight: 78
+
+  # --- PRIORITÉ 1 : dev frontend Vue.js / React / intégration ---
+  - name: "Développeur Frontend React / Vue.js / Intégrateur"
+    priority: 1
+    keywords:
+      - "developpeur react"
+      - "dev react"
+      - "react developer"
+      - "developpeur vue"
+      - "dev vue"
+      - "vue developer"
+      - "developpeur vuejs"
+      - "developpeur vue.js"
+      - "developpeur front"
+      - "developpeur frontend"
+      - "dev front"
+      - "dev frontend"
+      - "frontend developer"
+      - "front-end developer"
+      - "integrateur web"
+      - "intégrateur web"
+      - "integrateur html"
+      - "intégrateur html"
+      - "integrateur css"
+      - "intégrateur css"
+      - "integrateur front"
+      - "intégrateur front"
+      - "integrateur frontend"
+      - "intégrateur frontend"
+      - "integrateur wordpress"
+      - "intégrateur wordpress"
+      - "integrateur email"
+      - "intégrateur email"
+      - "integrateur emailing"
+      - "intégrateur emailing"
+      - "integration web"
+      - "intégration web"
+      - "integration html"
+      - "intégration html"
+      - "integration css"
+      - "intégration css"
+      - "developpeur integrateur"
+      - "développeur intégrateur"
+      - "web integrator"
+      - "html integrator"
+      - "css integrator"
+      - "frontend integrator"
+      - "email integrator"
+      - "emailing integrator"
+      - "developpeur javascript"
+      - "dev javascript"
+      - "developpeur typescript"
+      - "dev typescript"
+      - "developpeur wordpress"
+      - "developpeur cms"
+    score_weight: 76
+
+  # --- PRIORITÉ 1 : webmaster / webmestre / administrateur web ---
+  - name: "Webmaster / webmestre / administrateur web"
+    priority: 1
+    keywords:
+      - "webmaster"
+      - "webmestre"
+      - "administrateur web"
+      - "administratrice web"
+      - "admin web"
+      - "administrateur cms"
+      - "administratrice cms"
+      - "admin cms"
+      - "administrateur de site"
+      - "administratrice de site"
+      - "gestionnaire de site"
+      - "gestionnaire de contenu"
+      - "administrateur de contenu"
+      - "charge de contenu web"
+      - "chargé de contenu web"
+      - "maintenance site web"
+      - "maintenance web"
+      - "wordpress"
+      - "joomla"
+      - "drupal"
+      - "cms"
+      - "accessibilite"
+      - "rgaa"
+      - "seo technique"
+      - "site institutionnel"
+      - "portail web"
+    score_weight: 76
+
+  # --- PRIORITÉ 1 : formateur web ou formateur IA ---
+  - name: "Formateur web / formateur IA"
+    priority: 1
+    keywords:
+      - "formateur web"
+      - "formateur developpement web"
+      - "formateur developpement"
+      - "formateur informatique"
+      - "formateur numerique"
+      - "formateur ia"
+      - "formateur intelligence artificielle"
+      - "formateur prompt"
+      - "formateur outils ia"
+      - "formation ia"
+      - "atelier ia"
+      - "animateur atelier ia"
+      - "enseignant developpement web"
+      - "enseignant web"
+      - "intervenant web"
+      - "intervenant ia"
+      - "mentor web"
+      - "mentor developpement"
+      - "formateur html"
+      - "formateur css"
+      - "formateur javascript"
+      - "formateur php"
+      - "formateur symfony"
+      - "formateur react"
+      - "formateur vue"
+      - "formateur wordpress"
+      - "bootcamp"
+      - "titre professionnel"
+      - "rncp"
+      - "formation adultes"
+      - "centre de formation"
+      - "organisme de formation"
+      - "ecole numerique"
+    score_weight: 74
+
+  # --- PRIORITÉ 2 : CMS / intégration web plus généraliste ---
+  - name: "Développeur web orienté CMS / intégration"
+    priority: 2
+    keywords:
+      - "developpeur wordpress"
+      - "developpeur cms"
+      - "integrateur html"
+      - "intégrateur html"
+      - "integrateur front"
+      - "intégrateur front"
+      - "integrateur frontend"
+      - "intégrateur frontend"
+      - "integrateur wordpress"
+      - "intégrateur wordpress"
+      - "integrateur web"
+      - "intégrateur web"
+      - "integrateur email"
+      - "intégrateur email"
+      - "integrateur emailing"
+      - "intégrateur emailing"
+      - "integration web"
+      - "intégration web"
+      - "integration html"
+      - "intégration html"
+      - "integration css"
+      - "intégration css"
+      - "developpeur integrateur"
+      - "développeur intégrateur"
+      - "web integrator"
+      - "html integrator"
+      - "css integrator"
+      - "frontend integrator"
+      - "email integrator"
+      - "emailing integrator"
+      - "developpeur front-end"
+      - "dev front-end"
+      - "dev front"
+      - "front-end developer"
+      - "frontend dev"
+      - "developpeur javascript"
+      - "developpeur php"
+      - "web developer"
+      - "frontend developer"
+      - "fullstack developer"
     score_weight: 62
 
-  # --- POSTES CIBLES "STABLES" ---
-  - name: "Coordinateur numérique"
+  # --- PRIORITÉ 3 : support seulement si très proche du web ---
+  - name: "Support web / administrateur applicatif web"
+    priority: 3
+    keywords:
+      - "support web"
+      - "support site web"
+      - "support cms"
+      - "support wordpress"
+      - "administrateur applicatif web"
+      - "gestionnaire applicatif web"
+    score_weight: 15
+
+  # --- NOUVELLES PORTES : postes hybrides ---
+  - name: "Médiation numérique / inclusion numérique"
+    priority: 2
+    keywords:
+      - "mediateur numerique"
+      - "mediation numerique"
+      - "animateur numerique"
+      - "inclusion numerique"
+      - "conseiller numerique"
+      - "france services"
+      - "atelier numerique"
+      - "espace numerique"
+      - "espace public numerique"
+      - "epn"
+      - "bibliotheque numerique"
+      - "mediatheque numerique"
+      - "referent numerique"
+    score_weight: 65
+
+  - name: "Administration LMS / technicien pédagogique"
+    priority: 2
+    keywords:
+      - "administrateur moodle"
+      - "administration lms"
+      - "technicien pedagogique"
+      - "responsable lms"
+      - "e-learning manager"
+      - "learning manager"
+      - "digital learning manager"
+      - "responsable formation digitale"
+    score_weight: 68
+
+  - name: "Ingénieur pédagogique / Concepteur e-learning"
     priority: 1
+    keywords:
+      - "ingenieur pedagogique"
+      - "ingénieur pédagogique"
+      - "concepteur e-learning"
+      - "instructional designer"
+      - "chef de projet pedagogique"
+      - "chef de projet formation"
+      - "digital learning"
+      - "e-learning"
+      - "lms"
+      - "moodle"
+    score_weight: 72
+
+  - name: "Accessibilité numérique / Référent RGAA"
+    priority: 1
+    keywords:
+      - "accessibilite numerique"
+      - "accessibilité numérique"
+      - "referent accessibilite"
+      - "référent accessibilité"
+      - "rgaa"
+      - "conformite rgaa"
+      - "auditeur accessibilite"
+      - "wcag"
+      - "a11y"
+    score_weight: 68
+
+  - name: "Product Owner / AMOA junior"
+    priority: 2
+    keywords:
+      - "product owner"
+      - "amoa"
+      - "assistance maitrise d'ouvrage"
+      - "po technique"
+      - "product manager junior"
+      - "coordinateur produit"
+    score_weight: 58
+
+  - name: "Low-code / Automatisation n8n"
+    priority: 1
+    keywords:
+      - "n8n"
+      - "low-code"
+      - "low code"
+      - "make"
+      - "zapier"
+      - "automatisation"
+      - "automatisation processus"
+      - "workflow automation"
+      - "no-code"
+      - "no code"
+      - "citizen developer"
+    score_weight: 70
+
+  - name: "Consultant transformation digitale"
+    priority: 2
+    keywords:
+      - "charge de projet digital"
+      - "charge de mission digital"
+      - "consultant digital"
+      - "consultant numerique"
+      - "transformation digitale"
+      - "transformation numerique"
+      - "conseiller numerique"
+      - "charge de mission numerique"
+      - "accompagnement numerique"
+    score_weight: 60
+
+  - name: "DevRel / Technical Writer"
+    priority: 3
+    keywords:
+      - "developer advocate"
+      - "devrel"
+      - "developer relations"
+      - "technical writer"
+      - "redacteur technique"
+      - "redacteur documentation"
+      - "community manager technique"
+      - "developer experience"
+      - "dx engineer"
+    score_weight: 55
+
+  - name: "Développeur interne ONG / association"
+    priority: 2
+    keywords:
+      - "developpeur association"
+      - "developpeur ong"
+      - "developpeur fondation"
+      - "webmaster association"
+      - "webmaster ong"
+      - "webmaster fondation"
+      - "charge de projet web associatif"
+      - "developpeur humanitaire"
+    score_weight: 66
+
+  - name: "Coordinateur numérique"
+    priority: 4
     keywords:
       - "coordinateur numerique"
       - "coordonnateur numerique"
       - "referent numerique"
       - "referent outils"
       - "referent digital"
-      - "support applicatif"
-      - "support fonctionnel"
-      - "gestion des outils"
       - "accompagnement utilisateurs"
       - "formation utilisateurs"
-      - "documentation"
-      - "gestion du parc applicatif"
-      - "outils collaboratifs"
-      - "microsoft 365"
-      - "google workspace"
+      - "gestion des outils"
       - "intranet"
       - "crm"
-    score_weight: 42
-
-  - name: "Webmaster institutionnel"
-    priority: 1
-    keywords:
-      - "webmaster"
-      - "webmestre"
-      - "administrateur cms"
-      - "admin cms"
-      - "gestionnaire de contenu"
-      - "administrateur de site"
-      - "gestion de site"
-      - "maintenance site"
-      - "drupal"
-      - "wordpress"
-      - "joomla"
-      - "accessibilite"
-      - "rgaa"
-      - "service public"
-      - "portail"
-      - "site institutionnel"
-    score_weight: 72
-    sector_restriction: ["Public", "ESS", "Impact"]
-
-  - name: "Formateur développement web et IA"
-    priority: 2
-    keywords:
-      - "formateur web"
-      - "formateur developpement"
-      - "formateur developpement web"
-      - "enseignant developpement web"
-      - "intervenant web"
-      - "formateur numerique"
-      - "formateur ia"
-      - "formateur intelligence artificielle"
-      - "formateur prompt"
-      - "formateur no code ia"
-      - "formation ia"
-      - "atelier ia"
-      - "formateur html"
-      - "formateur javascript"
-      - "formateur php"
-      - "formateur wordpress"
-      - "formateur css"
-      - "formateur react"
-      - "formateur vue"
-      - "formateur symfony"
-      - "animation d'ateliers"
-      - "ateliers numeriques"
-      - "mentorat"
-      - "tutorat"
-      - "bootcamp"
-      - "ingenierie pedagogique"
-      - "titre professionnel"
-      - "rncp"
-      - "formation adultes"
-      - "formation continue"
-      - "organisme de formation"
-      - "centre de formation"
-      - "ecole numerique"
-    score_weight: 54
-
-  - name: "Développeur web orienté CMS"
-    priority: 3
-    keywords:
-      - "developpeur web"
-      - "developpeur fullstack"
-      - "developpeur symfony"
-      - "developpeur react"
-      - "developpeur vue"
-      - "developpeur php"
-      - "developpeur javascript"
-      - "developpeur frontend"
-      - "developpeur backend"
-      - "dev web"
-      - "fullstack developer"
-      - "web developer"
-      - "developpeur wordpress"
-      - "developpeur cms"
-    score_weight: 42
+    score_weight: 12
 
 # Scoring par compétences (bonus/malus)
 skills_matching:
@@ -265,6 +511,12 @@ skills_matching:
       variants: ["docker", "containerisation", "containers"]
 
   soft_bonus:
+    - skill: "junior"
+      points: 10
+      variants: ["junior", "débutant", "debutant", "première expérience", "premiere experience", "profil junior", "1 à 3 ans", "1 an d'expérience"]
+    - skill: "diplome_bac2"
+      points: 8
+      variants: ["bac+2", "bac +2", "niveau 5", "rncp 5", "bts", "dut", "licence pro"]
     # Formation : augmentés pour favoriser formateur
     - skill: "pédagogie"
       points: 12
@@ -277,6 +529,9 @@ skills_matching:
       variants: ["accompagnement", "coaching", "suivi"]
 
   mismatch_penalties:
+    - keyword_group: "support_non_web"
+      points: -35
+      keywords: ["support applicatif", "support fonctionnel", "business analyst", "responsable applications", "responsable outils", "consolidation", "tresorerie", "finance"]
     - keyword_group: "stack_hors_scope_fort"
       points: -18
       keywords: ["c#", ".net", "dotnet", "sap", "cobol"]
@@ -357,18 +612,90 @@ sectors:
 # Localisation
 location:
   accepted_zones:
-    - "Paris"
-    - "Paris 20"
-    - "Paris 20e"
-    - "75020"
+    # Toute l'Île-de-France (demande Cundo : ne plus limiter à Paris/Est IDF)
+    # Région
     - "Île-de-France"
     - "Ile-de-France"
     - "IDF"
+    # Paris intra-muros
+    - "Paris"
+    - "75"
+    - "75001"
+    - "75002"
+    - "75003"
+    - "75004"
+    - "75005"
+    - "75006"
+    - "75007"
+    - "75008"
+    - "75009"
+    - "75010"
+    - "75011"
+    - "75012"
+    - "75013"
+    - "75014"
+    - "75015"
+    - "75016"
+    - "75017"
+    - "75018"
+    - "75019"
+    - "75020"
+    # Départements IDF
+    - "77"
+    - "78"
     - "91"
     - "92"
     - "93"
     - "94"
     - "95"
+    - "Seine-et-Marne"
+    - "Yvelines"
+    - "Essonne"
+    - "Hauts-de-Seine"
+    - "Seine-Saint-Denis"
+    - "Val-de-Marne"
+    - "Val-d'Oise"
+    # Grandes villes / pôles fréquents hors Paris
+    - "Boulogne-Billancourt"
+    - "Nanterre"
+    - "Courbevoie"
+    - "La Défense"
+    - "Levallois-Perret"
+    - "Issy-les-Moulineaux"
+    - "Saint-Cloud"
+    - "Versailles"
+    - "Saint-Germain-en-Laye"
+    - "Vélizy"
+    - "Vélizy-Villacoublay"
+    - "Guyancourt"
+    - "Massy"
+    - "Évry"
+    - "Evry"
+    - "Saclay"
+    - "Orsay"
+    - "Cergy"
+    - "Argenteuil"
+    - "Roissy"
+    - "Pontoise"
+    - "Pantin"
+    - "Montreuil"
+    - "Bagnolet"
+    - "Les Lilas"
+    - "Romainville"
+    - "Saint-Denis"
+    - "Bobigny"
+    - "Noisy-le-Grand"
+    - "Créteil"
+    - "Creteil"
+    - "Ivry"
+    - "Vincennes"
+    - "Fontenay"
+    - "Vitry"
+    - "Maisons-Alfort"
+    - "Melun"
+    - "Meaux"
+    - "Torcy"
+    - "Chessy"
   remote_accepted: true
   hybrid_accepted: true
   score_weights:
@@ -402,17 +729,27 @@ contracts:
     - "Alternance"
     - "Apprentissage"
     - "Contrat pro"
+    - "Professionnalisation"
 
 # Red Flags (Exclusions Automatiques + Malus)
 red_flags:
   # Exclusions strictes : uniquement ce qui est vraiment incompatible
   hard_exclude_keywords:
+    # Fausses annonces / contenus de test remontés par agrégateurs (Adzuna/Free-Work)
+    - "ceci est un test"
+    - "aenean laoreet"
+    - "lorem ipsum"
+    - "class aptent taciti"
+    - "alternant"
+    - "alternante"
     - "stage"
     - "stagiaire"
     - "alternance"
     - "apprentissage"
     - "apprenti"
     - "contrat de professionnalisation"
+    - "professionnalisation"
+    - "contrat pro"
 
   # Surcharge / annonce Frankenstein (on ne bloque pas forcément, mais gros malus)
   soft_penalty_keywords:
@@ -440,13 +777,21 @@ red_flags:
     - keyword: "vision produit"
       points: -8
     - keyword: "product owner"
-      points: -10
+      points: -30
 
-    # IA/SEO : léger malus pour ne pas éliminer webmaster institutionnel
+    # PO / backlog / roadmap → hors profil
+    - keyword: "backlog"
+      points: -8
+    - keyword: "user stories"
+      points: -8
+    - keyword: "roadmap produit"
+      points: -12
+
+    # IA/SEO : IA autorisée/priorisée pour formateur IA et automatisation web
     - keyword: "ia"
-      points: -2
+      points: 0
     - keyword: "intelligence artificielle"
-      points: -3
+      points: 0
     - keyword: "seo"
       points: -2
     - keyword: "sea"
@@ -464,9 +809,53 @@ red_flags:
     - keyword: "acquisition"
       points: -10
     - keyword: "lead"
+      points: -45
+    - keyword: "lead developer"
+      points: -45
+    - keyword: "lead developpeur"
+      points: -45
+    - keyword: "lead tech"
+      points: -45
+    - keyword: "lead technique"
+      points: -45
+    - keyword: "tech lead"
+      points: -45
+
+    # Niveau d'expérience trop élevé
+    - keyword: "senior"
+      points: -20
+    - keyword: "confirmé"
       points: -12
+    - keyword: "confirme"
+      points: -12
+    - keyword: "confirmee"
+      points: -12
+    - keyword: "experimente"
+      points: -12
+    - keyword: "expérimenté"
+      points: -12
+    - keyword: "5 ans d'expérience"
+      points: -18
+    - keyword: "5 ans d experience"
+      points: -18
+    - keyword: "7 ans"
+      points: -25
+    - keyword: "8 ans"
+      points: -25
+    - keyword: "10 ans"
+      points: -30
     - keyword: "lead generation"
       points: -12
+    - keyword: "referent technique"
+      points: -30
+    - keyword: "référent technique"
+      points: -30
+    - keyword: "responsable applications"
+      points: -30
+    - keyword: "ingenieur applicatif"
+      points: -25
+    - keyword: "ingénieur applicatif"
+      points: -25
     - keyword: "cpl"
       points: -10
     - keyword: "cpa"
@@ -520,6 +909,58 @@ red_flags:
     - keyword: "remuneration selon profil"
       points: -6
 
+    # Villes hors IDF (pénalité sauf si remote)
+    - keyword: "nancy"
+      points: -40
+    - keyword: "rennes"
+      points: -40
+    - keyword: "toulouse"
+      points: -40
+    - keyword: "bordeaux"
+      points: -40
+    - keyword: "lyon"
+      points: -40
+    - keyword: "marseille"
+      points: -40
+    - keyword: "aix-en-provence"
+      points: -40
+    - keyword: "montpellier"
+      points: -40
+    - keyword: "nantes"
+      points: -40
+    - keyword: "lille"
+      points: -35
+    - keyword: "strasbourg"
+      points: -40
+    - keyword: "toulon"
+      points: -40
+    - keyword: "grenoble"
+      points: -40
+    - keyword: "chambry"
+      points: -40
+
+    # Secteur Défense / armement
+    - keyword: "ministère des armées"
+      points: -40
+    - keyword: "dga"
+      points: -30
+    - keyword: "mbda"
+      points: -40
+    - keyword: "défense"
+      points: -15
+    - keyword: "defense"
+      points: -15
+
+    # ERP bâtiment ≠ WordPress (accessibilité numérique vs physique)
+    - keyword: "erp"
+      points: -20
+    - keyword: "établissements recevant du public"
+      points: -40
+    - keyword: "ad'ap"
+      points: -40
+    - keyword: "agenda d'accessibilité programmée"
+      points: -40
+
   hard_exclude_keywords_tech:
     - "crypto"
     - "cryptocurrency"
@@ -565,8 +1006,8 @@ salary:
 scoring:
   thresholds:
     ignore: 55
-    basic_ai_analysis: 60
-    detailed_ai_analysis: 75
+    basic_ai_analysis: 70
+    detailed_ai_analysis: 80
 
   bonus_points:
     company_known_in_ess: 5
@@ -619,40 +1060,6 @@ scraping:
     emploi_asso: 60
 
   max_job_age_days: 14
-
-# Configuration Google Sheets
-google_sheets:
-  main_sheet_name: "Job Search Automation - Facundo Varas"
-  tabs:
-    - name: "Nouvelles Offres"
-      keep_days: 7
-    - name: "À Postuler"
-      filter_status: ["À POSTULER", "POSTULÉ"]
-    - name: "Statistiques"
-      auto_graphs: true
-    - name: "Configuration"
-      editable: true
-
-  recommended_columns:
-    - "date_found"
-    - "site"
-    - "title"
-    - "company"
-    - "location"
-    - "contract"
-    - "url"
-    - "score_total"
-    - "score_poste"
-    - "score_secteur"
-    - "score_location"
-    - "skills_bonus"
-    - "salary_score"
-    - "salary_gross_monthly"
-    - "red_flags_count"
-    - "raison_resume"
-    - "statut"
-    - "prochaine_action_date"
-    - "lettre_motivation_draft"
 
 # Configuration Email
 email:
