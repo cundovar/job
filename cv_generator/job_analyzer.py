@@ -5,6 +5,22 @@ from typing import Any, Dict, List, Tuple
 from .utils import compact_items, contains_any, flatten_skills, job_text, normalize
 
 
+def _period_sort_key(period: Dict[str, Any] | None) -> Tuple[str, str]:
+    """Return a sortable (end, start) key, with ongoing work first."""
+    if not isinstance(period, dict):
+        return ("0000-00", "0000-00")
+
+    def normalized(value: Any, month: str) -> str:
+        raw = str(value or "").strip()
+        if not raw:
+            return "0000-00"
+        return raw if "-" in raw else f"{raw}-{month}"
+
+    start = normalized(period.get("start"), "01")
+    end = "9999-12" if period.get("end") is None and period.get("start") else normalized(period.get("end"), "12")
+    return (end, start)
+
+
 def _score_variant(text: str, variant: Dict[str, Any], master: Dict[str, Any]) -> int:
     rules = master.get("adaptation_rules", {}).get("variant_selection", {})
     keywords = list(rules.get(variant.get("id", ""), []))
@@ -84,9 +100,16 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
                 "reason": f"Expérience alignée avec la variante {variant_id} et les mots-clés de l'annonce.",
                 "highlights": compact_items(picked, limit=3, max_chars=145),
             })
+    # Relevance determines which experiences are kept. Their presentation is
+    # then always reverse chronological, as recruiters expect on a CV.
     plan.sort(key=lambda item: item["priority"], reverse=True)
     max_experiences = int(master.get("layout_constraints", {}).get("max_experiences", 4))
-    return plan[:max_experiences]
+    selected_plan = plan[:max_experiences]
+    selected_plan.sort(
+        key=lambda item: _period_sort_key(catalog.get(item["experience_id"], {}).get("period")),
+        reverse=True,
+    )
+    return selected_plan
 
 
 def analyze_job_for_cv(job: Dict[str, Any], master: Dict[str, Any]) -> Dict[str, Any]:
