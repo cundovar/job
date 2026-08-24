@@ -44,8 +44,9 @@ def generate_application_email(
         )
     else:
         pitch = (
-            "Développeur full-stack freelance (PHP/Symfony, Vue.js/React, WordPress), "
-            "mon parcours combine développement web, formation et automatisation IA."
+            "Développeur web et webmaster freelance (PHP/Symfony, Vue.js/React, "
+            "WordPress/CMS), mon parcours combine gestion de sites, développement web, "
+            "formation et automatisation IA."
         )
 
     return "\n".join([

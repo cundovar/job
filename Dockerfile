@@ -28,6 +28,7 @@ COPY main.py pipeline.py ./
 COPY agents/ ./agents/
 COPY analyzers/ ./analyzers/
 COPY applications/ ./applications/
+COPY cv_generator/ ./cv_generator/
 COPY config/ ./config/
 COPY filters/ ./filters/
 COPY hermes_commands/ ./hermes_commands/

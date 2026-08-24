@@ -7,6 +7,50 @@
  * @param {import('../repositories/applicationsRepository.js').default} repo
  */
 import { Router } from 'express';
+import fs from 'fs';
+import path from 'path';
+import { spawnSync } from 'child_process';
+import { PROJECT_ROOT } from '../config.js';
+
+const CV_FILES = new Set([
+  'cv_adaptation_plan.json',
+  'cv_draft.json',
+  'cv_review.json',
+  'cv_final_review.json',
+  'cv_final.json',
+  'cv_final.md',
+  'cv_canva_copy.md',
+  'cv_final.html',
+  'cv_final.pdf',
+]);
+
+function applicationDir(id) {
+  const base = path.resolve(PROJECT_ROOT, 'output/applications');
+  const dir = path.resolve(base, id);
+  if (!dir.startsWith(base + path.sep)) {
+    throw new Error('Identifiant candidature invalide');
+  }
+  return dir;
+}
+
+function cvStatus(id) {
+  const cvDir = path.join(applicationDir(id), 'cv');
+  const files = {};
+  for (const file of CV_FILES) {
+    const filePath = path.join(cvDir, file);
+    files[file] = fs.existsSync(filePath);
+  }
+  let review = null;
+  const reviewPath = path.join(cvDir, 'cv_final_review.json');
+  if (fs.existsSync(reviewPath)) {
+    try {
+      review = JSON.parse(fs.readFileSync(reviewPath, 'utf-8'));
+    } catch {
+      review = null;
+    }
+  }
+  return { exists: fs.existsSync(cvDir), files, review };
+}
 
 export default function createApplicationsRouter(repo) {
   const router = Router();
@@ -35,6 +79,68 @@ export default function createApplicationsRouter(repo) {
     } catch (err) {
       console.error('[POST /applications/prepare]', err.message);
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/applications/:id/cv/status — Vérifie si un CV personnalisé existe
+  router.get('/applications/:id/cv/status', async (req, res) => {
+    try {
+      const dir = applicationDir(req.params.id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      res.json(cvStatus(req.params.id));
+    } catch (err) {
+      console.error('[GET /applications/:id/cv/status]', err.message);
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // POST /api/applications/:id/cv/prepare — Génère les fichiers CV personnalisés
+  router.post('/applications/:id/cv/prepare', async (req, res) => {
+    try {
+      const dir = applicationDir(req.params.id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+
+      const result = spawnSync(
+        'python3',
+        ['-m', 'hermes_commands.cv_prepare', '--application-dir', dir],
+        {
+          cwd: PROJECT_ROOT,
+          encoding: 'utf-8',
+          maxBuffer: 10 * 1024 * 1024,
+        }
+      );
+
+      if (result.status !== 0) {
+        const details = (result.stderr || result.stdout || 'Erreur inconnue').trim();
+        return res.status(500).json({ error: `Génération CV impossible : ${details}` });
+      }
+
+      let payload;
+      try {
+        payload = JSON.parse(result.stdout);
+      } catch {
+        return res.status(500).json({ error: `Réponse CV invalide : ${result.stdout}` });
+      }
+      res.status(201).json({ ...payload, status: cvStatus(req.params.id) });
+    } catch (err) {
+      console.error('[POST /applications/:id/cv/prepare]', err.message);
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // GET /api/applications/:id/cv/download/:file — Télécharge un fichier CV généré
+  router.get('/applications/:id/cv/download/:file', async (req, res) => {
+    try {
+      const dir = applicationDir(req.params.id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      const file = req.params.file;
+      if (!CV_FILES.has(file)) return res.status(400).json({ error: 'Fichier CV non autorisé' });
+      const filePath = path.join(applicationDir(req.params.id), 'cv', file);
+      if (!fs.existsSync(filePath)) return res.status(404).json({ error: `Fichier introuvable : ${file}` });
+      res.download(filePath, file);
+    } catch (err) {
+      console.error('[GET /applications/:id/cv/download/:file]', err.message);
+      res.status(400).json({ error: err.message });
     }
   });
 

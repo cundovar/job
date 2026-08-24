@@ -1,0 +1,120 @@
+from __future__ import annotations
+
+from typing import Any, Dict, List, Tuple
+
+from .utils import compact_items, contains_any, flatten_skills, job_text, normalize
+
+
+def _score_variant(text: str, variant: Dict[str, Any], master: Dict[str, Any]) -> int:
+    rules = master.get("adaptation_rules", {}).get("variant_selection", {})
+    keywords = list(rules.get(variant.get("id", ""), []))
+    keywords.extend(variant.get("tags", []))
+    keywords.extend(flatten_skills(variant.get("skills", {})))
+    score = 0
+    for keyword in keywords:
+        if normalize(keyword) in text:
+            score += 3 if keyword in rules.get(variant.get("id", ""), []) else 1
+    return score
+
+
+def _select_variant(job: Dict[str, Any], master: Dict[str, Any]) -> Dict[str, Any]:
+    text = job_text(job)
+    variants = master.get("cv_variants", [])
+    scored: List[Tuple[int, int, Dict[str, Any]]] = []
+    default_priority = master.get("positioning", {}).get("default_priority", [])
+    for variant in variants:
+        priority_penalty = default_priority.index(variant["id"]) if variant.get("id") in default_priority else 99
+        scored.append((_score_variant(text, variant, master), -priority_penalty, variant))
+    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return scored[0][2] if scored else {}
+
+
+def _priority_keywords(job: Dict[str, Any], selected: Dict[str, Any], master: Dict[str, Any]) -> List[str]:
+    text = job_text(job)
+    skills = flatten_skills(selected.get("skills", {}))
+    explicit = []
+    for keyword in skills + selected.get("tags", []):
+        norm = normalize(keyword)
+        if norm and any(part in text for part in norm.split()[:2]):
+            explicit.append(str(keyword))
+    # A few important job terms may not be in current variant skills.
+    common_terms = [
+        "WordPress", "WooCommerce", "CMS", "maintenance", "administration", "RGAA",
+        "accessibilité", "SEO", "React", "Vue.js", "Symfony", "PHP", "API REST",
+        "formation", "pédagogie", "support utilisateurs", "documentation", "n8n",
+        "automatisation", "Microsoft 365", "Jira", "Git", "Docker"
+    ]
+    for term in common_terms:
+        if normalize(term) in text:
+            explicit.append(term)
+    return compact_items(explicit, limit=14)
+
+
+def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str, Any]]:
+    text = job_text(job)
+    catalog = master.get("experience_catalog", {})
+    variant_id = selected.get("id", "")
+    preferred = master.get("adaptation_rules", {}).get("experience_priority_by_variant", {}).get(variant_id, [])
+    refs = selected.get("experience_refs", [])
+    ordered_ids = []
+    for exp_id in preferred + refs + list(catalog.keys()):
+        if exp_id in catalog and exp_id not in ordered_ids:
+            ordered_ids.append(exp_id)
+    plan = []
+    for exp_id in ordered_ids:
+        exp = catalog[exp_id]
+        score = 0
+        if exp_id in preferred:
+            score += 6
+        if exp_id in refs:
+            score += 3
+        score += sum(2 for tag in exp.get("tags", []) if normalize(tag) in text)
+        highlights = exp.get("highlights", [])
+        picked = []
+        for item in highlights:
+            item_text = normalize(item)
+            if any(token in text for token in item_text.split() if len(token) > 4):
+                picked.append(item)
+        if not picked:
+            picked = highlights[:3]
+        if score > 0:
+            plan.append({
+                "experience_id": exp_id,
+                "priority": score,
+                "reason": f"Expérience alignée avec la variante {variant_id} et les mots-clés de l'annonce.",
+                "highlights": compact_items(picked, limit=3, max_chars=145),
+            })
+    plan.sort(key=lambda item: item["priority"], reverse=True)
+    max_experiences = int(master.get("layout_constraints", {}).get("max_experiences", 4))
+    return plan[:max_experiences]
+
+
+def analyze_job_for_cv(job: Dict[str, Any], master: Dict[str, Any]) -> Dict[str, Any]:
+    selected = _select_variant(job, master)
+    variant_id = selected.get("id", "webmaster")
+    title_variants = master.get("positioning", {}).get("title_variants", {})
+    target_title = title_variants.get(variant_id) or selected.get("title") or "Développeur web / Webmaster"
+    keywords = _priority_keywords(job, selected, master)
+    experience_plan = _experience_plan(job, selected, master)
+    selected_skills = selected.get("skills", {})
+    text = job_text(job)
+    skills_to_reduce = []
+    for skill, confidence in master.get("skills_confidence", {}).items():
+        if confidence in {"bases", "notions", "notions à pratique selon projet"} and normalize(skill) not in text:
+            skills_to_reduce.append(skill)
+    warnings = []
+    if variant_id in {"webmaster", "wordpress", "formateur_developpement_web", "formateur_ia", "accessibilite"}:
+        warnings.append("Ne pas présenter Cundo comme développeur full-stack pur : adapter l'accroche au poste.")
+    if contains_any(text, ["expert", "senior", "bac+5", "lead"]):
+        warnings.append("Vérifier que le CV ne survend pas le niveau réel demandé par l'annonce.")
+    return {
+        "agent": "cv_job_analyzer",
+        "selected_base_variant": variant_id,
+        "target_title": target_title,
+        "positioning": master.get("positioning", {}).get("summary_variants", {}).get(variant_id, selected.get("profile", "")),
+        "priority_keywords": keywords,
+        "experience_plan": experience_plan,
+        "skills_to_emphasize": selected_skills,
+        "skills_to_reduce": compact_items(skills_to_reduce, limit=8),
+        "warnings": warnings,
+    }

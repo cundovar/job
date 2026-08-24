@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0.0",
+  "name": "Design System CV — Facundo Varas",
+  "source": {
+    "platform": "Canva",
+    "design_id": "DAG_yCTV5N0",
+    "pages_analyzed": [1, 2, 3, 4, 5, 6],
+    "measurement_status": "estimated_from_canva_page_previews"
+  },
+  "document": {
+    "format": "A4 portrait",
+    "width_px": 794,
+    "height_px": 1123,
+    "aspect_ratio": 0.707,
+    "background": "#FFFFFF",
+    "single_page": true,
+    "print_safe": true
+  },
+  "visual_identity": {
+    "keywords": ["minimaliste", "éditorial", "professionnel", "monochrome"],
+    "contrast": "high",
+    "decoration_level": "low",
+    "accent_usage": "short_lines_below_section_titles"
+  },
+  "colors": {
+    "background": "#FFFFFF",
+    "text_primary": "#111111",
+    "text_secondary": "#606665",
+    "accent": "#788481",
+    "divider": "#788481",
+    "portrait_filter": "grayscale"
+  },
+  "typography": {
+    "detection": "inferred_not_exact",
+    "primary_font": "Raleway",
+    "fallbacks": ["Avenir Next", "Century Gothic", "Arial", "sans-serif"],
+    "styles": {
+      "person_name": {"font_size_pt": 22, "font_weight": 400, "letter_spacing_em": 0.01, "line_height": 1.1, "text_transform": "none"},
+      "target_title": {"font_size_pt": 7.5, "font_weight": 400, "letter_spacing_em": 0.32, "line_height": 1.35, "text_transform": "uppercase"},
+      "section_heading": {"font_size_pt": 7, "font_weight": 400, "letter_spacing_em": 0.32, "line_height": 1.2, "text_transform": "uppercase"},
+      "experience_title": {"font_size_pt": 5.7, "font_weight": 700, "letter_spacing_em": 0.01, "line_height": 1.2, "text_transform": "uppercase"},
+      "organization_date": {"font_size_pt": 5.2, "font_weight": 600, "line_height": 1.25},
+      "body": {"font_size_pt": 5.5, "font_weight": 400, "line_height": 1.35},
+      "contact": {"font_size_pt": 5.3, "font_weight": 400, "line_height": 1.4}
+    }
+  },
+  "spacing": {
+    "page_padding_px": {"top": 27, "right": 28, "bottom": 26, "left": 22},
+    "section_gap_px": 18,
+    "paragraph_gap_px": 5,
+    "experience_gap_px": 8,
+    "contact_icon_gap_px": 5
+  },
+  "layout": {
+    "grid_type": "two_columns",
+    "sidebar_width_percent": 24,
+    "main_width_percent": 69,
+    "gutter_percent": 7,
+    "header_height_px": 93,
+    "sidebar_sections": ["profile", "contact", "languages", "education"],
+    "main_sections": ["skills", "experiences", "personal_projects"],
+    "experience_grid": {"metadata_width_percent": 18, "description_width_percent": 82}
+  },
+  "components": {
+    "portrait": {"shape": "circle", "diameter_px": 82, "crop": "head_and_shoulders", "filter": "grayscale", "border": "none", "position": "top_left_sidebar"},
+    "identity_header": {"position": "top_main_column", "alignment": "left", "elements": ["person_name", "target_title"]},
+    "section_title": {"text_style": "section_heading", "underline": {"width_px": 31, "height_px": 3, "color": "#788481", "top_offset_px": 7}},
+    "contact_item": {"layout": "icon_then_text", "icon_style": "small_monochrome_outline", "icon_width_px": 9, "gap_px": 5},
+    "skills_block": {"layout": "inline_categories", "category_weight": 700, "separator": ":", "item_separator": ", "},
+    "experience_item": {"layout": "metadata_left_description_right", "description_style": "compact_bullets", "bullet_indent_px": 9, "gap_after_px": 8}
+  },
+  "content_constraints": {
+    "maximum_pages": 1,
+    "profile_words": {"min": 35, "max": 65},
+    "bullets_per_experience": {"min": 2, "max": 6},
+    "words_per_bullet": {"min": 5, "max": 18},
+    "date_format": "MMM YYYY or YYYY/YYYY",
+    "avoid": ["long_paragraphs", "more_than_two_hierarchy_levels", "bright_colors", "decorative_icons_in_main_column", "content_overflowing_one_page"]
+  },
+  "web_rendering": {
+    "max_width_px": 794,
+    "desktop_grid_columns": "24% 1fr",
+    "mobile_grid_columns": "1fr",
+    "mobile_order": ["identity", "contact", "profile", "skills", "experiences", "education", "languages"]
+  }
+}

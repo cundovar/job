@@ -7,7 +7,9 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import sys
+from pathlib import Path
 from typing import Any, Callable, Dict
 
 from applications import ApplicationTracker, build_application_package
@@ -229,6 +231,7 @@ def _handle(request: Dict[str, Any]) -> Dict[str, Any] | None:
 
 
 def main() -> None:
+    os.chdir(Path(__file__).resolve().parent)
     _debug("server-start")
     while True:
         headers = {}
