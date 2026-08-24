@@ -722,6 +722,65 @@ function WeatherView() {
   )
 }
 
+// Poll /api/search/status toutes les 5s tant qu'une recherche tourne
+function useSearchRunner() {
+  const [status, setStatus] = useState({ running: false, lastResult: null, error: null })
+  const [launching, setLaunching] = useState(false)
+
+  useEffect(() => {
+    let timer = null
+    let cancelled = false
+
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/search/status')
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        if (cancelled) return
+        setStatus(data)
+        if (data.running) {
+          timer = setTimeout(poll, 5000)
+        }
+      } catch {
+        if (!cancelled) timer = setTimeout(poll, 8000)
+      }
+    }
+    poll()
+
+    return () => { cancelled = true; if (timer) clearTimeout(timer) }
+  }, [])
+
+  const launch = async () => {
+    setLaunching(true)
+    try {
+      const res = await fetch('/api/search/run', { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      setStatus(data)
+      // Relance immédiatement le polling (le useEffect ci-dessus gère le suivi tant que running=true)
+      if (data.running) {
+        const poll = async () => {
+          try {
+            const r = await fetch('/api/search/status')
+            const d = await r.json()
+            setStatus(d)
+            if (d.running) setTimeout(poll, 5000)
+          } catch {
+            setTimeout(poll, 8000)
+          }
+        }
+        setTimeout(poll, 5000)
+      }
+    } catch (err) {
+      setStatus(prev => ({ ...prev, error: err.message || 'Erreur au lancement' }))
+    } finally {
+      setLaunching(false)
+    }
+  }
+
+  return { status, launching, launch }
+}
+
 function App() {
   const [index, setIndex] = useState(null)
   const [activeSearch, setActiveSearch] = useState(null)
@@ -733,6 +792,7 @@ function App() {
   const [fetchError, setFetchError] = useState(false)
   const [preparePendingKey, setPreparePendingKey] = useState(null)
   const [prepareMessage, setPrepareMessage] = useState(null)
+  const { status: searchStatus, launching: searchLaunching, launch: launchSearch } = useSearchRunner()
 
   useEffect(() => {
     fetch(`${DATA_URL}/index.json`)
@@ -806,6 +866,24 @@ function App() {
   return (
     <div className="app-layout">
       <aside className="sidebar">
+        <button
+          className="prepare-btn launch-search-btn"
+          onClick={launchSearch}
+          disabled={searchLaunching || searchStatus.running}
+          style={{ width: '100%', marginBottom: '.75rem' }}
+        >
+          {searchStatus.running ? '⏳ Recherche en cours…' : searchLaunching ? 'Lancement…' : '🚀 Lancer une recherche'}
+        </button>
+        {!searchStatus.running && searchStatus.lastResult && (
+          <div className="search-stats" style={{ marginBottom: '1rem', lineHeight: 1.5 }}>
+            Dernier run : {searchStatus.lastResult.total} offres
+            {' · '}<span className="stats postuler">⭐ {searchStatus.lastResult.postuler}</span>
+            {' · '}<span className="stats peut-etre">🟡 {searchStatus.lastResult.peut_etre}</span>
+          </div>
+        )}
+        {searchStatus.error && (
+          <div className="backend-warning" style={{ marginBottom: '1rem', fontSize: '.75rem' }}>{searchStatus.error}</div>
+        )}
         <h2>🔍 Recherches</h2>
         <button
           className={`search-btn mode-btn ${activeMode === 'recherche' ? 'active' : ''}`}

@@ -19,6 +19,7 @@ import JsonApplicationsRepository from './repositories/jsonApplicationsRepositor
 // Pour passer à SQL plus tard : import SqlApplicationsRepository from './repositories/sqlApplicationsRepository.js'
 
 import createApplicationsRouter from './routes/applications.js';
+import createSearchRouter from './routes/search.js';
 
 const app = express();
 
@@ -38,6 +39,7 @@ app.use(express.static(frontDistPath));
 
 // Routes API
 app.use('/api', createApplicationsRouter(repo));
+app.use('/api/search', createSearchRouter());
 
 // SPA fallback : redirige vers index.html pour les routes qui n'existent pas
 app.get('*', (req, res) => {
@@ -53,4 +55,6 @@ app.listen(PORT, () => {
   console.log(`   POST /api/applications/prepare`);
   console.log(`   POST /api/applications/:id/applied`);
   console.log(`   POST /api/applications/:id/not-applied`);
+  console.log(`   POST /api/search/run`);
+  console.log(`   GET  /api/search/status`);
 });
