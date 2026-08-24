@@ -5,27 +5,66 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from cv_generator import prepare_custom_cv
 from hermes_commands.utils import get_job_by_number, load_cached_jobs, ranked_jobs
 
 
 def _load_job_from_application_dir(application_dir: Path) -> Dict[str, Any]:
-    metadata_path = application_dir / "metadata.json"
-    if metadata_path.exists():
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        job = {
-            "title": metadata.get("job_title"),
-            "company": metadata.get("company"),
-            "score": metadata.get("score"),
-            "source": metadata.get("source"),
-            "url": metadata.get("url"),
-        }
-        resume = application_dir / "offre_resume.md"
-        if resume.exists():
-            job["description"] = resume.read_text(encoding="utf-8")
-        return job
-    raise SystemExit(f"metadata.json introuvable dans {application_dir}")
+    # New application packages keep the full structured offer. This is the
+    # preferred source for the AI agents.
+    job_path = application_dir / "job.json"
+    if job_path.exists():
+        job = json.loads(job_path.read_text(encoding="utf-8"))
+        if isinstance(job, dict):
+            return job
 
+    metadata_path = application_dir / "metadata.json"
+    if not metadata_path.exists():
+        raise SystemExit(f"metadata.json introuvable dans {application_dir}")
+
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+    # Backfill old application packages from the full jobs cache when possible.
+    cache_path = Path("data/jobs_cache.json")
+    if cache_path.exists():
+        try:
+            cached_jobs = json.loads(cache_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            cached_jobs = []
+        if isinstance(cached_jobs, list):
+            target_url = str(metadata.get("url") or "").strip()
+            target_title = str(metadata.get("job_title") or "").strip().casefold()
+            target_company = str(metadata.get("company") or "").strip().casefold()
+            for cached in cached_jobs:
+                if not isinstance(cached, dict):
+                    continue
+                same_url = target_url and str(cached.get("url") or "").strip() == target_url
+                same_identity = (
+                    target_title
+                    and target_company
+                    and str(cached.get("title") or "").strip().casefold() == target_title
+                    and str(cached.get("company") or "").strip().casefold() == target_company
+                )
+                if same_url or same_identity:
+                    return cached
+
+    # Last-resort compatibility for old packages no longer present in the cache.
+    job = {
+        "title": metadata.get("job_title"),
+        "company": metadata.get("company"),
+        "score": metadata.get("score"),
+        "source": metadata.get("source"),
+        "url": metadata.get("url"),
+    }
+    resume = application_dir / "offre_resume.md"
+    if resume.exists():
+        job["description"] = resume.read_text(encoding="utf-8")
+        job["_source_warning"] = "Annonce complète indisponible: utilisation du résumé historique."
+    return job
 
 def _load_job_from_payload(payload_path: Path) -> Dict[str, Any]:
     payload = json.loads(payload_path.read_text(encoding="utf-8"))

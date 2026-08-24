@@ -15,9 +15,11 @@ import { PROJECT_ROOT } from '../config.js';
 const CV_FILES = new Set([
   'cv_adaptation_plan.json',
   'cv_draft.json',
+  'cv_draft.md',
   'cv_review.json',
   'cv_final_review.json',
   'cv_final.json',
+  'cv_agent_trace.json',
   'cv_final.md',
   'cv_canva_copy.md',
   'cv_final.html',

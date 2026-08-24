@@ -11,6 +11,7 @@ selenium==4.15.2  # Si sites dynamiques nécessaires
 
 # AI / LLM
 openai>=1.12.0  # Compatible avec DeepSeek API
+anthropic>=0.49.0  # Fallback Claude pour les agents CV et l'analyse d'offres
 
 # Google Sheets Integration
 gspread==5.12.0

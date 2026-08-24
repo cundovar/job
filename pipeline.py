@@ -231,7 +231,7 @@ def run_job_search(
         if ai_analyzer:
             for job in ai_candidates[:max_ai_jobs]:
                 try:
-                    job["ai_analysis"] = ai_analyzer.analyze_job(job, criteria.get("user_profile", {}))
+                    job["ai_analysis"] = ai_analyzer.analyze_job(job, criteria)
                 except Exception as exc:
                     logger.error(f"AI analysis failed: {exc}")
 

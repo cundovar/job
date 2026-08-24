@@ -21,6 +21,7 @@ from .cv_selector import CVRecommendation, recommend_cv
 @dataclass(frozen=True)
 class ApplicationPackage:
     directory: str
+    job_path: str
     resume_path: str
     cv_recommendation_path: str
     motivation_letter_path: str
@@ -117,12 +118,14 @@ def build_application_package(
     recommendation = recommend_cv(job)
     directory = _build_application_dir(job, output_dir, created_at)
 
+    job_path = directory / "job.json"
     resume_path = directory / "offre_resume.md"
     cv_recommendation_path = directory / "cv_recommande.txt"
     motivation_letter_path = directory / "lettre_motivation.md"
     application_email_path = directory / "mail_candidature.md"
     metadata_path = directory / "metadata.json"
 
+    job_path.write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
     resume_path.write_text(_offer_resume_markdown(job, recommendation), encoding="utf-8")
     cv_recommendation_path.write_text(_cv_recommendation_text(recommendation), encoding="utf-8")
     motivation_letter_path.write_text(
@@ -144,6 +147,7 @@ def build_application_package(
         "created_at": created_at.isoformat(),
         "recommended_cv": asdict(recommendation),
         "files": {
+            "job": str(job_path),
             "resume": str(resume_path),
             "cv_recommendation": str(cv_recommendation_path),
             "motivation_letter": str(motivation_letter_path),
@@ -155,6 +159,7 @@ def build_application_package(
 
     return ApplicationPackage(
         directory=str(directory),
+        job_path=str(job_path),
         resume_path=str(resume_path),
         cv_recommendation_path=str(cv_recommendation_path),
         motivation_letter_path=str(motivation_letter_path),

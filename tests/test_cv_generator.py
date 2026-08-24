@@ -1,6 +1,87 @@
 from cv_generator import prepare_custom_cv
+from cv_generator.ai_agents import AgentResult
 from cv_generator.exporters import DEFAULT_PORTRAIT, cv_to_html, cv_to_pdf
 from cv_generator.job_analyzer import _experience_plan
+
+
+class FakeCVAgentClient:
+    def __init__(self):
+        self.calls = []
+
+    def complete_json(self, *, agent_name, system_prompt, payload):
+        self.calls.append(agent_name)
+        if agent_name == "cv_job_analyzer":
+            data = {
+                "selected_base_variant": "webmaster",
+                "target_title": "Webmaster / Administrateur de sites web",
+                "positioning": "Webmaster orienté WordPress, maintenance et accompagnement des utilisateurs.",
+                "priority_keywords": ["WordPress", "maintenance"],
+                "experience_plan": [
+                    {
+                        "experience_id": "la_magicieuse",
+                        "priority": 10,
+                        "reason": "Expérience WordPress récente.",
+                        "highlight_indexes": [0],
+                    },
+                    {
+                        "experience_id": "freelance_wordpress",
+                        "priority": 8,
+                        "reason": "Administration et refonte WordPress.",
+                        "highlight_indexes": [0, 1],
+                    },
+                ],
+                "skills_to_emphasize": {
+                    "web_cms": ["WordPress", "Maintenance"],
+                    "support": ["Documentation technique"],
+                },
+                "skills_to_reduce": [],
+                "warnings": ["Ne pas survendre le niveau RGAA."],
+            }
+        elif agent_name in {"cv_creator", "cv_style_reviser"}:
+            data = {
+                "title": "Webmaster / Administrateur de sites web",
+                "profile": "Webmaster orienté WordPress, maintenance de sites et accompagnement des utilisateurs.",
+                "skills": [
+                    {"title": "Web / CMS", "items": ["WordPress", "Maintenance"]},
+                    {"title": "Support", "items": ["Documentation technique"]},
+                ],
+                "experiences": [
+                    {
+                        "id": "la_magicieuse",
+                        "bullets": [
+                            {
+                                "text": "Développement d'un site e-commerce headless pour une maison d'édition",
+                                "source_highlight_indexes": [0],
+                            }
+                        ],
+                    },
+                    {
+                        "id": "freelance_wordpress",
+                        "bullets": [
+                            {
+                                "text": "Refonte complète et personnalisation de sites WordPress",
+                                "source_highlight_indexes": [0, 1],
+                            }
+                        ],
+                    },
+                ],
+                "projects": [],
+            }
+        elif agent_name == "cv_quality_checker":
+            data = {
+                "quality_score": 96,
+                "ats_score": 94,
+                "status": "validated",
+                "strengths": ["Contenu ciblé et correctement sourcé."],
+                "problems": [],
+                "missing_keywords": [],
+                "overrepresented_keywords": [],
+                "forbidden_claims_found": [],
+                "verdict": "CV cohérent avec l'annonce et le profil.",
+            }
+        else:
+            raise AssertionError(f"Unexpected agent: {agent_name}")
+        return AgentResult(data=data, provider="fake", model="fake-cv-model")
 
 
 def test_prepare_custom_cv_generates_webmaster_files(tmp_path):
@@ -11,13 +92,28 @@ def test_prepare_custom_cv_generates_webmaster_files(tmp_path):
         "url": "https://example.test/job",
         "score": 90,
     }
+    client = FakeCVAgentClient()
 
-    result = prepare_custom_cv(job, application_dir=tmp_path, master_path="data/cv_master_profile.json")
+    result = prepare_custom_cv(
+        job,
+        application_dir=tmp_path,
+        master_path="data/cv_master_profile.json",
+        llm_client=client,
+    )
 
     assert result["ok"] is True
+    assert result["pipeline"] == "ai_cv_pipeline_v2"
     assert result["selected_base_variant"] == "webmaster"
     assert "Webmaster" in result["target_title"]
+    assert client.calls == [
+        "cv_job_analyzer",
+        "cv_creator",
+        "cv_quality_checker",
+        "cv_style_reviser",
+        "cv_quality_checker",
+    ]
     assert (tmp_path / "cv" / "cv_final.json").exists()
+    assert (tmp_path / "cv" / "cv_agent_trace.json").exists()
     assert (tmp_path / "cv" / "cv_canva_copy.md").exists()
     assert (tmp_path / "cv" / "cv_final.html").exists()
     assert (tmp_path / "cv" / "cv_final.pdf").exists()
