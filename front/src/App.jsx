@@ -46,6 +46,7 @@ function CandidaturesView() {
   const [cvStatuses, setCvStatuses] = useState({})  // { [id]: { exists, files, review } }
   const [cvPreviews, setCvPreviews] = useState({})   // { [id]: contenu cv_canva_copy.md }
   const [cvPendingId, setCvPendingId] = useState(null)
+  const [cvError, setCvError] = useState(null)
 
   // Charge les candidatures depuis le fichier JSON statique
   useEffect(() => {
@@ -131,7 +132,7 @@ function CandidaturesView() {
 
   const handlePrepareCv = async (id) => {
     setCvPendingId(id)
-    setApiError(null)
+    setCvError(null)
     try {
       const res = await fetch(`/api/applications/${id}/cv/prepare`, { method: 'POST' })
       const payload = await res.json().catch(() => ({}))
@@ -139,7 +140,7 @@ function CandidaturesView() {
       setCvStatuses(prev => ({ ...prev, [id]: payload.status }))
       if (hasGeneratedCv(payload.status)) refreshCvPreview(id)
     } catch (err) {
-      setApiError(err.message || 'Impossible de générer le CV personnalisé.')
+      setCvError(err.message || 'Impossible de générer le CV personnalisé.')
     } finally {
       setCvPendingId(null)
     }
@@ -252,41 +253,53 @@ function CandidaturesView() {
           </>
         )}
 
-        <h2>🎯 CV personnalisé</h2>
-        <div className="cv-actions">
-          <button
-            className="prepare-btn"
-            onClick={() => handlePrepareCv(selected)}
-            disabled={!backendOk || cvPendingId === selected}
-          >
-            {cvPendingId === selected ? 'Génération…' : cvReady ? '🔁 Régénérer le CV personnalisé' : '🎯 Créer le CV personnalisé'}
-          </button>
-          {cvReady && (
+        <section className="cv-generator-panel" aria-labelledby="cv-generator-title">
+          <div className="cv-generator-heading">
+            <h2 id="cv-generator-title">🎯 CV personnalisé</h2>
+            <span className="optional-badge">Optionnel</span>
+          </div>
+          <p className="cv-generator-help">
+            La lettre est déjà prête. Générez un CV adapté uniquement si vous souhaitez en joindre un à cette candidature.
+          </p>
+          <div className="cv-actions">
+            <button
+              type="button"
+              className="prepare-btn"
+              onClick={() => handlePrepareCv(selected)}
+              disabled={!backendOk || cvPendingId === selected}
+              aria-busy={cvPendingId === selected}
+            >
+              {cvPendingId === selected ? 'Génération du CV…' : cvReady ? '🔁 Régénérer le CV personnalisé' : '🎯 Générer le CV personnalisé'}
+            </button>
+            {cvReady && (
+              <>
+                <a className="download-btn" href={cvFileUrl(selected, 'cv_final.pdf', cvStatus)} download>📄 Télécharger PDF</a>
+                <a className="download-btn" href={cvFileUrl(selected, 'cv_final.md', cvStatus)} download>⬇️ Télécharger MD</a>
+                <a className="download-btn" href={cvFileUrl(selected, 'cv_canva_copy.md', cvStatus)} download>📋 Télécharger Canva</a>
+                <a className="download-btn" href={cvFileUrl(selected, 'cv_final.html', cvStatus)} download>🌐 Télécharger HTML</a>
+                <a className="download-btn" href={cvFileUrl(selected, 'cv_final.json', cvStatus)} download>JSON</a>
+              </>
+            )}
+          </div>
+          {!backendOk && <p className="cv-generator-note">Le backend doit être disponible pour générer le CV.</p>}
+          {cvError && <p className="postule-error" role="alert">{cvError}</p>}
+          {cvReview && (
+            <div className="cv-review">
+              <span>Qualité : <strong>{cvReview.quality_score}/100</strong></span>
+              <span>ATS : <strong>{cvReview.ats_score}/100</strong></span>
+              <span>Statut : <strong>{cvReview.status}</strong></span>
+            </div>
+          )}
+          {cvReady && cvPreview && (
             <>
-              <a className="download-btn" href={cvFileUrl(selected, 'cv_final.pdf', cvStatus)} download>📄 Télécharger PDF</a>
-              <a className="download-btn" href={cvFileUrl(selected, 'cv_final.md', cvStatus)} download>⬇️ Télécharger MD</a>
-              <a className="download-btn" href={cvFileUrl(selected, 'cv_canva_copy.md', cvStatus)} download>📋 Télécharger Canva</a>
-              <a className="download-btn" href={cvFileUrl(selected, 'cv_final.html', cvStatus)} download>🌐 Télécharger HTML</a>
-              <a className="download-btn" href={cvFileUrl(selected, 'cv_final.json', cvStatus)} download>JSON</a>
+              <h3>👀 Aperçu CV — version Canva</h3>
+              <button className="copy-btn" onClick={() => copyLettre(cvPreview)}>
+                {copied ? '✅ Copié !' : '📋 Copier le CV Canva'}
+              </button>
+              <pre className="lettre-content">{cvPreview}</pre>
             </>
           )}
-        </div>
-        {cvReview && (
-          <div className="cv-review">
-            <span>Qualité : <strong>{cvReview.quality_score}/100</strong></span>
-            <span>ATS : <strong>{cvReview.ats_score}/100</strong></span>
-            <span>Statut : <strong>{cvReview.status}</strong></span>
-          </div>
-        )}
-        {cvReady && cvPreview && (
-          <>
-            <h3>👀 Aperçu CV — version Canva</h3>
-            <button className="copy-btn" onClick={() => copyLettre(cvPreview)}>
-              {copied ? '✅ Copié !' : '📋 Copier le CV Canva'}
-            </button>
-            <pre className="lettre-content">{cvPreview}</pre>
-          </>
-        )}
+        </section>
       </div>
     )
   }
@@ -981,7 +994,7 @@ function App() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-      setPrepareMessage({ type: 'success', text: `Candidature prête : ${data.id}` })
+      setPrepareMessage({ type: 'success', text: `Lettre de motivation prête : ${data.id}` })
       setActiveMode('candidatures')
     } catch (err) {
       setPrepareMessage({
@@ -1156,7 +1169,7 @@ function App() {
                           onClick={() => handlePrepareCandidature(job)}
                           disabled={isPreparing}
                         >
-                          {isPreparing ? 'Préparation…' : '📝 Préparer candidature'}
+                          {isPreparing ? 'Création de la lettre…' : '📝 Créer la lettre de motivation'}
                         </button>
                       </div>
                     </article>
