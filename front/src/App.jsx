@@ -46,7 +46,7 @@ function CandidaturesView() {
   const [cvStatuses, setCvStatuses] = useState({})  // { [id]: { exists, files, review } }
   const [cvPreviews, setCvPreviews] = useState({})   // { [id]: contenu cv_canva_copy.md }
   const [cvPendingId, setCvPendingId] = useState(null)
-  const [cvError, setCvError] = useState(null)
+  const [cvFeedback, setCvFeedback] = useState(null) // { id, type, text }
 
   // Charge les candidatures depuis le fichier JSON statique
   useEffect(() => {
@@ -132,15 +132,24 @@ function CandidaturesView() {
 
   const handlePrepareCv = async (id) => {
     setCvPendingId(id)
-    setCvError(null)
+    setCvFeedback(null)
     try {
       const res = await fetch(`/api/applications/${id}/cv/prepare`, { method: 'POST' })
       const payload = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
       setCvStatuses(prev => ({ ...prev, [id]: payload.status }))
       if (hasGeneratedCv(payload.status)) refreshCvPreview(id)
+      setCvFeedback({
+        id,
+        type: 'success',
+        text: 'CV personnalisé prêt. Le PDF est disponible au téléchargement.',
+      })
     } catch (err) {
-      setCvError(err.message || 'Impossible de générer le CV personnalisé.')
+      setCvFeedback({
+        id,
+        type: 'error',
+        text: err.message || 'Impossible de générer le CV personnalisé.',
+      })
     } finally {
       setCvPendingId(null)
     }
@@ -282,7 +291,20 @@ function CandidaturesView() {
             )}
           </div>
           {!backendOk && <p className="cv-generator-note">Le backend doit être disponible pour générer le CV.</p>}
-          {cvError && <p className="postule-error" role="alert">{cvError}</p>}
+          {cvFeedback?.id === selected && (
+            <div
+              className={`cv-feedback ${cvFeedback.type}`}
+              role={cvFeedback.type === 'error' ? 'alert' : 'status'}
+              aria-live="polite"
+            >
+              <span>{cvFeedback.type === 'success' ? '✅' : '⚠️'} {cvFeedback.text}</span>
+              {cvFeedback.type === 'success' && cvStatus?.files?.['cv_final.pdf'] && (
+                <a href={cvFileUrl(selected, 'cv_final.pdf', cvStatus)} download>
+                  Télécharger le PDF
+                </a>
+              )}
+            </div>
+          )}
           {cvReview && (
             <div className="cv-review">
               <span>Qualité : <strong>{cvReview.quality_score}/100</strong></span>
