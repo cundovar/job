@@ -17,6 +17,24 @@ function fmtShort(iso) {
   return `${d}/${m}`
 }
 
+function hasGeneratedCv(status) {
+  return Boolean(
+    status?.files?.['cv_final.md'] ||
+    status?.files?.['cv_canva_copy.md'] ||
+    status?.files?.['cv_final.html']
+  )
+}
+
+function isProbablyHtml(response, text) {
+  const contentType = response.headers.get('content-type') || ''
+  return contentType.includes('text/html') || text.trimStart().startsWith('<!doctype html')
+}
+
+function cvFileUrl(id, file, status) {
+  if (status?.source === 'static') return `${DATA_URL}/cv/${id}/${file}`
+  return `/api/applications/${id}/cv/download/${file}`
+}
+
 function CandidaturesView() {
   const [candidatures, setCandidatures] = useState([])
   const [statuts, setStatuts] = useState({})       // { [id]: { status, applied_at, follow_up_at } }
@@ -25,6 +43,9 @@ function CandidaturesView() {
   const [copied, setCopied] = useState(false)
   const [pendingId, setPendingId] = useState(null)  // id en cours de traitement (spinner)
   const [apiError, setApiError] = useState(null)    // message d'erreur discret
+  const [cvStatuses, setCvStatuses] = useState({})  // { [id]: { exists, files, review } }
+  const [cvPreviews, setCvPreviews] = useState({})   // { [id]: contenu cv_canva_copy.md }
+  const [cvPendingId, setCvPendingId] = useState(null)
 
   // Charge les candidatures depuis le fichier JSON statique
   useEffect(() => {
@@ -59,6 +80,77 @@ function CandidaturesView() {
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
+
+  const refreshCvStatus = async (id) => {
+    if (!id) return null
+    try {
+      if (backendOk) {
+        const res = await fetch(`/api/applications/${id}/cv/status`)
+        const raw = await res.text()
+        if (res.ok && !isProbablyHtml(res, raw)) {
+          const status = JSON.parse(raw)
+          setCvStatuses(prev => ({ ...prev, [id]: status }))
+          return status
+        }
+      }
+
+      // Fallback production : les CV générés hors conteneur sont publiés en statique.
+      const staticRes = await fetch(`${DATA_URL}/cv/${id}/status.json`)
+      if (!staticRes.ok) throw new Error(`HTTP ${staticRes.status}`)
+      const status = await staticRes.json()
+      const withSource = { ...status, source: 'static' }
+      setCvStatuses(prev => ({ ...prev, [id]: withSource }))
+      return withSource
+    } catch {
+      return null
+    }
+  }
+
+  const refreshCvPreview = async (id) => {
+    if (!id) return null
+    try {
+      if (backendOk) {
+        const res = await fetch(`/api/applications/${id}/cv/download/cv_canva_copy.md`)
+        const text = await res.text()
+        if (res.ok && !isProbablyHtml(res, text)) {
+          setCvPreviews(prev => ({ ...prev, [id]: text }))
+          return text
+        }
+      }
+
+      // Fallback production statique.
+      const staticRes = await fetch(`${DATA_URL}/cv/${id}/cv_canva_copy.md`)
+      if (!staticRes.ok) throw new Error(`HTTP ${staticRes.status}`)
+      const text = await staticRes.text()
+      setCvPreviews(prev => ({ ...prev, [id]: text }))
+      return text
+    } catch {
+      return null
+    }
+  }
+
+  const handlePrepareCv = async (id) => {
+    setCvPendingId(id)
+    setApiError(null)
+    try {
+      const res = await fetch(`/api/applications/${id}/cv/prepare`, { method: 'POST' })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
+      setCvStatuses(prev => ({ ...prev, [id]: payload.status }))
+      if (hasGeneratedCv(payload.status)) refreshCvPreview(id)
+    } catch (err) {
+      setApiError(err.message || 'Impossible de générer le CV personnalisé.')
+    } finally {
+      setCvPendingId(null)
+    }
+  }
+
+  useEffect(() => {
+    if (!selected) return
+    refreshCvStatus(selected).then(status => {
+      if (hasGeneratedCv(status)) refreshCvPreview(selected)
+    })
+  }, [selected, backendOk])
 
   // Marque une candidature comme postulée
   const handleApplied = async (e, id) => {
@@ -98,6 +190,10 @@ function CandidaturesView() {
   if (selected) {
     const c = candidatures.find(x => x.id === selected)
     const s = statuts[selected]
+    const cvStatus = cvStatuses[selected]
+    const cvReady = hasGeneratedCv(cvStatus)
+    const cvReview = cvStatus?.review
+    const cvPreview = cvPreviews[selected]
     return (
       <div className="candidature-detail">
         <button className="tab back-btn" onClick={() => setSelected(null)}>← Retour</button>
@@ -153,6 +249,41 @@ function CandidaturesView() {
           <>
             <h2>📄 CV Recommandé</h2>
             <pre className="lettre-content">{c?.cv_recommande}</pre>
+          </>
+        )}
+
+        <h2>🎯 CV personnalisé</h2>
+        <div className="cv-actions">
+          <button
+            className="prepare-btn"
+            onClick={() => handlePrepareCv(selected)}
+            disabled={!backendOk || cvPendingId === selected}
+          >
+            {cvPendingId === selected ? 'Génération…' : cvReady ? '🔁 Régénérer le CV personnalisé' : '🎯 Créer le CV personnalisé'}
+          </button>
+          {cvReady && (
+            <>
+              <a className="download-btn" href={cvFileUrl(selected, 'cv_final.md', cvStatus)} download>⬇️ Télécharger MD</a>
+              <a className="download-btn" href={cvFileUrl(selected, 'cv_canva_copy.md', cvStatus)} download>📋 Télécharger Canva</a>
+              <a className="download-btn" href={cvFileUrl(selected, 'cv_final.html', cvStatus)} download>🌐 Télécharger HTML</a>
+              <a className="download-btn" href={cvFileUrl(selected, 'cv_final.json', cvStatus)} download>JSON</a>
+            </>
+          )}
+        </div>
+        {cvReview && (
+          <div className="cv-review">
+            <span>Qualité : <strong>{cvReview.quality_score}/100</strong></span>
+            <span>ATS : <strong>{cvReview.ats_score}/100</strong></span>
+            <span>Statut : <strong>{cvReview.status}</strong></span>
+          </div>
+        )}
+        {cvReady && cvPreview && (
+          <>
+            <h3>👀 Aperçu CV — version Canva</h3>
+            <button className="copy-btn" onClick={() => copyLettre(cvPreview)}>
+              {copied ? '✅ Copié !' : '📋 Copier le CV Canva'}
+            </button>
+            <pre className="lettre-content">{cvPreview}</pre>
           </>
         )}
       </div>

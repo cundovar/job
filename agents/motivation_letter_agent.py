@@ -4,6 +4,7 @@ Uses the full user_profile from criteria.yaml.
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List
 
 from .summary_agent import summarize_job
@@ -50,6 +51,38 @@ def _pick_experiences(job: Dict, profile: Dict) -> list[str]:
     return [exp for _, exp in scored[:3]]
 
 
+def _candidate_positioning(job: Dict[str, Any]) -> str:
+    """Adapt the opening positioning to the job type.
+
+    Cundo does not only apply as a full-stack developer: webmaster / CMS /
+    content administration roles are also first-class targets and should not
+    be introduced as if they were generic full-stack dev roles.
+    """
+    text = f"{_job_value(job, 'title')} {_job_value(job, 'description')}".lower()
+    if any(
+        kw in text
+        for kw in [
+            "webmaster",
+            "webmestre",
+            "administrateur web",
+            "administratrice web",
+            "administrateur de site",
+            "gestionnaire de contenu",
+            "cms",
+            "wordpress",
+            "maintenance site",
+            "site institutionnel",
+            "accessibilité",
+            "accessibilite",
+            "rgaa",
+        ]
+    ):
+        return "Webmaster et développeur web basé à Paris"
+    if any(kw in text for kw in ["formateur", "formation", "pédagog", "enseignant"]):
+        return "Développeur web et formateur basé à Paris"
+    return "Développeur web freelance basé à Paris"
+
+
 def generate_motivation_letter(
     job: Dict[str, Any],
     recommendation: Any,
@@ -62,15 +95,29 @@ def generate_motivation_letter(
     company = _job_value(job, "company", "votre structure")
     title = _job_value(job, "title", "le poste proposé")
     location = _job_value(job, "location", "")
+    positioning = _candidate_positioning(job)
     angle = _analysis_value(job, "angle_motivation")
     interesting_points = summary.why_interesting[:3]
     risks = summary.risks[:2]
     experiences = _pick_experiences(job, profile)
 
     # Accroche contextualisée
-    has_ess = any(
-        kw in f"{title} {_job_value(job, 'description', '')} {company}".lower()
-        for kw in ["ess", "association", "fondation", "insertion", "impact social", "culture", "environnement"]
+    job_context = f"{title} {_job_value(job, 'description', '')} {company}".lower()
+    has_ess = bool(
+        re.search(r"\bess\b", job_context)
+        or any(
+            kw in job_context
+            for kw in [
+                "économie sociale",
+                "economie sociale",
+                "association",
+                "fondation",
+                "insertion",
+                "impact social",
+                "culture",
+                "environnement",
+            ]
+        )
     )
     intro_values = ""
     if has_ess:
@@ -85,7 +132,7 @@ def generate_motivation_letter(
         "Madame, Monsieur,",
         "",
         (
-            f" Développeur full-stack freelance basé à Paris, "
+            f" {positioning}, "
             f"je vous propose ma candidature pour le poste de {title} "
             f"au sein de {company}.{intro_values}"
         ),
