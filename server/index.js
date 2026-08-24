@@ -35,6 +35,13 @@ const repo = new JsonApplicationsRepository();
 
 // Serve front statique depuis dist/ (production build)
 const frontDistPath = path.resolve(__dirname, '../front/dist');
+
+// /data est ecrit a l'execution (pipeline Python / volume Coolify), pas au
+// build : Vite ne copie public/ dans dist/ qu'a la construction de l'image,
+// donc on sert ce dossier separement pour toujours refleter le contenu live.
+const frontDataPath = path.resolve(__dirname, '../front/public/data');
+app.use('/data', express.static(frontDataPath));
+
 app.use(express.static(frontDistPath));
 
 // Routes API
