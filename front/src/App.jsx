@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import './App.css'
 
 const DATA_URL = '/data'
@@ -35,6 +35,8 @@ function cvFileUrl(id, file, status) {
   return `/api/applications/${id}/cv/download/${file}`
 }
 
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
+
 function CandidaturesView() {
   const [candidatures, setCandidatures] = useState([])
   const [statuts, setStatuts] = useState({})       // { [id]: { status, applied_at, follow_up_at } }
@@ -47,6 +49,7 @@ function CandidaturesView() {
   const [cvPreviews, setCvPreviews] = useState({})   // { [id]: contenu cv_canva_copy.md }
   const [cvPendingId, setCvPendingId] = useState(null)
   const [cvFeedback, setCvFeedback] = useState(null) // { id, type, text }
+  const cvPollControllerRef = useRef(null)
 
   // Charge les candidatures depuis le fichier JSON statique
   useEffect(() => {
@@ -54,6 +57,12 @@ function CandidaturesView() {
       .then(r => r.json())
       .then(d => setCandidatures(d.candidatures || []))
       .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      cvPollControllerRef.current?.abort()
+    }
   }, [])
 
   // Charge les statuts depuis le backend (avec dégradation si indisponible)
@@ -130,21 +139,84 @@ function CandidaturesView() {
     }
   }
 
+  const waitForCvGeneration = async (id, signal) => {
+    const deadline = Date.now() + 15 * 60 * 1000
+    let consecutiveFetchErrors = 0
+
+    while (Date.now() < deadline) {
+      if (signal.aborted) throw new DOMException('Polling annulé', 'AbortError')
+      await wait(2500)
+      if (signal.aborted) throw new DOMException('Polling annulé', 'AbortError')
+      try {
+        const res = await fetch(`/api/applications/${id}/cv/status`, {
+          cache: 'no-store',
+          signal,
+        })
+        const payload = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
+        consecutiveFetchErrors = 0
+        setCvStatuses(prev => ({ ...prev, [id]: payload }))
+
+        if (payload.generation?.state === 'completed') {
+          if (!hasGeneratedCv(payload) || !payload.files?.['cv_final.pdf']) {
+            throw new Error("La génération est terminée mais les fichiers du CV sont incomplets.")
+          }
+          return payload
+        }
+        if (payload.generation?.state === 'failed') {
+          throw new Error(payload.generation.error || 'La génération du CV a échoué.')
+        }
+        if (!payload.generation) {
+          throw new Error('Le suivi de la génération a été interrompu. Relance la génération.')
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') throw err
+        const isNetworkError = err instanceof TypeError || /failed to fetch|networkerror/i.test(err.message || '')
+        if (!isNetworkError) {
+          throw err
+        }
+        consecutiveFetchErrors += 1
+        if (consecutiveFetchErrors >= 5) {
+          throw new Error('Le serveur est momentanément injoignable pendant la génération.')
+        }
+      }
+    }
+
+    throw new Error('La génération prend plus de 15 minutes. Vérifie son état dans quelques instants.')
+  }
+
   const handlePrepareCv = async (id) => {
     setCvPendingId(id)
     setCvFeedback(null)
+    cvPollControllerRef.current?.abort()
+    const controller = new AbortController()
+    cvPollControllerRef.current = controller
     try {
-      const res = await fetch(`/api/applications/${id}/cv/prepare`, { method: 'POST' })
+      const res = await fetch(`/api/applications/${id}/cv/prepare`, {
+        method: 'POST',
+        signal: controller.signal,
+      })
       const payload = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
       setCvStatuses(prev => ({ ...prev, [id]: payload.status }))
-      if (hasGeneratedCv(payload.status)) refreshCvPreview(id)
+
+      const shouldPoll = ['queued', 'running'].includes(payload.status?.generation?.state)
+      const finalStatus = shouldPoll
+        ? await waitForCvGeneration(id, controller.signal)
+        : payload.status
+      setCvStatuses(prev => ({ ...prev, [id]: finalStatus }))
+      if (!hasGeneratedCv(finalStatus) || !finalStatus?.files?.['cv_final.pdf']) {
+        throw new Error('Les fichiers attendus du CV sont absents.')
+      }
+      const preview = await refreshCvPreview(id)
+      if (!preview) throw new Error("Le CV a été créé mais son aperçu n'est pas disponible.")
       setCvFeedback({
         id,
         type: 'success',
-        text: 'CV personnalisé prêt. Le PDF est disponible au téléchargement.',
+        text: 'CV personnalisé terminé. Le PDF est disponible au téléchargement.',
       })
     } catch (err) {
+      if (err.name === 'AbortError') return
       setCvFeedback({
         id,
         type: 'error',
@@ -152,6 +224,9 @@ function CandidaturesView() {
       })
     } finally {
       setCvPendingId(null)
+      if (cvPollControllerRef.current === controller) {
+        cvPollControllerRef.current = null
+      }
     }
   }
 
