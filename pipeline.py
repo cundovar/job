@@ -15,6 +15,7 @@ load_dotenv()
 import yaml
 
 from analyzers import AIAnalyzer, calculate_score
+from front_export import export_front_data
 from filters import (
     filter_by_contract,
     filter_by_keywords,
@@ -268,6 +269,11 @@ def run_job_search(
             logger.info(f"Email sent with {len(top_jobs)} new jobs")
         except Exception as exc:
             logger.error(f"Email failed: {exc}")
+
+    try:
+        export_front_data(filtered)
+    except Exception as exc:
+        logger.error(f"Front export failed: {exc}")
 
     logger.info(f"Done! Processed {len(filtered)} jobs")
     return {
