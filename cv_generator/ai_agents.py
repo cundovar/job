@@ -12,6 +12,7 @@ from cv_generator.cv_creator import create_cv_draft
 from cv_generator.cv_quality_checker import review_cv as review_cv_rules
 from cv_generator.job_analyzer import analyze_job_for_cv as analyze_job_rules
 from cv_generator.utils import compact_items, flatten_skills, normalize, period_to_text
+from utils.cli_agent_bridge import CLIAgentBridgeClient
 
 
 class CVAgentError(RuntimeError):
@@ -55,10 +56,16 @@ def _parse_json_response(content: str) -> Dict[str, Any]:
 
 
 class CVLLMClient:
-    """DeepSeek-first JSON client with an optional Claude fallback."""
+    """Subscription CLI bridge first, then optional API fallbacks."""
 
     def __init__(self) -> None:
         timeout = float(os.getenv("CV_AI_TIMEOUT_SECONDS", os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "60")))
+        self._cli_bridge = CLIAgentBridgeClient()
+        self._provider_order = [
+            item.strip().lower()
+            for item in os.getenv("CV_AI_PROVIDER_ORDER", "cli,deepseek,claude").split(",")
+            if item.strip()
+        ]
         deepseek_key = os.getenv("DEEPSEEK_API_KEY")
         self._deepseek = (
             OpenAI(
@@ -77,6 +84,25 @@ class CVLLMClient:
         self._temperature = float(os.getenv("CV_AI_TEMPERATURE", "0.2"))
         self._max_tokens = int(os.getenv("CV_AI_MAX_TOKENS", "5000"))
         self._anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+
+    def _call_cli_bridge(
+        self,
+        agent_name: str,
+        system_prompt: str,
+        payload: Dict[str, Any],
+        preferred_provider: str | None = None,
+    ) -> AgentResult:
+        result = self._cli_bridge.complete_json(
+            agent_name=agent_name,
+            system_prompt=system_prompt,
+            payload=payload,
+            preferred_provider=preferred_provider,
+        )
+        return AgentResult(
+            data=result.data,
+            provider=result.provider,
+            model=result.model,
+        )
 
     def _call_deepseek(self, system_prompt: str, user_message: str) -> AgentResult:
         if self._deepseek is None:
@@ -124,14 +150,25 @@ class CVLLMClient:
             + json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         )
         errors: List[str] = []
-        try:
-            return self._call_deepseek(system_prompt, user_message)
-        except Exception as exc:
-            errors.append(f"DeepSeek: {exc}")
-        try:
-            return self._call_claude(system_prompt, user_message)
-        except Exception as exc:
-            errors.append(f"Claude: {exc}")
+        for provider in self._provider_order:
+            try:
+                if provider in {"cli", "bridge"}:
+                    return self._call_cli_bridge(agent_name, system_prompt, payload)
+                if provider == "codex_cli":
+                    return self._call_cli_bridge(
+                        agent_name, system_prompt, payload, preferred_provider="codex"
+                    )
+                if provider == "claude_cli":
+                    return self._call_cli_bridge(
+                        agent_name, system_prompt, payload, preferred_provider="claude"
+                    )
+                if provider == "deepseek":
+                    return self._call_deepseek(system_prompt, user_message)
+                if provider in {"claude", "anthropic"}:
+                    return self._call_claude(system_prompt, user_message)
+                errors.append(f"{provider}: fournisseur inconnu")
+            except Exception as exc:
+                errors.append(f"{provider}: {exc}")
         raise CVAgentError("Aucun agent IA disponible. " + " | ".join(errors))
 
 

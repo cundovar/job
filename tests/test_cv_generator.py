@@ -1,5 +1,8 @@
+import io
+import json
+
 from cv_generator import prepare_custom_cv
-from cv_generator.ai_agents import AgentResult
+from cv_generator.ai_agents import AgentResult, CVLLMClient
 from cv_generator.exporters import DEFAULT_PORTRAIT, cv_to_html, cv_to_pdf
 from cv_generator.job_analyzer import _experience_plan
 
@@ -177,3 +180,59 @@ def test_experience_plan_is_reverse_chronological_after_selection():
     plan = _experience_plan({}, selected, master)
 
     assert [item["experience_id"] for item in plan] == ["current", "qualiscope", "pole_s", "freelance"]
+
+
+def test_cv_llm_client_prefers_subscription_cli_bridge(monkeypatch):
+    response = {
+        "ok": True,
+        "provider": "codex_cli",
+        "model": "subscription-default",
+        "data": {"status": "ok"},
+    }
+
+    class FakeSocket:
+        def __init__(self):
+            self.sent = b""
+            self.timeout = None
+            self.path = None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def settimeout(self, timeout):
+            self.timeout = timeout
+
+        def connect(self, path):
+            self.path = path
+
+        def sendall(self, content):
+            self.sent = content
+
+        def makefile(self, mode):
+            return io.BytesIO((json.dumps(response) + "\n").encode("utf-8"))
+
+    fake_socket = FakeSocket()
+    monkeypatch.setenv("CV_AI_PROVIDER_ORDER", "codex_cli")
+    monkeypatch.setenv("CV_CLI_BRIDGE_TOKEN", "test-token-with-more-than-thirty-two-characters")
+    monkeypatch.setenv("CV_CLI_BRIDGE_SOCKET", "/tmp/test-cv-bridge.sock")
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr("utils.cli_agent_bridge.socket.socket", lambda *args: fake_socket)
+
+    result = CVLLMClient().complete_json(
+        agent_name="cv_job_analyzer",
+        system_prompt="Retourne du JSON.",
+        payload={"job": {"title": "Webmaster"}},
+    )
+
+    request = json.loads(fake_socket.sent.decode("utf-8"))
+    assert request["operation"] == "complete_json"
+    assert request["agent_name"] == "cv_job_analyzer"
+    assert request["payload"]["job"]["title"] == "Webmaster"
+    assert request["preferred_provider"] == "codex"
+    assert fake_socket.path == "/tmp/test-cv-bridge.sock"
+    assert result.provider == "codex_cli"
+    assert result.data == {"status": "ok"}

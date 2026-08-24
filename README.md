@@ -237,6 +237,14 @@ python3 -m hermes_commands.job_relance
 python3 -m hermes_commands.job_status
 ```
 
+### Agents IA par abonnement sur Netcup
+
+Sur le déploiement Coolify, l'analyse des annonces et la création des CV utilisent
+en priorité Codex CLI, puis Claude Code, via un socket Unix privé partagé avec le
+VPS. Les clés DeepSeek et Anthropic deviennent des replis facultatifs.
+
+Installation, sécurité et diagnostic : [docs/CV_CLI_BRIDGE.md](docs/CV_CLI_BRIDGE.md).
+
 **Durée** : 5-10 minutes selon le nombre d'offres
 
 ### Vérifier les Résultats

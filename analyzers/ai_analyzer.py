@@ -1,8 +1,8 @@
 """
-AI analysis with DeepSeek — strict scoring, PASSER filter, contextualized for Cundo.
+AI analysis with subscription CLIs — strict scoring and PASSER filter.
 The system prompt is loaded from config/agent_juge_offres.md (single source of truth).
 The candidate profile is injected at call time from criteria.yaml.
-Fallback: DeepSeek → Claude (Anthropic) si DeepSeek échoue.
+Fallback chain: subscription CLI bridge → DeepSeek API → Anthropic API.
 """
 from __future__ import annotations
 
@@ -14,6 +14,8 @@ from typing import Dict
 
 import yaml
 from openai import OpenAI
+
+from utils.cli_agent_bridge import CLIAgentBridgeClient
 
 
 def _load_system_prompt() -> str:
@@ -41,12 +43,25 @@ def _parse_json_response(content: str) -> Dict:
 
 
 class AIAnalyzer:
-    def __init__(self) -> None:
-        # DeepSeek client
-        self._deepseek = OpenAI(
-            api_key=os.getenv("DEEPSEEK_API_KEY"),
-            base_url="https://api.deepseek.com",
-            timeout=float(os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "30")),
+    def __init__(self, bridge_client: CLIAgentBridgeClient | None = None) -> None:
+        self._bridge = bridge_client or CLIAgentBridgeClient()
+        self._provider_order = [
+            item.strip().lower()
+            for item in os.getenv(
+                "JOB_AI_PROVIDER_ORDER",
+                os.getenv("CV_AI_PROVIDER_ORDER", "cli,deepseek,claude"),
+            ).split(",")
+            if item.strip()
+        ]
+        deepseek_key = os.getenv("DEEPSEEK_API_KEY")
+        self._deepseek = (
+            OpenAI(
+                api_key=deepseek_key,
+                base_url="https://api.deepseek.com",
+                timeout=float(os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "30")),
+            )
+            if deepseek_key
+            else None
         )
         self._deepseek_model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
         self._temperature = float(os.getenv("DEEPSEEK_TEMPERATURE", "0.3"))
@@ -68,6 +83,8 @@ class AIAnalyzer:
 
     def _call_deepseek(self, user_message: str) -> Dict:
         """Call DeepSeek API."""
+        if self._deepseek is None:
+            raise RuntimeError("DEEPSEEK_API_KEY manquante")
         response = self._deepseek.chat.completions.create(
             model=self._deepseek_model,
             messages=[
@@ -94,10 +111,41 @@ class AIAnalyzer:
                 content += block.text
         return _parse_json_response(content)
 
+    def _call_cli_bridge(
+        self,
+        job: Dict,
+        criteria: Dict,
+        preferred_provider: str | None = None,
+    ) -> Dict:
+        """Call Codex/Claude subscription CLI through the private host bridge."""
+        safe_job = {
+            key: job.get(key)
+            for key in (
+                "title",
+                "company",
+                "location",
+                "contract_type",
+                "salary",
+                "score",
+                "url",
+            )
+        }
+        safe_job["description"] = str(job.get("description") or "")[:2500]
+        result = self._bridge.complete_json(
+            agent_name="job_offer_analyzer",
+            system_prompt=self._system_prompt,
+            payload={
+                "candidate_profile": criteria.get("user_profile", {}),
+                "job_offer": safe_job,
+            },
+            preferred_provider=preferred_provider,
+        )
+        return result.data
+
     def analyze_job(self, job: Dict, criteria: Dict) -> Dict:
         """Analyze a job offer against the full criteria (user_profile injected in prompt).
 
-        Chain: DeepSeek → Claude (fallback automatique).
+        Chain: subscription CLI bridge → DeepSeek → Claude.
 
         Args:
             job: Scraped job dict (title, company, location, contract_type, salary, description, score).
@@ -170,13 +218,27 @@ class AIAnalyzer:
             "Réponds UNIQUEMENT en JSON, pas de markdown autour."
         )
 
-        # ── DeepSeek → Claude fallback ──
-        try:
-            return self._call_deepseek(user_message)
-        except Exception as e:
-            print(f"  ⚠️ DeepSeek échoué pour '{job.get('title', '')[:50]}' ({e}), fallback Claude...")
+        errors = []
+        for provider in self._provider_order:
             try:
-                return self._call_claude(user_message)
-            except Exception as e2:
-                print(f"  ❌ Claude aussi échoué ({e2})")
-                return {"recommandation": "PEUT-ÊTRE", "raison_breve": "Erreur analyse (DeepSeek+Claude HS)"}
+                if provider in {"cli", "bridge"}:
+                    return self._call_cli_bridge(job, criteria)
+                if provider == "codex_cli":
+                    return self._call_cli_bridge(job, criteria, preferred_provider="codex")
+                if provider == "claude_cli":
+                    return self._call_cli_bridge(job, criteria, preferred_provider="claude")
+                if provider == "deepseek":
+                    return self._call_deepseek(user_message)
+                if provider in {"claude", "anthropic"}:
+                    return self._call_claude(user_message)
+                errors.append(f"{provider}: fournisseur inconnu")
+            except Exception as exc:
+                errors.append(f"{provider}: {exc}")
+        print(
+            f"  ❌ Analyse IA impossible pour '{job.get('title', '')[:50]}' "
+            + " | ".join(errors)
+        )
+        return {
+            "recommandation": "PEUT-ÊTRE",
+            "raison_breve": "Erreur analyse (fournisseurs IA indisponibles)",
+        }
