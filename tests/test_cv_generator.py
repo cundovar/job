@@ -17,6 +17,9 @@ def test_prepare_custom_cv_generates_webmaster_files(tmp_path):
     assert "Webmaster" in result["target_title"]
     assert (tmp_path / "cv" / "cv_final.json").exists()
     assert (tmp_path / "cv" / "cv_canva_copy.md").exists()
+    assert (tmp_path / "cv" / "cv_final.html").exists()
+    assert (tmp_path / "cv" / "cv_final.pdf").exists()
+    assert (tmp_path / "cv" / "cv_final.pdf").read_bytes().startswith(b"%PDF")
     canva = (tmp_path / "cv" / "cv_canva_copy.md").read_text(encoding="utf-8")
     assert "WordPress" in canva
     assert "Facundo Varas" in canva

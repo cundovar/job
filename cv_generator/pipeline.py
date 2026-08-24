@@ -6,7 +6,7 @@ from typing import Any, Dict
 from .cv_creator import create_cv_draft
 from .cv_quality_checker import review_cv
 from .cv_style_reviser import revise_cv_style
-from .exporters import cv_to_html, cv_to_markdown
+from .exporters import cv_to_html, cv_to_markdown, cv_to_pdf
 from .job_analyzer import analyze_job_for_cv
 from .utils import load_json, save_json
 
@@ -34,6 +34,7 @@ def prepare_custom_cv(
     (output_dir / "cv_final.md").write_text(cv_to_markdown(final_cv), encoding="utf-8")
     (output_dir / "cv_canva_copy.md").write_text(cv_to_markdown(final_cv, canva=True), encoding="utf-8")
     (output_dir / "cv_final.html").write_text(cv_to_html(final_cv), encoding="utf-8")
+    cv_to_pdf(final_cv, output_dir / "cv_final.pdf")
 
     return {
         "ok": True,
@@ -53,5 +54,6 @@ def prepare_custom_cv(
             "final_md": str(output_dir / "cv_final.md"),
             "canva_copy": str(output_dir / "cv_canva_copy.md"),
             "html": str(output_dir / "cv_final.html"),
+            "pdf": str(output_dir / "cv_final.pdf"),
         },
     }
