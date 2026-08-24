@@ -10,7 +10,32 @@ RUN npm ci
 COPY front/ ./
 RUN npm run build
 
-FROM node:20-alpine AS runtime
+# debian (glibc) plutot qu'alpine : evite de compiler lxml/selenium depuis les
+# sources (pas de wheels manylinux compatibles musl).
+FROM node:20-bookworm-slim AS runtime
+
+# Python + le pipeline de scraping : le bouton "Lancer une recherche" et
+# "Preparer candidature" du front spawnent `python3` (server/services/searchRunner.js,
+# server/repositories/jsonApplicationsRepository.js) avec PROJECT_ROOT=/app comme cwd.
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements.txt ./
+RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
+
+COPY main.py pipeline.py ./
+COPY agents/ ./agents/
+COPY analyzers/ ./analyzers/
+COPY applications/ ./applications/
+COPY config/ ./config/
+COPY filters/ ./filters/
+COPY hermes_commands/ ./hermes_commands/
+COPY notifications/ ./notifications/
+COPY scrapers/ ./scrapers/
+COPY storage/ ./storage/
+COPY utils/ ./utils/
+
 WORKDIR /app/server
 COPY server/package.json server/package-lock.json ./
 RUN npm ci --omit=dev
