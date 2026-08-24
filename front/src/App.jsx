@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import './App.css'
+import ManualCvView from './ManualCvView'
 
 const DATA_URL = '/data'
 
@@ -1027,7 +1028,7 @@ function App() {
   const [index, setIndex] = useState(null)
   const [activeSearch, setActiveSearch] = useState(null)
   const [activeCategory, setActiveCategory] = useState('backend')
-  const [activeMode, setActiveMode] = useState('recherche')  // 'recherche' | 'agencies' | 'candidatures' | 'postulees' | 'weather'
+  const [activeMode, setActiveMode] = useState('recherche')  // recherche | manual-cv | agencies | candidatures | postulees | weather
   const [nbPostulees, setNbPostulees] = useState(0)          // compteur sidebar dynamique
   const [jobs, setJobs] = useState([])
   const [loading, setLoading] = useState(false)
@@ -1135,6 +1136,13 @@ function App() {
           <span className="search-stats">{index?.searches?.length || 0} sessions</span>
         </button>
         <button
+          className={`search-btn mode-btn manual-cv-nav ${activeMode === 'manual-cv' ? 'active' : ''}`}
+          onClick={() => setActiveMode('manual-cv')}
+        >
+          <span className="search-date">✨ CV depuis une annonce</span>
+          <span className="search-stats">Collez n’importe quelle offre</span>
+        </button>
+        <button
           className={`search-btn mode-btn ${activeMode === 'agencies' ? 'active' : ''}`}
           onClick={() => setActiveMode('agencies')}
         >
@@ -1176,7 +1184,9 @@ function App() {
       </aside>
 
       <main className="main-content">
-        {activeMode === 'candidatures' ? (
+        {activeMode === 'manual-cv' ? (
+          <ManualCvView onOpenCandidatures={() => setActiveMode('candidatures')} />
+        ) : activeMode === 'candidatures' ? (
           <CandidaturesView />
         ) : activeMode === 'postulees' ? (
           <PostuleesView />

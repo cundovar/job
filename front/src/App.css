@@ -77,6 +77,79 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .prepare-message.success { background: #102a1a; border: 1px solid #166534; color: #4ade80; }
 .prepare-message.error { background: #3f0a0a; border: 1px solid #7f1d1d; color: #f87171; }
 
+.manual-cv-nav {
+  border-color: #4f46e5;
+  background: linear-gradient(135deg, rgba(79, 70, 229, .18), rgba(168, 85, 247, .12));
+}
+.manual-cv-view { display: grid; gap: 1.2rem; }
+.manual-cv-header {
+  padding: 1.3rem 1.4rem;
+  border: 1px solid #373766; border-radius: 14px;
+  background: linear-gradient(135deg, #1a1a35 0%, #211638 100%);
+}
+.manual-cv-header h1 { margin: .35rem 0 .55rem; font-size: 1.45rem; color: #fff; }
+.manual-cv-header p { color: #b6b6ca; line-height: 1.6; max-width: 720px; }
+.manual-cv-kicker {
+  color: #a5b4fc; font-size: .72rem; font-weight: 800;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.manual-cv-form {
+  padding: 1.2rem; background: #151526;
+  border: 1px solid #303052; border-radius: 12px;
+}
+.manual-cv-fields {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .9rem;
+}
+.manual-cv-form label {
+  display: grid; gap: .38rem; color: #d7d7e5; font-size: .82rem; font-weight: 700;
+}
+.manual-cv-form label > span, .manual-cv-description small {
+  color: #77778e; font-size: .7rem; font-weight: 500;
+}
+.manual-cv-form input, .manual-cv-form textarea {
+  width: 100%; padding: .7rem .8rem;
+  border: 1px solid #353558; border-radius: 8px;
+  background: #0f0f1a; color: #ececf4; font: inherit;
+}
+.manual-cv-form input:focus, .manual-cv-form textarea:focus {
+  outline: none; border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, .16);
+}
+.manual-cv-form input:disabled, .manual-cv-form textarea:disabled { opacity: .72; }
+.manual-cv-description { margin-top: 1rem; }
+.manual-cv-description strong { color: #a5b4fc; font-size: .7rem; }
+.manual-cv-description textarea { resize: vertical; min-height: 260px; line-height: 1.5; }
+.manual-cv-description small { justify-self: end; }
+.manual-cv-submit-row {
+  display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; margin-top: 1rem;
+}
+.manual-cv-submit { padding: .7rem 1.1rem; font-size: .88rem; }
+.manual-cv-submit-row > span { color: #85859b; font-size: .75rem; }
+.manual-cv-progress, .manual-cv-result {
+  padding: 1rem 1.1rem; border: 1px solid #353560;
+  background: #151526; border-radius: 12px;
+}
+.manual-cv-progress h2, .manual-cv-result h2 { font-size: 1rem; color: #c7d2fe; }
+.manual-cv-progress ol {
+  list-style: none; display: grid; gap: .65rem; margin-top: .9rem;
+}
+.manual-cv-progress li { display: flex; align-items: center; gap: .7rem; color: #77778d; }
+.manual-cv-progress li strong {
+  display: grid; place-items: center; width: 1.7rem; height: 1.7rem;
+  border: 1px solid #3a3a55; border-radius: 50%; font-size: .75rem;
+}
+.manual-cv-progress li.done { color: #c7d2fe; }
+.manual-cv-progress li.done strong { background: #312e81; border-color: #6366f1; }
+.manual-cv-progress li.active { color: #fbbf24; }
+.manual-cv-message { margin: 0; }
+.manual-cv-result {
+  border-color: #166534; background: linear-gradient(135deg, #102a1a, #151526);
+}
+.manual-cv-result h2 { margin: .25rem 0; color: #fff; }
+.manual-cv-result p { color: #9ca3af; font-size: .82rem; }
+.manual-cv-result .cv-actions { margin-top: 1rem; }
+.download-btn.primary { background: #14532d; border-color: #16a34a; color: #bbf7d0; }
+
 .loading, .empty-state { text-align: center; padding: 3rem; color: #666; }
 /* Candidatures */
 .mode-btn { margin-bottom: .3rem; }
@@ -287,6 +360,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .app-layout { flex-direction: column; }
   .sidebar { width: 100%; height: auto; position: static; }
   .main-content { padding: 1rem; }
+  .manual-cv-fields { grid-template-columns: 1fr; }
+  .manual-cv-header, .manual-cv-form { padding: 1rem; }
   .weather-metrics { grid-template-columns: 1fr; }
   .weather-day-card { grid-template-columns: 1fr; gap: .35rem; }
 }
