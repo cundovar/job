@@ -167,23 +167,23 @@ def cv_to_html(final_cv: Dict[str, Any], design_system_path: str | Path = DEFAUL
   .page {{ width: 794px; min-height: 1123px; margin: 0 auto; background: {bg}; padding: 27px 28px 26px 22px; display: grid; grid-template-columns: 24% 7% 69%; }}
   aside {{ grid-column: 1; padding-top: 4px; color: {secondary}; }}
   main {{ grid-column: 3; }}
-  header {{ height: 93px; padding-top: 3px; }}
-  h1 {{ margin: 0 0 7px; font-size: {_style(design, 'person_name', 'font_size_pt', 22)}pt; font-weight: 400; letter-spacing: .01em; line-height: 1.1; }}
+  header {{ height: 128px; padding-top: 10px; }}
+  h1 {{ margin: 0 0 8px; font-size: 25pt; font-weight: 400; letter-spacing: .01em; line-height: 1.1; }}
   .target-title, h2 {{ text-transform: uppercase; letter-spacing: .32em; font-weight: 400; color: {primary}; }}
-  .target-title {{ font-size: {_style(design, 'target_title', 'font_size_pt', 7.5)}pt; line-height: 1.35; }}
-  h2 {{ margin: 18px 0 0; font-size: {_style(design, 'section_heading', 'font_size_pt', 7)}pt; line-height: 1.2; }}
-  .section-line {{ width: 31px; height: 3px; background: {accent}; margin: 7px 0 8px; }}
-  p, li {{ font-size: {_style(design, 'body', 'font_size_pt', 5.5)}pt; line-height: 1.35; margin: 0 0 5px; }}
+  .target-title {{ font-size: 9pt; line-height: 1.35; }}
+  h2 {{ margin: 24px 0 0; font-size: 8.3pt; line-height: 1.2; }}
+  .section-line {{ width: 31px; height: 3px; background: {accent}; margin: 8px 0 12px; }}
+  p, li {{ font-size: 7.1pt; line-height: 1.42; margin: 0 0 7px; }}
   .portrait {{ width: 82px; height: 82px; border-radius: 50%; background: #d9dddc; color: {primary}; display:flex; align-items:center; justify-content:center; font-size: 18px; margin-bottom: 24px; filter: grayscale(1); }}
   .contact-item {{ display: grid; grid-template-columns: 9px 1fr; gap: 5px; align-items: start; margin-bottom: 6px; }}
   .contact-item span {{ font-size: 7px; color: {accent}; }}
-  .contact-item p {{ font-size: {_style(design, 'contact', 'font_size_pt', 5.3)}pt; line-height: 1.4; overflow-wrap: anywhere; }}
+  .contact-item p {{ font-size: 6.7pt; line-height: 1.4; overflow-wrap: anywhere; }}
   .skill strong {{ font-weight: 700; }}
-  .experience {{ display: grid; grid-template-columns: 18% 82%; gap: 12px; margin-bottom: 8px; }}
-  .meta, .meta strong {{ color: {secondary}; font-size: {_style(design, 'organization_date', 'font_size_pt', 5.2)}pt; line-height: 1.25; font-weight: 600; }}
-  h3 {{ margin: 0 0 3px; font-size: {_style(design, 'experience_title', 'font_size_pt', 5.7)}pt; line-height: 1.2; font-weight: 700; text-transform: uppercase; letter-spacing: .01em; }}
+  .experience {{ display: grid; grid-template-columns: 18% 82%; gap: 14px; margin-bottom: 15px; }}
+  .meta, .meta strong {{ color: {secondary}; font-size: 6.5pt; line-height: 1.3; font-weight: 600; }}
+  h3 {{ margin: 0 0 6px; font-size: 7.2pt; line-height: 1.2; font-weight: 700; text-transform: uppercase; letter-spacing: .01em; }}
   ul {{ margin: 0 0 0 9px; padding: 0; }}
-  li {{ padding-left: 0; margin-bottom: 2px; }}
+  li {{ padding-left: 0; margin-bottom: 4px; }}
   .project span {{ color: {secondary}; }}
   @media (max-width: 820px) {{ .page {{ width: 100%; min-height: auto; grid-template-columns: 1fr; padding: 24px; }} aside, main {{ grid-column: 1; }} header {{ height: auto; margin-bottom: 20px; }} }}
 </style>
@@ -233,6 +233,19 @@ def cv_to_pdf(final_cv: Dict[str, Any], output_path: str | Path, design_system_p
     sidebar_x = left
     sidebar_inner_w = sidebar_w - 6
 
+    # The Canva measurements are estimated from thumbnails and are too small
+    # when translated literally to a generated PDF. These readable values keep
+    # the same proportions while filling the A4 page vertically.
+    NAME_SIZE = 25
+    TARGET_SIZE = 9
+    SECTION_SIZE = 8.3
+    BODY_SIZE = 7.1
+    BODY_LEADING = 9.6
+    CONTACT_SIZE = 6.7
+    CONTACT_LEADING = 8.4
+    META_SIZE = 6.5
+    EXP_TITLE_SIZE = 7.2
+
     def set_font(size: float, bold: bool = False, color=primary):
         c.setFillColor(color)
         c.setFont("Helvetica-Bold" if bold else "Helvetica", size)
@@ -262,12 +275,12 @@ def cv_to_pdf(final_cv: Dict[str, Any], output_path: str | Path, design_system_p
         return y
 
     def section(title: str, x: float, y: float) -> float:
-        set_font(7, False, primary)
+        set_font(SECTION_SIZE, False, primary)
         c.drawString(x, y, title.upper())
-        y -= 7
+        y -= 8
         c.setFillColor(accent)
         c.rect(x, y, 31 * scale, 3 * scale, stroke=0, fill=1)
-        return y - 9
+        return y - 13
 
     # Portrait placeholder
     c.setFillColor(colors.HexColor("#D9DDDC"))
@@ -277,63 +290,63 @@ def cv_to_pdf(final_cv: Dict[str, Any], output_path: str | Path, design_system_p
     c.drawCentredString(sidebar_x + d / 2, top - d / 2 - 5, "FV")
 
     # Identity header
-    y_main = top - 4
-    set_font(22, False, primary)
+    y_main = top - 8
+    set_font(NAME_SIZE, False, primary)
     c.drawString(main_x, y_main, "Facundo Varas")
-    y_main -= 18
-    set_font(7.5, False, primary)
+    y_main -= 22
+    set_font(TARGET_SIZE, False, primary)
     c.drawString(main_x, y_main, cv.get("title", "CV personnalisé").upper())
 
     # Sidebar
     y = top - d - 22
     y = section("Profil", sidebar_x, y)
-    y = draw_wrapped(cv.get("profile", ""), sidebar_x, y, sidebar_inner_w, 5.5, 7.4, color=secondary)
-    y -= 9
+    y = draw_wrapped(cv.get("profile", ""), sidebar_x, y, sidebar_inner_w, BODY_SIZE, BODY_LEADING, color=secondary)
+    y -= 13
     y = section("Contact", sidebar_x, y)
     for text in [contact.get("email"), contact.get("phone"), cv.get("location"), contact.get("portfolio"), contact.get("github")]:
         if text:
-            y = draw_wrapped(str(text), sidebar_x + 12, y, sidebar_inner_w - 12, 5.3, 7, color=secondary)
-            y -= 2
-    y -= 5
+            y = draw_wrapped(str(text), sidebar_x + 12, y, sidebar_inner_w - 12, CONTACT_SIZE, CONTACT_LEADING, color=secondary)
+            y -= 3
+    y -= 10
     y = section("Langues", sidebar_x, y)
     for lang in cv.get("languages", []):
-        y = draw_wrapped(f"{lang.get('name')} — {lang.get('level')}", sidebar_x, y, sidebar_inner_w, 5.5, 7.4, color=secondary)
-    y -= 9
+        y = draw_wrapped(f"{lang.get('name')} — {lang.get('level')}", sidebar_x, y, sidebar_inner_w, BODY_SIZE, BODY_LEADING, color=secondary)
+    y -= 13
     y = section("Formation", sidebar_x, y)
     for edu in cv.get("education", [])[:2]:
         details = " — ".join(str(x) for x in [edu.get("year"), edu.get("title"), edu.get("level"), edu.get("status") or edu.get("school")] if x)
-        y = draw_wrapped(details, sidebar_x, y, sidebar_inner_w, 5.5, 7.4, color=secondary)
-        y -= 4
+        y = draw_wrapped(details, sidebar_x, y, sidebar_inner_w, BODY_SIZE, BODY_LEADING, color=secondary)
+        y -= 7
 
     # Main content
-    y = top - 93 * scale
+    y = top - 128 * scale
     y = section("Compétences", main_x, y)
     for skill in cv.get("skills", []):
         line = f"{skill.get('title')}: {', '.join(skill.get('items', []))}"
-        y = draw_wrapped(line, main_x, y, main_w, 5.5, 7.4, color=primary)
-        y -= 3
-    y -= 6
+        y = draw_wrapped(line, main_x, y, main_w, BODY_SIZE, BODY_LEADING, color=primary)
+        y -= 5
+    y -= 12
     y = section("Expériences", main_x, y)
     meta_w = main_w * 0.18
     desc_x = main_x + meta_w + 10
     desc_w = main_w - meta_w - 10
     for exp in cv.get("experiences", [])[:4]:
         item_top = y
-        draw_wrapped(str(exp.get("period", "")), main_x, item_top, meta_w, 5.2, 6.5, bold=True, color=secondary)
-        draw_wrapped(str(exp.get("organization", "")), main_x, item_top - 8, meta_w, 5.2, 6.5, color=secondary)
-        set_font(5.7, True, primary)
+        draw_wrapped(str(exp.get("period", "")), main_x, item_top, meta_w, META_SIZE, 8.1, bold=True, color=secondary)
+        draw_wrapped(str(exp.get("organization", "")), main_x, item_top - 10, meta_w, META_SIZE, 8.1, color=secondary)
+        set_font(EXP_TITLE_SIZE, True, primary)
         c.drawString(desc_x, y, str(exp.get("title", "")).upper()[:90])
-        y -= 8
+        y -= 11
         for b in exp.get("bullets", [])[:3]:
-            y = draw_wrapped(str(b), desc_x + 7, y, desc_w - 7, 5.5, 7.2, color=primary, bullet=True)
-        y -= 7
+            y = draw_wrapped(str(b), desc_x + 7, y, desc_w - 7, BODY_SIZE, BODY_LEADING, color=primary, bullet=True)
+        y -= 15
     projects = cv.get("projects", [])
     if projects:
         y = section("Projets personnels", main_x, y)
         for project in projects[:1]:
-            y = draw_wrapped(str(project.get("title", "")), main_x, y, main_w, 5.7, 7.2, bold=True, color=primary)
+            y = draw_wrapped(str(project.get("title", "")), main_x, y, main_w, EXP_TITLE_SIZE, BODY_LEADING, bold=True, color=primary)
             text = f"{project.get('description', '')} — {', '.join(project.get('technologies', []))}"
-            y = draw_wrapped(text, main_x, y, main_w, 5.5, 7.2, color=primary)
+            y = draw_wrapped(text, main_x, y, main_w, BODY_SIZE, BODY_LEADING, color=primary)
 
     c.showPage()
     c.save()
