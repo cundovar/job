@@ -21,6 +21,7 @@ const CV_FILES = new Set([
   'cv_final.md',
   'cv_canva_copy.md',
   'cv_final.html',
+  'cv_final.pdf',
 ]);
 
 function applicationDir(id) {

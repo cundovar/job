@@ -263,6 +263,7 @@ function CandidaturesView() {
           </button>
           {cvReady && (
             <>
+              <a className="download-btn" href={cvFileUrl(selected, 'cv_final.pdf', cvStatus)} download>📄 Télécharger PDF</a>
               <a className="download-btn" href={cvFileUrl(selected, 'cv_final.md', cvStatus)} download>⬇️ Télécharger MD</a>
               <a className="download-btn" href={cvFileUrl(selected, 'cv_canva_copy.md', cvStatus)} download>📋 Télécharger Canva</a>
               <a className="download-btn" href={cvFileUrl(selected, 'cv_final.html', cvStatus)} download>🌐 Télécharger HTML</a>
