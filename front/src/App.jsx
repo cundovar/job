@@ -1,4 +1,13 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import {
+  AlarmClock, ArrowLeft, Bell, Briefcase, Building2, Calendar, Check, CircleCheck, CircleDot,
+  Clipboard, Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow,
+  CloudSun, DoorOpen, Download, Ellipsis, ExternalLink, Eye, FileDown, FileText, Globe,
+  GraduationCap, LoaderCircle, MapPin, Mail, MessageCircle, Palette, PenLine,
+  Rocket, RotateCw,
+  Search, Send, Server, Snowflake, Sparkles, Star, Sun, Target, Thermometer,
+  TriangleAlert, Wrench,
+} from 'lucide-react'
 import './App.css'
 import ManualCvView from './ManualCvView'
 
@@ -16,6 +25,20 @@ function fmtShort(iso) {
   if (!iso) return ''
   const [, m, d] = iso.split('-')
   return `${d}/${m}`
+}
+
+function fmtTime(iso) {
+  if (!iso) return ''
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+}
+
+function fmtSession(search) {
+  if (!search) return ''
+  const label = fmtDate(search.date || search.id)
+  const time = fmtTime(search.generated_at)
+  return time ? `${label} · ${time}` : label
 }
 
 function hasGeneratedCv(status) {
@@ -282,22 +305,22 @@ function CandidaturesView() {
     const cvPreview = cvPreviews[selected]
     return (
       <div className="candidature-detail">
-        <button className="tab back-btn" onClick={() => setSelected(null)}>← Retour</button>
-        <h1>📝 Lettre de motivation</h1>
+        <button className="tab back-btn" onClick={() => setSelected(null)}><ArrowLeft /> Retour</button>
+        <h1><FileText /> Lettre de motivation</h1>
         <div className="candidature-meta">
           <span><strong>{c?.entreprise}</strong></span>
-          <span>📋 {c?.poste}</span>
-          <span>📅 {c?.date}</span>
+          <span><Briefcase /> {c?.poste}</span>
+          <span><Calendar /> {c?.date}</span>
         </div>
 
         {/* Bouton / badge postulé dans la vue détail */}
         <div className="postule-zone">
           {!backendOk && (
-            <span className="postule-offline">⚠️ Backend indisponible — statut non sauvegardé</span>
+            <span className="postule-offline"><TriangleAlert /> Backend indisponible — statut non sauvegardé</span>
           )}
           {backendOk && s?.status === 'applied' ? (
             <div className="postule-applied">
-              <span className="badge-applied">✅ Postulé le {fmtDate(s.applied_at)} · relance le {fmtShort(s.follow_up_at)}</span>
+              <span className="badge-applied"><CircleCheck /> Postulé le {fmtDate(s.applied_at)} · relance le {fmtShort(s.follow_up_at)}</span>
               <button
                 className="annuler-btn"
                 onClick={e => handleNotApplied(e, selected)}
@@ -312,35 +335,35 @@ function CandidaturesView() {
               onClick={e => handleApplied(e, selected)}
               disabled={pendingId === selected}
             >
-              {pendingId === selected ? 'En cours…' : '✅ J\'ai postulé'}
+              {pendingId === selected ? 'En cours…' : <><CircleCheck /> J'ai postulé</>}
             </button>
           ) : null}
           {apiError && <span className="postule-error">{apiError}</span>}
         </div>
 
         <button className="copy-btn" onClick={() => copyLettre(c?.lettre || '')}>
-          {copied ? '✅ Copié !' : '📋 Copier la lettre'}
+          {copied ? <><Check /> Copié !</> : <><Clipboard /> Copier la lettre</>}
         </button>
         <pre className="lettre-content">{c?.lettre}</pre>
         {c?.mail && (
           <>
-            <h2>📧 Email de candidature</h2>
+            <h2><Mail /> Email de candidature</h2>
             <button className="copy-btn" onClick={() => copyLettre(c?.mail || '')}>
-              {copied ? '✅ Copié !' : '📋 Copier l\'email'}
+              {copied ? <><Check /> Copié !</> : <><Clipboard /> Copier l'email</>}
             </button>
             <pre className="lettre-content">{c?.mail}</pre>
           </>
         )}
         {c?.cv_recommande && (
           <>
-            <h2>📄 CV Recommandé</h2>
+            <h2><FileText /> CV Recommandé</h2>
             <pre className="lettre-content">{c?.cv_recommande}</pre>
           </>
         )}
 
         <section className="cv-generator-panel" aria-labelledby="cv-generator-title">
           <div className="cv-generator-heading">
-            <h2 id="cv-generator-title">🎯 CV personnalisé</h2>
+            <h2 id="cv-generator-title"><Target /> CV personnalisé</h2>
             <span className="optional-badge">Optionnel</span>
           </div>
           <p className="cv-generator-help">
@@ -354,14 +377,18 @@ function CandidaturesView() {
               disabled={!backendOk || cvPendingId === selected}
               aria-busy={cvPendingId === selected}
             >
-              {cvPendingId === selected ? 'Génération du CV…' : cvReady ? '🔁 Régénérer le CV personnalisé' : '🎯 Générer le CV personnalisé'}
+              {cvPendingId === selected
+                ? 'Génération du CV…'
+                : cvReady
+                  ? <><RotateCw /> Régénérer le CV personnalisé</>
+                  : <><Target /> Générer le CV personnalisé</>}
             </button>
             {cvReady && (
               <>
-                <a className="download-btn" href={cvFileUrl(selected, 'cv_final.pdf', cvStatus)} download>📄 Télécharger PDF</a>
-                <a className="download-btn" href={cvFileUrl(selected, 'cv_final.md', cvStatus)} download>⬇️ Télécharger MD</a>
-                <a className="download-btn" href={cvFileUrl(selected, 'cv_canva_copy.md', cvStatus)} download>📋 Télécharger Canva</a>
-                <a className="download-btn" href={cvFileUrl(selected, 'cv_final.html', cvStatus)} download>🌐 Télécharger HTML</a>
+                <a className="download-btn" href={cvFileUrl(selected, 'cv_final.pdf', cvStatus)} download><FileDown /> Télécharger PDF</a>
+                <a className="download-btn" href={cvFileUrl(selected, 'cv_final.md', cvStatus)} download><Download /> Télécharger MD</a>
+                <a className="download-btn" href={cvFileUrl(selected, 'cv_canva_copy.md', cvStatus)} download><Clipboard /> Télécharger Canva</a>
+                <a className="download-btn" href={cvFileUrl(selected, 'cv_final.html', cvStatus)} download><Globe /> Télécharger HTML</a>
                 <a className="download-btn" href={cvFileUrl(selected, 'cv_final.json', cvStatus)} download>JSON</a>
               </>
             )}
@@ -373,7 +400,7 @@ function CandidaturesView() {
               role={cvFeedback.type === 'error' ? 'alert' : 'status'}
               aria-live="polite"
             >
-              <span>{cvFeedback.type === 'success' ? '✅' : '⚠️'} {cvFeedback.text}</span>
+              <span>{cvFeedback.type === 'success' ? <CircleCheck /> : <TriangleAlert />} {cvFeedback.text}</span>
               {cvFeedback.type === 'success' && cvStatus?.files?.['cv_final.pdf'] && (
                 <a href={cvFileUrl(selected, 'cv_final.pdf', cvStatus)} download>
                   Télécharger le PDF
@@ -390,9 +417,9 @@ function CandidaturesView() {
           )}
           {cvReady && cvPreview && (
             <>
-              <h3>👀 Aperçu CV — version Canva</h3>
+              <h3><Eye /> Aperçu CV — version Canva</h3>
               <button className="copy-btn" onClick={() => copyLettre(cvPreview)}>
-                {copied ? '✅ Copié !' : '📋 Copier le CV Canva'}
+                {copied ? <><Check /> Copié !</> : <><Clipboard /> Copier le CV Canva</>}
               </button>
               <pre className="lettre-content">{cvPreview}</pre>
             </>
@@ -405,11 +432,11 @@ function CandidaturesView() {
   // Vue liste des candidatures
   return (
     <div className="candidatures-list">
-      <h1>📝 Candidatures préparées ({candidatures.length})</h1>
+      <h1><PenLine /> Candidatures préparées ({candidatures.length})</h1>
 
       {!backendOk && (
         <div className="backend-warning">
-          ⚠️ Serveur backend indisponible — les statuts ne peuvent pas être enregistrés.
+          <TriangleAlert /> Serveur backend indisponible — les statuts ne peuvent pas être enregistrés.
           Lance <code>cd server &amp;&amp; npm start</code> pour activer la persistance.
         </div>
       )}
@@ -432,7 +459,7 @@ function CandidaturesView() {
             <div className="card-top">
               <div className="card-badges">
                 {isApplied
-                  ? <span className="badge-applied-small">✅ Postulé</span>
+                  ? <span className="badge-applied-small"><CircleCheck /> Postulé</span>
                   : <span className="badge-postuler">PRÊTE</span>
                 }
               </div>
@@ -442,8 +469,8 @@ function CandidaturesView() {
               <p className="job-company">{c.entreprise}</p>
             </div>
             <div className="job-meta">
-              <span>📅 {c.date}</span>
-              {c.cv_recommande && <span>📄 {c.cv_recommande.split('\n')[0]?.substring(0, 50)}</span>}
+              <span><Calendar /> {c.date}</span>
+              {c.cv_recommande && <span><FileText /> {c.cv_recommande.split('\n')[0]?.substring(0, 50)}</span>}
               {isApplied && s.applied_at && (
                 <span className="meta-applied">
                   Postulé le {fmtDate(s.applied_at)} · relance le {fmtShort(s.follow_up_at)}
@@ -470,7 +497,7 @@ function CandidaturesView() {
                   onClick={e => handleApplied(e, c.id)}
                   disabled={isPending}
                 >
-                  {isPending ? 'En cours…' : '✅ J\'ai postulé'}
+                  {isPending ? 'En cours…' : <><CircleCheck /> J'ai postulé</>}
                 </button>
               ) : (
                 <span className="postule-offline">Backend hors ligne</span>
@@ -551,15 +578,15 @@ function PostuleesView() {
     const isDue = c?.follow_up_at && c.follow_up_at <= today
     return (
       <div className="candidature-detail">
-        <button className="tab back-btn" onClick={() => setSelected(null)}>← Retour</button>
-        <h1>✅ Candidature postulée</h1>
+        <button className="tab back-btn" onClick={() => setSelected(null)}><ArrowLeft /> Retour</button>
+        <h1><CircleCheck /> Candidature postulée</h1>
         <div className="candidature-meta">
           <span><strong>{c?.entreprise}</strong></span>
-          <span>📋 {c?.poste}</span>
-          <span>📅 Postulé le {fmtDate(c?.applied_at)}</span>
+          <span><Briefcase /> {c?.poste}</span>
+          <span><Calendar /> Postulé le {fmtDate(c?.applied_at)}</span>
           <span>
-            🔔 Relance le {fmtDate(c?.follow_up_at)}
-            {isDue && <span className="badge-relance-due"> ⏰ À relancer !</span>}
+            <Bell /> Relance le {fmtDate(c?.follow_up_at)}
+            {isDue && <span className="badge-relance-due"><AlarmClock /> À relancer !</span>}
           </span>
         </div>
         <div className="postule-zone">
@@ -574,18 +601,18 @@ function PostuleesView() {
         </div>
         {c?.lettre && (
           <>
-            <h2>📝 Lettre de motivation</h2>
+            <h2><FileText /> Lettre de motivation</h2>
             <button className="copy-btn" onClick={() => copyLettre(c.lettre)}>
-              {copied ? '✅ Copié !' : '📋 Copier la lettre'}
+              {copied ? <><Check /> Copié !</> : <><Clipboard /> Copier la lettre</>}
             </button>
             <pre className="lettre-content">{c.lettre}</pre>
           </>
         )}
         {c?.mail && (
           <>
-            <h2>📧 Email de candidature</h2>
+            <h2><Mail /> Email de candidature</h2>
             <button className="copy-btn" onClick={() => copyLettre(c.mail)}>
-              {copied ? '✅ Copié !' : '📋 Copier l\'email'}
+              {copied ? <><Check /> Copié !</> : <><Clipboard /> Copier l'email</>}
             </button>
             <pre className="lettre-content">{c.mail}</pre>
           </>
@@ -598,9 +625,9 @@ function PostuleesView() {
   if (!backendOk) {
     return (
       <div className="candidatures-list">
-        <h1>✅ Candidatures postulées</h1>
+        <h1><CircleCheck /> Candidatures postulées</h1>
         <div className="backend-warning">
-          ⚠️ Serveur backend indisponible — impossible de charger les candidatures postulées.
+          <TriangleAlert /> Serveur backend indisponible — impossible de charger les candidatures postulées.
           Lance <code>cd server &amp;&amp; npm start</code> pour activer la persistance.
         </div>
       </div>
@@ -609,7 +636,7 @@ function PostuleesView() {
 
   return (
     <div className="candidatures-list">
-      <h1>✅ Candidatures postulées ({postulees.length})</h1>
+      <h1><CircleCheck /> Candidatures postulées ({postulees.length})</h1>
 
       {apiError && <div className="backend-warning">{apiError}</div>}
 
@@ -617,7 +644,7 @@ function PostuleesView() {
         <div className="empty-state">
           <p>
             Aucune candidature postulée pour l'instant.<br />
-            Va dans 📝 Candidatures et clique "✅ J'ai postulé".
+            Va dans <PenLine /> Candidatures et clique « <CircleCheck /> J'ai postulé ».
           </p>
         </div>
       )}
@@ -634,8 +661,8 @@ function PostuleesView() {
             <div className="card-top">
               <div className="card-badges">
                 {isDue
-                  ? <span className="badge-relance-due">⏰ À relancer !</span>
-                  : <span className="badge-applied-small">✅ Postulé</span>
+                  ? <span className="badge-relance-due"><AlarmClock /> À relancer !</span>
+                  : <span className="badge-applied-small"><CircleCheck /> Postulé</span>
                 }
               </div>
             </div>
@@ -644,8 +671,8 @@ function PostuleesView() {
               <p className="job-company">{p.entreprise}</p>
             </div>
             <div className="job-meta">
-              <span>📅 Postulé le {fmtDate(p.applied_at)}</span>
-              <span>🔔 Relance le {fmtDate(p.follow_up_at)}</span>
+              <span><Calendar /> Postulé le {fmtDate(p.applied_at)}</span>
+              <span><Bell /> Relance le {fmtDate(p.follow_up_at)}</span>
             </div>
             <div className="postule-actions" onClick={e => e.stopPropagation()}>
               <button
@@ -679,7 +706,7 @@ function AgenciesView() {
   return (
     <div className="agencies-list">
       <header className="search-header">
-        <h1>🏢 Agences web ({agencies.length})</h1>
+        <h1><Building2 /> Agences web ({agencies.length})</h1>
         <div className="stats">
           <span>Prospection hors annonces</span>
           {payload?.generated_at && <span>Dernière maj : {payload.generated_at.replace('T', ' ')}</span>}
@@ -711,9 +738,9 @@ function AgenciesView() {
               <h3>{agency.name}</h3>
             </div>
             <div className="job-meta">
-              {agency.stack?.length > 0 && <span>🧰 {agency.stack.join(', ')}</span>}
-              {agency.emails?.length > 0 && <span>📧 {agency.emails[0]}</span>}
-              {agency.query && <span>🔎 {agency.query}</span>}
+              {agency.stack?.length > 0 && <span><Wrench /> {agency.stack.join(', ')}</span>}
+              {agency.emails?.length > 0 && <span><Mail /> {agency.emails[0]}</span>}
+              {agency.query && <span><Search /> {agency.query}</span>}
             </div>
             {agency.reasons?.length > 0 && (
               <div className="job-points">
@@ -724,12 +751,12 @@ function AgenciesView() {
             <div className="agency-actions">
               {agency.website && (
                 <a href={agency.website} target="_blank" rel="noopener noreferrer" className="job-link">
-                  🌐 Ouvrir le site
+                  <Globe /> Ouvrir le site
                 </a>
               )}
               {agency.contact_urls?.[0] && (
                 <a href={agency.contact_urls[0]} target="_blank" rel="noopener noreferrer" className="job-link">
-                  📬 Contact / recrutement
+                  <Send /> Contact / recrutement
                 </a>
               )}
             </div>
@@ -740,32 +767,33 @@ function AgenciesView() {
   )
 }
 
+// [composant d'icône lucide, libellé]
 const WEATHER_CODES = {
-  0: ['☀️', 'Ciel dégagé'],
-  1: ['🌤️', 'Principalement dégagé'],
-  2: ['⛅', 'Partiellement nuageux'],
-  3: ['☁️', 'Couvert'],
-  45: ['🌫️', 'Brouillard'],
-  48: ['🌫️', 'Brouillard givrant'],
-  51: ['🌦️', 'Bruine faible'],
-  53: ['🌦️', 'Bruine modérée'],
-  55: ['🌧️', 'Bruine dense'],
-  61: ['🌧️', 'Pluie faible'],
-  63: ['🌧️', 'Pluie modérée'],
-  65: ['🌧️', 'Forte pluie'],
-  71: ['🌨️', 'Neige faible'],
-  73: ['🌨️', 'Neige modérée'],
-  75: ['❄️', 'Forte neige'],
-  80: ['🌦️', 'Averses faibles'],
-  81: ['🌧️', 'Averses modérées'],
-  82: ['⛈️', 'Fortes averses'],
-  95: ['⛈️', 'Orage'],
-  96: ['⛈️', 'Orage avec grêle'],
-  99: ['⛈️', 'Orage violent avec grêle'],
+  0: [Sun, 'Ciel dégagé'],
+  1: [CloudSun, 'Principalement dégagé'],
+  2: [CloudSun, 'Partiellement nuageux'],
+  3: [Cloud, 'Couvert'],
+  45: [CloudFog, 'Brouillard'],
+  48: [CloudFog, 'Brouillard givrant'],
+  51: [CloudDrizzle, 'Bruine faible'],
+  53: [CloudDrizzle, 'Bruine modérée'],
+  55: [CloudRain, 'Bruine dense'],
+  61: [CloudRain, 'Pluie faible'],
+  63: [CloudRain, 'Pluie modérée'],
+  65: [CloudRain, 'Forte pluie'],
+  71: [CloudSnow, 'Neige faible'],
+  73: [CloudSnow, 'Neige modérée'],
+  75: [Snowflake, 'Forte neige'],
+  80: [CloudDrizzle, 'Averses faibles'],
+  81: [CloudRain, 'Averses modérées'],
+  82: [CloudLightning, 'Fortes averses'],
+  95: [CloudLightning, 'Orage'],
+  96: [CloudLightning, 'Orage avec grêle'],
+  99: [CloudLightning, 'Orage violent avec grêle'],
 }
 
 function weatherLabel(code) {
-  return WEATHER_CODES[code] || ['🌡️', 'Conditions inconnues']
+  return WEATHER_CODES[code] || [Thermometer, 'Conditions inconnues']
 }
 
 function formatHour(date) {
@@ -874,7 +902,7 @@ function WeatherView() {
   }, [])
 
   const current = weather?.current
-  const [currentIcon, currentText] = weatherLabel(current?.weather_code)
+  const [CurrentIcon, currentText] = weatherLabel(current?.weather_code)
   const nextHours = weather?.hourly?.time
     ?.map((time, index) => ({
       time,
@@ -888,7 +916,7 @@ function WeatherView() {
   return (
     <div className="weather-view">
       <header className="search-header">
-        <h1>🌦️ Météo en direct</h1>
+        <h1><CloudSun /> Météo en direct</h1>
         <div className="stats">
           <span>Sans backend</span>
           <span>Source : Open-Meteo</span>
@@ -906,7 +934,7 @@ function WeatherView() {
           {loading ? 'Chargement…' : 'Rechercher'}
         </button>
         <button type="button" className="copy-btn weather-location-btn" onClick={loadDeviceLocation} disabled={loading}>
-          📍 Ma position
+          <MapPin /> Ma position
         </button>
       </form>
 
@@ -923,7 +951,7 @@ function WeatherView() {
               <p className="weather-updated">Mis à jour : {formatHour(current.time)}</p>
             </div>
             <div className="weather-main">
-              <span className="weather-icon">{currentIcon}</span>
+              <span className="weather-icon"><CurrentIcon /></span>
               <div>
                 <div className="weather-temp">{Math.round(current.temperature_2m)}°C</div>
                 <div className="weather-desc">{currentText}</div>
@@ -940,11 +968,11 @@ function WeatherView() {
             <h2>Prochaines heures</h2>
             <div className="weather-hourly">
               {nextHours.map(hour => {
-                const [icon, text] = weatherLabel(hour.code)
+                const [Icon, text] = weatherLabel(hour.code)
                 return (
                   <article key={hour.time} className="weather-mini-card">
                     <span>{formatHour(hour.time)}</span>
-                    <strong>{icon} {Math.round(hour.temp)}°C</strong>
+                    <strong><Icon /> {Math.round(hour.temp)}°C</strong>
                     <small>{text}</small>
                     <small>Pluie {hour.rain ?? 0}%</small>
                   </article>
@@ -957,11 +985,11 @@ function WeatherView() {
             <h2>5 jours</h2>
             <div className="weather-daily">
               {weather.daily.time.map((day, index) => {
-                const [icon, text] = weatherLabel(weather.daily.weather_code[index])
+                const [Icon, text] = weatherLabel(weather.daily.weather_code[index])
                 return (
                   <article key={day} className="weather-day-card">
                     <span>{formatDay(day)}</span>
-                    <strong>{icon} {text}</strong>
+                    <strong><Icon /> {text}</strong>
                     <span>{Math.round(weather.daily.temperature_2m_min[index])}° / {Math.round(weather.daily.temperature_2m_max[index])}°</span>
                     <span>Pluie {weather.daily.precipitation_probability_max[index] ?? 0}%</span>
                   </article>
@@ -1036,12 +1064,12 @@ function useSearchRunner() {
 
 // Entrées de navigation. `primary: true` = visible dans la barre du bas sur mobile.
 const NAV_ITEMS = [
-  { id: 'recherche', icon: '🔍', label: 'Recherches', hint: 'Offres analysées', primary: true },
-  { id: 'manual-cv', icon: '✨', label: 'CV', hint: 'Depuis une annonce', primary: true },
-  { id: 'candidatures', icon: '📝', label: 'Lettres', hint: 'Lettres prêtes', primary: true },
-  { id: 'postulees', icon: '✅', label: 'Postulées', hint: 'Suivi des envois', primary: true },
-  { id: 'agencies', icon: '🏢', label: 'Agences', hint: 'Prospection hors annonces' },
-  { id: 'weather', icon: '🌦️', label: 'Météo', hint: 'Direct sans backend' },
+  { id: 'recherche', Icon: Search, label: 'Recherches', hint: 'Offres analysées', primary: true },
+  { id: 'manual-cv', Icon: Sparkles, label: 'CV', hint: 'Depuis une annonce', primary: true },
+  { id: 'candidatures', Icon: PenLine, label: 'Lettres', hint: 'Lettres prêtes', primary: true },
+  { id: 'postulees', Icon: CircleCheck, label: 'Postulées', hint: 'Suivi des envois', primary: true },
+  { id: 'agencies', Icon: Building2, label: 'Agences', hint: 'Prospection hors annonces' },
+  { id: 'weather', Icon: CloudSun, label: 'Météo', hint: 'Direct sans backend' },
 ]
 
 function App() {
@@ -1058,17 +1086,37 @@ function App() {
   const [prepareMessage, setPrepareMessage] = useState(null)
   const { status: searchStatus, launching: searchLaunching, launch: launchSearch } = useSearchRunner()
 
-  useEffect(() => {
-    fetch(`${DATA_URL}/index.json`)
+  const loadIndex = useCallback(() => {
+    return fetch(`${DATA_URL}/index.json?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => { if (!r.ok) throw new Error(r.status); return r.json() })
       .then(data => {
         setIndex(data)
         if (data.searches?.length > 0) {
-          setActiveSearch(data.searches[0].id)
+          setActiveSearch(current => current || data.searches[0].id)
         }
+        return data
       })
       .catch(() => console.log('Index not found yet'))
   }, [])
+
+  useEffect(() => {
+    loadIndex()
+    const onFocus = () => loadIndex()
+    window.addEventListener('focus', onFocus)
+    const timer = window.setInterval(loadIndex, 30000)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      window.clearInterval(timer)
+    }
+  }, [loadIndex])
+
+  useEffect(() => {
+    if (!searchStatus.running && searchStatus.lastResult) {
+      loadIndex().then(data => {
+        if (data?.searches?.length > 0) setActiveSearch(data.searches[0].id)
+      })
+    }
+  }, [searchStatus.running, searchStatus.lastResult, loadIndex])
 
   useEffect(() => {
     if (!activeSearch || !index) return
@@ -1094,12 +1142,12 @@ function App() {
       setLoading(true)
       setFetchError(false)
     })
-    fetch(`${DATA_URL}/${activeSearch}/${activeCategory}.json`)
+    fetch(`${DATA_URL}/${activeSearch}/${activeCategory}.json?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => { if (!r.ok) throw new Error(r.status); return r.json() })
       .then(data => setJobs(data.jobs || []))
       .catch(() => { setJobs([]); setFetchError(true) })
       .finally(() => setLoading(false))
-  }, [activeSearch, activeCategory, activeMode])
+  }, [activeSearch, activeCategory, activeMode, index])
 
   const handlePrepareCandidature = async (job) => {
     const key = job.url || `${job.title}-${job.company}`
@@ -1147,8 +1195,8 @@ function App() {
   )
 
   const launchLabel = searchStatus.running
-    ? '⏳ Recherche en cours…'
-    : searchLaunching ? 'Lancement…' : '🚀 Lancer une recherche'
+    ? <><LoaderCircle className="spin" /> Recherche en cours…</>
+    : searchLaunching ? 'Lancement…' : <><Rocket /> Lancer une recherche</>
 
   return (
     <div className="app-layout">
@@ -1163,8 +1211,8 @@ function App() {
         {!searchStatus.running && searchStatus.lastResult && (
           <p className="last-run">
             Dernier run : {searchStatus.lastResult.total} offres
-            {' · '}<span className="postuler">⭐ {searchStatus.lastResult.postuler}</span>
-            {' · '}<span className="peut-etre">🟡 {searchStatus.lastResult.peut_etre}</span>
+            {' · '}<span className="postuler"><Star /> {searchStatus.lastResult.postuler}</span>
+            {' · '}<span className="peut-etre"><CircleDot /> {searchStatus.lastResult.peut_etre}</span>
           </p>
         )}
         {searchStatus.error && (
@@ -1177,7 +1225,7 @@ function App() {
             className={`search-btn mode-btn ${item.id === 'manual-cv' ? 'manual-cv-nav' : ''} ${activeMode === item.id ? 'active' : ''}`}
             onClick={() => goTo(item.id)}
           >
-            <span className="search-date">{item.icon} {item.label}</span>
+            <span className="search-date"><item.Icon /> {item.label}</span>
             <span className="search-stats">{navHint(item)}</span>
           </button>
         ))}
@@ -1189,8 +1237,8 @@ function App() {
             className={`search-btn ${search.id === activeSearch && activeMode === 'recherche' ? 'active' : ''}`}
             onClick={() => openSearch(search.id)}
           >
-            <span className="search-date">{search.date}</span>
-            <span className="search-stats">{search.total} offres · ⭐{search.postuler}</span>
+            <span className="search-date">{fmtSession(search)}</span>
+            <span className="search-stats">{search.total} offres · <Star /> {search.postuler}</span>
           </button>
         ))}
       </aside>
@@ -1209,11 +1257,11 @@ function App() {
         ) : currentSearch ? (
           <>
             <header className="search-header">
-              <h1>Recherche du {currentSearch.date}</h1>
+              <h1>Recherche du {fmtSession(currentSearch)}</h1>
               <div className="stats">
                 <span>{currentSearch.total} offres</span>
-                <span className="postuler">⭐ {currentSearch.postuler} POSTULER</span>
-                <span className="peut-etre">🟡 {currentSearch.peut_etre} PEUT-ÊTRE</span>
+                <span className="postuler"><Star /> {currentSearch.postuler} POSTULER</span>
+                <span className="peut-etre"><CircleDot /> {currentSearch.peut_etre} PEUT-ÊTRE</span>
               </div>
               {prepareMessage && (
                 <div className={`prepare-message ${prepareMessage.type}`}>
@@ -1229,10 +1277,10 @@ function App() {
                   className={`tab ${cat === activeCategory ? 'active' : ''}`}
                   onClick={() => setActiveCategory(cat)}
                 >
-                  {cat === 'backend' ? '💻 Backend' :
-                   cat === 'frontend' ? '🎨 Frontend' :
-                   cat === 'webmaster_formateur' ? '🌐🎓 Web & Formateur' :
-                   '🚪 Nouvelles Portes'}
+                  {cat === 'backend' ? <><Server /> Backend</> :
+                   cat === 'frontend' ? <><Palette /> Frontend</> :
+                   cat === 'webmaster_formateur' ? <><GraduationCap /> Web &amp; Formateur</> :
+                   <><DoorOpen /> Nouvelles Portes</>}
                   <span className="badge">{info.count}</span>
                 </button>
               ))}
@@ -1244,7 +1292,7 @@ function App() {
               <div className="empty-state"><p>Données non disponibles.</p></div>
             ) : (
               <div className="job-list">
-                {jobs.map((job, i) => {
+                {jobs.map((job) => {
                   const ai = job.ai_analysis || {}
                   const reco = ai.recommandation || '?'
                   const recoClass = reco === 'POSTULER' ? 'postuler' :
@@ -1252,7 +1300,7 @@ function App() {
                   const prepareKey = job.url || `${job.title}-${job.company}`
                   const isPreparing = preparePendingKey === prepareKey
                   return (
-                    <article key={i} className={`job-card ${recoClass}`}>
+                    <article key={prepareKey} className={`job-card ${recoClass}`}>
                       <div className="card-top">
                         <div className="card-badges">
                           <span className={`badge-${recoClass}`}>{reco}</span>
@@ -1266,14 +1314,14 @@ function App() {
                         <p className="job-company">{job.company}</p>
                       </div>
                       <div className="job-meta">
-                        <span>📍 {job.location}</span>
-                        <span>📋 {job.contract_type || '?'}</span>
-                        {job.published_at && <span>📅 {job.published_at.slice(0, 10)}</span>}
+                        <span><MapPin /> {job.location}</span>
+                        <span><Briefcase /> {job.contract_type || '?'}</span>
+                        {job.published_at && <span><Calendar /> {job.published_at.slice(0, 10)}</span>}
                       </div>
                       {(ai.raison_breve || ai.points_forts?.length > 0 || ai.points_faibles?.length > 0) && (
                         <details className="job-analysis-details">
                           <summary>Analyse détaillée</summary>
-                          {ai.raison_breve && <p className="job-analysis">💬 {ai.raison_breve}</p>}
+                          {ai.raison_breve && <p className="job-analysis"><MessageCircle /> {ai.raison_breve}</p>}
                           {ai.points_forts?.length > 0 && (
                             <div className="job-points">
                               <strong>Points forts</strong>
@@ -1294,11 +1342,11 @@ function App() {
                           onClick={() => handlePrepareCandidature(job)}
                           disabled={isPreparing}
                         >
-                          {isPreparing ? 'Création de la lettre…' : '📝 Créer la lettre'}
+                          {isPreparing ? 'Création de la lettre…' : <><PenLine /> Créer la lettre</>}
                         </button>
                         {job.url && (
                           <a href={job.url} target="_blank" rel="noopener noreferrer" className="job-link">
-                            🔗 Voir l'offre
+                            <ExternalLink /> Voir l'offre
                           </a>
                         )}
                       </div>
@@ -1333,7 +1381,7 @@ function App() {
             className={`bottom-nav-item ${activeMode === item.id ? 'active' : ''}`}
             onClick={() => goTo(item.id)}
           >
-            <span className="nav-icon">{item.icon}</span>
+            <span className="nav-icon"><item.Icon /></span>
             {item.label}
             {item.id === 'postulees' && nbPostulees > 0 && (
               <span className="nav-count">{nbPostulees}</span>
@@ -1344,7 +1392,7 @@ function App() {
           className={`bottom-nav-item ${moreOpen ? 'active' : ''}`}
           onClick={() => setMoreOpen(o => !o)}
         >
-          <span className="nav-icon">⋯</span>
+          <span className="nav-icon"><Ellipsis /></span>
           Plus
         </button>
       </nav>
@@ -1364,7 +1412,7 @@ function App() {
                 className={`search-btn ${activeMode === item.id ? 'active' : ''}`}
                 onClick={() => goTo(item.id)}
               >
-                <span className="search-date">{item.icon} {item.label}</span>
+                <span className="search-date"><item.Icon /> {item.label}</span>
                 <span className="search-stats">{item.hint}</span>
               </button>
             ))}
@@ -1375,8 +1423,8 @@ function App() {
                 className={`search-btn ${search.id === activeSearch && activeMode === 'recherche' ? 'active' : ''}`}
                 onClick={() => openSearch(search.id)}
               >
-                <span className="search-date">{search.date}</span>
-                <span className="search-stats">{search.total} offres · ⭐{search.postuler}</span>
+                <span className="search-date">{fmtSession(search)}</span>
+                <span className="search-stats">{search.total} offres · <Star /> {search.postuler}</span>
               </button>
             )) : (
               <p className="search-stats">Aucune session pour l'instant.</p>

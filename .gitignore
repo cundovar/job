@@ -76,3 +76,6 @@ temp/
 # Backups
 *.bak
 *.backup
+
+# Outillage local Claude Code (settings.local.json, launch.json)
+.claude/

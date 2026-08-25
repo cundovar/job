@@ -3,42 +3,47 @@
    Aucune couleur en dur ne doit apparaître ailleurs.
    ============================================================ */
 :root {
-  /* Surfaces */
-  --bg: #0d0d16;
-  --surface: #171728;
-  --surface-raised: #1f1f36;
-  --surface-sunken: #0a0a12;
-  --border: #2b2b47;
-  --border-strong: #3d3d63;
+  /* Surfaces — thème clair, neutres légèrement bleutés */
+  --bg: #f4f5fa;
+  --surface: #ffffff;
+  --surface-raised: #eef0f7;
+  --surface-sunken: #f8f9fc;
+  --border: #e3e6f0;
+  --border-strong: #ccd1e0;
+
+  /* Voile et fond translucide (barre du bas, feuille « Plus ») */
+  --scrim: rgba(35, 39, 58, 0.38);
+  --surface-blur: rgba(255, 255, 255, 0.88);
 
   /* Texte */
-  --text: #b4b4c8;
-  --text-muted: #7c7c96;
-  --text-strong: #f2f2f8;
+  --text: #565b70;
+  --text-muted: #878da3;
+  --text-strong: #23273a;
 
-  /* Accent unique */
-  --accent: #6366f1;
-  --accent-hover: #7c7ff5;
-  --accent-soft: rgba(99, 102, 241, 0.14);
-  --accent-border: rgba(99, 102, 241, 0.45);
+  /* Accent unique — indigo adouci */
+  --accent: #5c62b8;
+  --accent-hover: #4b51a3;
+  --accent-soft: rgba(92, 98, 184, 0.1);
+  --accent-border: rgba(92, 98, 184, 0.32);
   --on-accent: #ffffff;
 
-  /* Sémantique — aligné sur les recommandations de l'analyse IA */
-  --ok: #4ade80;
-  --ok-bg: rgba(74, 222, 128, 0.1);
-  --ok-border: rgba(74, 222, 128, 0.32);
+  /* Sémantique — aligné sur les recommandations de l'analyse IA.
+     Le texte est assombri pour le contraste, les fonds restent des teintes douces. */
+  --ok: #33805c;
+  --ok-bg: rgba(74, 160, 116, 0.12);
+  --ok-border: rgba(74, 160, 116, 0.32);
 
-  --warn: #fbbf24;
-  --warn-bg: rgba(251, 191, 36, 0.1);
-  --warn-border: rgba(251, 191, 36, 0.32);
+  --warn: #96681f;
+  --warn-bg: rgba(212, 160, 62, 0.16);
+  --warn-border: rgba(212, 160, 62, 0.42);
 
-  --danger: #f87171;
-  --danger-bg: rgba(248, 113, 113, 0.1);
-  --danger-border: rgba(248, 113, 113, 0.3);
+  --danger: #a94a4a;
+  --danger-bg: rgba(200, 100, 100, 0.12);
+  --danger-border: rgba(200, 100, 100, 0.3);
 
-  --info: #38bdf8;
-  --info-bg: rgba(56, 189, 248, 0.1);
-  --info-border: rgba(56, 189, 248, 0.32);
+  --info: #31718f;
+  --info-bg: rgba(80, 150, 185, 0.12);
+  --info-border: rgba(80, 150, 185, 0.32);
 
   /* Espacement — échelle 4 / 8 / 12 / 16 / 24 / 32 */
   --sp-1: 0.25rem;
@@ -55,9 +60,9 @@
   --r-full: 999px;
 
   /* Ombres */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 14px 38px rgba(0, 0, 0, 0.45);
+  --shadow-sm: 0 1px 2px rgba(35, 39, 58, 0.06);
+  --shadow-md: 0 6px 18px rgba(35, 39, 58, 0.08);
+  --shadow-lg: 0 18px 44px rgba(35, 39, 58, 0.16);
 
   /* Typographie — fluide entre mobile et desktop */
   --ff: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -73,7 +78,7 @@
   --tap: 44px;
   --safe-b: env(safe-area-inset-bottom, 0px);
 
-  color-scheme: dark;
+  color-scheme: light;
   font-family: var(--ff);
   font-size: 16px;
   line-height: 1.5;

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Clipboard, FileDown, Globe, LoaderCircle, Sparkles, TriangleAlert } from 'lucide-react'
 
 const POLL_INTERVAL_MS = 2500
 const GENERATION_TIMEOUT_MS = 15 * 60 * 1000
@@ -178,7 +179,7 @@ export default function ManualCvView({ onOpenCandidatures }) {
     <div className="manual-cv-view">
       <header className="manual-cv-header">
         <span className="manual-cv-kicker">Candidature sur mesure</span>
-        <h1>✨ Créer un CV depuis n’importe quelle annonce</h1>
+        <h1><Sparkles /> Créer un CV depuis n’importe quelle annonce</h1>
         <p>
           Collez le texte complet. Les agents IA analysent le besoin, rédigent le CV,
           le font juger puis le révisent. Python contrôle ensuite la cohérence et produit le PDF.
@@ -252,7 +253,9 @@ export default function ManualCvView({ onOpenCandidatures }) {
 
         <div className="manual-cv-submit-row">
           <button className="prepare-btn manual-cv-submit" type="submit" disabled={isBusy}>
-            {isBusy ? '⏳ Création en cours…' : '✨ Analyser l’annonce et générer le CV'}
+            {isBusy
+              ? <><LoaderCircle className="spin" /> Création en cours…</>
+              : <><Sparkles /> Analyser l’annonce et générer le CV</>}
           </button>
           <span>La photo du profil est ajoutée automatiquement au PDF.</span>
         </div>
@@ -275,7 +278,7 @@ export default function ManualCvView({ onOpenCandidatures }) {
         </section>
       )}
 
-      {error && <div className="prepare-message error manual-cv-message" role="alert">⚠️ {error}</div>}
+      {error && <div className="prepare-message error manual-cv-message" role="alert"><TriangleAlert /> {error}</div>}
 
       {result && (
         <section className="manual-cv-result">
@@ -286,13 +289,13 @@ export default function ManualCvView({ onOpenCandidatures }) {
           </div>
           <div className="cv-actions">
             <a className="download-btn primary" href={downloadUrl(result.id, 'cv_final.pdf')} download>
-              📄 Télécharger le PDF
+              <FileDown /> Télécharger le PDF
             </a>
             <a className="download-btn" href={downloadUrl(result.id, 'cv_final.html')} download>
-              🌐 Télécharger HTML
+              <Globe /> Télécharger HTML
             </a>
             <a className="download-btn" href={downloadUrl(result.id, 'cv_canva_copy.md')} download>
-              📋 Version Canva
+              <Clipboard /> Version Canva
             </a>
             <a className="download-btn" href={downloadUrl(result.id, 'cv_final.json')} download>
               JSON

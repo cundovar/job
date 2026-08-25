@@ -1,4 +1,52 @@
 /* ============================================================
+   0. ICÔNES (lucide-react)
+   Les SVG se dimensionnent sur la taille de texte du parent,
+   pour rester proportionnés quel que soit le contexte.
+   ============================================================ */
+.lucide {
+  flex: 0 0 auto;
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.22em;
+  stroke-width: 2;
+}
+
+/* Conteneurs qui mêlent icône et texte : on aligne au centre plutôt
+   que de dépendre du `vertical-align` de la ligne de base. */
+.job-meta span,
+.candidature-meta span,
+.stats span,
+.last-run span,
+.search-date,
+.search-stats,
+.weather-mini-card strong,
+.weather-day-card strong,
+.weather-icon,
+.postule-offline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+/* Les titres restent en flux inline : sur un titre qui passe à la ligne,
+   l'icône doit rester sur la première ligne, pas se centrer sur le bloc. */
+h1 > .lucide,
+h2 > .lucide,
+h3 > .lucide {
+  margin-right: var(--sp-1);
+  color: var(--accent);
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================================
    1. PRIMITIVES
    ============================================================ */
 
@@ -62,7 +110,7 @@
 .btn--primary {
   border-color: var(--accent-border);
   background: var(--accent-soft);
-  color: #c7d2fe;
+  color: var(--accent-hover);
 }
 .prepare-btn:hover,
 .btn--primary:hover {
@@ -82,7 +130,7 @@
 .btn--success:hover,
 .download-btn.primary:hover {
   border-color: var(--ok);
-  background: rgba(74, 222, 128, 0.18);
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
 }
 
 .annuler-btn,
@@ -170,7 +218,7 @@
 .optional-badge {
   background: var(--accent-soft);
   border-color: var(--accent-border);
-  color: #a5b4fc;
+  color: var(--accent-hover);
 }
 
 /* --- Panneaux ----------------------------------------------- */
@@ -245,7 +293,7 @@
 .backend-warning code {
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.35);
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
   font-family: ui-monospace, Consolas, monospace;
   font-size: 0.95em;
 }
@@ -292,7 +340,7 @@
   height: calc(var(--bottom-nav-h) + var(--safe-b));
   padding-bottom: var(--safe-b);
   border-top: 1px solid var(--border);
-  background: rgba(23, 23, 40, 0.92);
+  background: var(--surface-blur);
   backdrop-filter: blur(12px);
 }
 
@@ -373,7 +421,7 @@
   inset: 0;
   z-index: 40;
   border: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--scrim);
 }
 
 .more-sheet {
@@ -446,7 +494,7 @@
   font-size: var(--fs-xs);
 }
 .search-btn.active .search-stats {
-  color: #a5b4fc;
+  color: var(--accent-hover);
 }
 .manual-cv-nav {
   border-color: var(--accent-border);
@@ -537,9 +585,12 @@
 }
 .tab .badge {
   padding: 0 0.4rem;
-  background: rgba(0, 0, 0, 0.25);
+  background: color-mix(in srgb, var(--text-strong) 8%, transparent);
   color: inherit;
   font-size: 0.6875rem;
+}
+.tab.active .badge {
+  background: rgba(255, 255, 255, 0.22);
 }
 
 /* ============================================================
@@ -603,10 +654,11 @@
 
 .job-card.clickable {
   cursor: pointer;
-  transition: border-color 0.15s, transform 0.1s;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
 }
 .job-card.clickable:hover {
-  border-color: var(--border-strong);
+  border-color: var(--accent-border);
+  box-shadow: var(--shadow-md);
 }
 .job-card.clickable:active {
   transform: scale(0.995);
@@ -764,6 +816,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: var(--sp-2);
   min-height: var(--tap);
   padding: 0 var(--sp-4);
   border: 1px solid var(--border-strong);
@@ -881,7 +934,7 @@
   background: linear-gradient(140deg, var(--accent-soft), transparent 70%), var(--surface);
 }
 .manual-cv-kicker {
-  color: #a5b4fc;
+  color: var(--accent-hover);
   font-size: var(--fs-xs);
   font-weight: 800;
   letter-spacing: 0.09em;
@@ -918,7 +971,7 @@
   margin-top: var(--sp-4);
 }
 .manual-cv-description strong {
-  color: #a5b4fc;
+  color: var(--accent-hover);
   font-size: var(--fs-xs);
 }
 .manual-cv-description textarea {
@@ -976,7 +1029,7 @@
 .manual-cv-progress li.done strong {
   background: var(--accent-soft);
   border-color: var(--accent);
-  color: #c7d2fe;
+  color: var(--accent-hover);
 }
 .manual-cv-progress li.active {
   color: var(--warn);
@@ -1042,6 +1095,7 @@
   gap: var(--sp-4);
 }
 .weather-icon {
+  color: var(--accent);
   font-size: 3.5rem;
   line-height: 1;
 }
@@ -1053,7 +1107,7 @@
 }
 .weather-desc {
   margin-top: var(--sp-1);
-  color: #c7d2fe;
+  color: var(--accent-hover);
   font-size: var(--fs-sm);
 }
 .weather-metrics {
@@ -1171,15 +1225,24 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
+  /* Action principale de la sidebar : bouton plein, pas une pastille pâle */
   .launch-search-btn {
     width: 100%;
     margin-bottom: var(--sp-3);
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .launch-search-btn:hover:not(:disabled) {
+    border-color: var(--accent-hover);
+    background: var(--accent-hover);
+    color: var(--on-accent);
   }
 
   .main-content {
     flex: 1;
     min-width: 0;
-    max-width: 880px;
+    max-width: 920px;
     padding: var(--sp-6);
   }
 
@@ -1211,12 +1274,51 @@
   }
 }
 
+/* ============================================================
+   11. GRAND ÉCRAN — deux colonnes de cartes
+   ============================================================ */
 @media (min-width: 1200px) {
   .main-content {
-    max-width: 1080px;
+    max-width: 1180px;
     padding: var(--sp-6) calc(var(--sp-6) * 1.5);
   }
-  .job-list {
+
+  /* Les cartes passent en deux colonnes. `.agencies-list` reste en colonne :
+     c'est un conteneur d'en-tête, c'est son `.job-list` interne qui devient la grille. */
+  .job-list,
+  .candidatures-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
     gap: var(--sp-4);
+  }
+
+  /* En-têtes, alertes et états vides occupent toute la largeur */
+  .candidatures-list > h1,
+  .candidatures-list > .backend-warning,
+  .candidatures-list > .empty-state,
+  .job-list > .empty-state {
+    grid-column: 1 / -1;
+  }
+
+  /* La lettre reste lisible : on plafonne la longueur de ligne */
+  .candidature-detail .lettre-content {
+    max-width: 78ch;
+  }
+
+  /* Hero météo : lieu sur toute la largeur, puis température | mesures */
+  .weather-current {
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    column-gap: var(--sp-6);
+  }
+  .weather-current > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 1600px) {
+  .main-content {
+    max-width: 1360px;
   }
 }

@@ -13,8 +13,8 @@ export default defineConfig({
         name: 'Job Search Automation',
         short_name: 'Jobs',
         description: 'Recherche d\'emploi automatisée : offres, candidatures et suivi.',
-        theme_color: '#0d0d16',
-        background_color: '#0d0d16',
+        theme_color: '#f4f5fa',
+        background_color: '#f4f5fa',
         display: 'standalone',
         start_url: '/',
         icons: [
@@ -24,11 +24,16 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Ne jamais mettre en cache /api : les statuts de candidature doivent rester frais.
-        navigateFallbackDenylist: [/^\/api/],
+        // Ne jamais mettre en cache /api ni /data : statuts et recherches doivent rester frais.
+        navigateFallbackDenylist: [/^\/api/, /^\/data/],
+        globIgnores: ['**/data/**'],
         runtimeCaching: [
           {
             urlPattern: /^\/api\//,
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: /^\/data\//,
             handler: 'NetworkOnly',
           },
         ],
