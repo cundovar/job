@@ -182,6 +182,42 @@ def test_experience_plan_is_reverse_chronological_after_selection():
     assert [item["experience_id"] for item in plan] == ["current", "qualiscope", "pole_s", "freelance"]
 
 
+def test_conditional_experience_is_selected_only_when_job_tags_match():
+    master = {
+        "experience_catalog": {
+            "web": {
+                "period": {"start": "2024", "end": None},
+                "tags": ["developpement web"],
+                "highlights": ["Développement d'applications web"],
+                "visibility": "default",
+            },
+            "logistics": {
+                "period": {"start": "2018", "end": "2021"},
+                "tags": ["logistique", "preparation de commandes"],
+                "highlights": ["Préparation de commandes"],
+                "visibility": "only_if_relevant",
+            },
+        },
+        "adaptation_rules": {"experience_priority_by_variant": {"webmaster": ["web"]}},
+        "layout_constraints": {"max_experiences": 4},
+    }
+    selected = {"id": "webmaster", "experience_refs": ["web"]}
+
+    web_plan = _experience_plan(
+        {"title": "Développeur web", "description": "Maintenance de sites"},
+        selected,
+        master,
+    )
+    logistics_plan = _experience_plan(
+        {"title": "Préparateur logistique", "description": "Préparation de commandes"},
+        selected,
+        master,
+    )
+
+    assert [item["experience_id"] for item in web_plan] == ["web"]
+    assert [item["experience_id"] for item in logistics_plan] == ["web", "logistics"]
+
+
 def test_cv_llm_client_prefers_subscription_cli_bridge(monkeypatch):
     response = {
         "ok": True,

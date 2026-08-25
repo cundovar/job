@@ -178,6 +178,9 @@ Lis toute l'annonce et la source de vérité du candidat. Produis un plan d'adap
 Tu peux sélectionner et hiérarchiser, jamais inventer. Les identifiants d'expériences et les
 indices de preuves doivent exister dans source_verite. Conserve les vrais intitulés de poste.
 Le titre cible et le positionnement peuvent être adaptés, sans augmenter le niveau réel.
+N'inclus une expérience que si elle apporte une preuve explicite à un critère de l'annonce.
+Il est préférable de retenir moins d'expériences plutôt que de remplir les emplacements avec
+des expériences faibles ou hors sujet. Respecte la visibilité conditionnelle de la source.
 
 JSON attendu:
 {
@@ -221,13 +224,11 @@ Tu es l'agent juge du CV. Sois sévère et factuel. Compare l'annonce, le CV, le
 source de vérité. Évalue: adéquation réelle, mots-clés ATS, absence d'invention, respect des
 intitulés, crédibilité du niveau, clarté, concision et contraintes Canva. Une compétence de
 l'annonce absente du profil est un écart, pas une compétence à ajouter. Signale précisément
-chaque problème et propose une correction fondée sur la source.
+chaque problème et propose une correction fondée sur la source. Ne produis aucun score libre:
+Python calcule les notes finales depuis les problèmes et preuves structurés.
 
 JSON attendu:
 {
-  "quality_score":0,
-  "ats_score":0,
-  "status":"validated|needs_minor_revision|needs_revision",
   "strengths":["..."],
   "problems":[{"severity":"high|medium|low","section":"...","problem":"...","suggested_fix":"..."}],
   "missing_keywords":["..."],
@@ -266,9 +267,17 @@ def _agent_call(
 
 
 def _truth_context(master: Dict[str, Any]) -> Dict[str, Any]:
+    person = master.get("person", {})
     return {
         "usage": master.get("usage", {}),
         "agent_contracts": master.get("agent_contracts", {}),
+        "person": {
+            "display_name": person.get("display_name"),
+            "location": person.get("location"),
+            "languages": person.get("languages", []),
+            "education": person.get("education", []),
+            "eligibility": person.get("eligibility", {}),
+        },
         "positioning": master.get("positioning", {}),
         "cv_variants": master.get("cv_variants", []),
         "skills_confidence": master.get("skills_confidence", {}),
@@ -370,6 +379,9 @@ def _sanitize_plan(
             continue
         exp_id = item.get("experience_id")
         if exp_id not in catalog or exp_id in seen:
+            continue
+        visibility = str(catalog[exp_id].get("visibility") or "default")
+        if visibility.startswith("only_") and exp_id not in rule_by_id:
             continue
         highlights = catalog[exp_id].get("highlights", [])
         indexes = []
@@ -661,14 +673,8 @@ def _merge_review(
         ],
         limit=20,
     )
-    quality_score = min(
-        _int_score(proposed.get("quality_score"), deterministic.get("quality_score", 0)),
-        _int_score(deterministic.get("quality_score"), 100),
-    )
-    ats_score = min(
-        _int_score(proposed.get("ats_score"), deterministic.get("ats_score", 0)),
-        _int_score(deterministic.get("ats_score"), 100),
-    )
+    quality_score = _int_score(deterministic.get("quality_score"), 0)
+    ats_score = _int_score(deterministic.get("ats_score"), 0)
     has_high = any(item.get("severity") == "high" for item in problems)
     if forbidden or has_high or quality_score < 75:
         status = "needs_revision"
