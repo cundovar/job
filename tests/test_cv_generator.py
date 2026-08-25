@@ -117,13 +117,16 @@ def test_prepare_custom_cv_generates_webmaster_files(tmp_path):
     ]
     assert (tmp_path / "cv" / "cv_final.json").exists()
     assert (tmp_path / "cv" / "cv_agent_trace.json").exists()
-    assert (tmp_path / "cv" / "cv_canva_copy.md").exists()
     assert (tmp_path / "cv" / "cv_final.html").exists()
     assert (tmp_path / "cv" / "cv_final.pdf").exists()
+    assert (tmp_path / "cv" / "cv_ats.html").exists()
+    assert (tmp_path / "cv" / "cv_ats.pdf").exists()
+    assert (tmp_path / "cv" / "cv_assessment.json").exists()
     assert (tmp_path / "cv" / "cv_final.pdf").read_bytes().startswith(b"%PDF")
-    canva = (tmp_path / "cv" / "cv_canva_copy.md").read_text(encoding="utf-8")
-    assert "WordPress" in canva
-    assert "Facundo Varas" in canva
+    assert (tmp_path / "cv" / "cv_ats.pdf").read_bytes().startswith(b"%PDF")
+    assert not (tmp_path / "cv" / "cv_draft.md").exists()
+    assert not (tmp_path / "cv" / "cv_final.md").exists()
+    assert not (tmp_path / "cv" / "cv_canva_copy.md").exists()
 
 
 def test_pdf_and_html_use_the_real_portrait(tmp_path):
