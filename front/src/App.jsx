@@ -428,15 +428,18 @@ function CandidaturesView() {
         const isPending = pendingId === c.id
 
         return (
-          <article key={c.id} className={`job-card postuler ${isApplied ? 'is-applied' : ''}`} onClick={() => setSelected(c.id)} style={{cursor:'pointer'}}>
-            <div className="job-header">
-              <h3>{c.entreprise} — {c.poste}</h3>
+          <article key={c.id} className={`job-card clickable postuler ${isApplied ? 'is-applied' : ''}`} onClick={() => setSelected(c.id)}>
+            <div className="card-top">
               <div className="card-badges">
                 {isApplied
                   ? <span className="badge-applied-small">✅ Postulé</span>
                   : <span className="badge-postuler">PRÊTE</span>
                 }
               </div>
+            </div>
+            <div className="job-header">
+              <h3>{c.poste}</h3>
+              <p className="job-company">{c.entreprise}</p>
             </div>
             <div className="job-meta">
               <span>📅 {c.date}</span>
@@ -447,7 +450,7 @@ function CandidaturesView() {
                 </span>
               )}
             </div>
-            <p className="job-analysis" style={{fontStyle:'normal'}}>
+            <p className="job-excerpt">
               {c.lettre?.substring(0, 200)}...
             </p>
 
@@ -625,18 +628,20 @@ function PostuleesView() {
         return (
           <article
             key={p.id}
-            className="job-card is-applied"
+            className="job-card clickable is-applied"
             onClick={() => setSelected(p.id)}
-            style={{ cursor: 'pointer' }}
           >
-            <div className="job-header">
-              <h3>{p.entreprise} — {p.poste}</h3>
+            <div className="card-top">
               <div className="card-badges">
                 {isDue
                   ? <span className="badge-relance-due">⏰ À relancer !</span>
                   : <span className="badge-applied-small">✅ Postulé</span>
                 }
               </div>
+            </div>
+            <div className="job-header">
+              <h3>{p.poste}</h3>
+              <p className="job-company">{p.entreprise}</p>
             </div>
             <div className="job-meta">
               <span>📅 Postulé le {fmtDate(p.applied_at)}</span>
@@ -696,14 +701,19 @@ function AgenciesView() {
       <div className="job-list">
         {agencies.map((agency, i) => (
           <article key={agency.website || i} className="job-card agency-card">
+            <div className="card-top">
+              <div className="card-badges">
+                <span className="badge-agency">Agence</span>
+              </div>
+              <span className="job-score"><strong>{agency.score ?? '?'}</strong>/100</span>
+            </div>
             <div className="job-header">
-              <h3>{i + 1}. {agency.name}</h3>
-              <span className="badge-agency">{agency.score ?? '?'} / 100</span>
+              <h3>{agency.name}</h3>
             </div>
             <div className="job-meta">
               {agency.stack?.length > 0 && <span>🧰 {agency.stack.join(', ')}</span>}
               {agency.emails?.length > 0 && <span>📧 {agency.emails[0]}</span>}
-              <span>🔎 {agency.query}</span>
+              {agency.query && <span>🔎 {agency.query}</span>}
             </div>
             {agency.reasons?.length > 0 && (
               <div className="job-points">
@@ -1024,12 +1034,23 @@ function useSearchRunner() {
   return { status, launching, launch }
 }
 
+// Entrées de navigation. `primary: true` = visible dans la barre du bas sur mobile.
+const NAV_ITEMS = [
+  { id: 'recherche', icon: '🔍', label: 'Recherches', hint: 'Offres analysées', primary: true },
+  { id: 'manual-cv', icon: '✨', label: 'CV', hint: 'Depuis une annonce', primary: true },
+  { id: 'candidatures', icon: '📝', label: 'Lettres', hint: 'Lettres prêtes', primary: true },
+  { id: 'postulees', icon: '✅', label: 'Postulées', hint: 'Suivi des envois', primary: true },
+  { id: 'agencies', icon: '🏢', label: 'Agences', hint: 'Prospection hors annonces' },
+  { id: 'weather', icon: '🌦️', label: 'Météo', hint: 'Direct sans backend' },
+]
+
 function App() {
   const [index, setIndex] = useState(null)
   const [activeSearch, setActiveSearch] = useState(null)
   const [activeCategory, setActiveCategory] = useState('backend')
   const [activeMode, setActiveMode] = useState('recherche')  // recherche | manual-cv | agencies | candidatures | postulees | weather
   const [nbPostulees, setNbPostulees] = useState(0)          // compteur sidebar dynamique
+  const [moreOpen, setMoreOpen] = useState(false)            // feuille « Plus » (mobile)
   const [jobs, setJobs] = useState([])
   const [loading, setLoading] = useState(false)
   const [fetchError, setFetchError] = useState(false)
@@ -1106,6 +1127,29 @@ function App() {
 
   const currentSearch = index?.searches?.find(s => s.id === activeSearch)
 
+  const goTo = (mode) => {
+    setActiveMode(mode)
+    setMoreOpen(false)
+  }
+
+  const openSearch = (id) => {
+    setActiveMode('recherche')
+    setActiveSearch(id)
+    setMoreOpen(false)
+  }
+
+  const navHint = (item) => (
+    item.id === 'postulees'
+      ? (nbPostulees > 0 ? `${nbPostulees} postulées` : 'Aucune')
+      : item.id === 'recherche'
+        ? `${index?.searches?.length || 0} sessions`
+        : item.hint
+  )
+
+  const launchLabel = searchStatus.running
+    ? '⏳ Recherche en cours…'
+    : searchLaunching ? 'Lancement…' : '🚀 Lancer une recherche'
+
   return (
     <div className="app-layout">
       <aside className="sidebar">
@@ -1113,69 +1157,37 @@ function App() {
           className="prepare-btn launch-search-btn"
           onClick={launchSearch}
           disabled={searchLaunching || searchStatus.running}
-          style={{ width: '100%', marginBottom: '.75rem' }}
         >
-          {searchStatus.running ? '⏳ Recherche en cours…' : searchLaunching ? 'Lancement…' : '🚀 Lancer une recherche'}
+          {launchLabel}
         </button>
         {!searchStatus.running && searchStatus.lastResult && (
-          <div className="search-stats" style={{ marginBottom: '1rem', lineHeight: 1.5 }}>
+          <p className="last-run">
             Dernier run : {searchStatus.lastResult.total} offres
-            {' · '}<span className="stats postuler">⭐ {searchStatus.lastResult.postuler}</span>
-            {' · '}<span className="stats peut-etre">🟡 {searchStatus.lastResult.peut_etre}</span>
-          </div>
+            {' · '}<span className="postuler">⭐ {searchStatus.lastResult.postuler}</span>
+            {' · '}<span className="peut-etre">🟡 {searchStatus.lastResult.peut_etre}</span>
+          </p>
         )}
         {searchStatus.error && (
-          <div className="backend-warning" style={{ marginBottom: '1rem', fontSize: '.75rem' }}>{searchStatus.error}</div>
+          <div className="backend-warning">{searchStatus.error}</div>
         )}
-        <h2>🔍 Recherches</h2>
-        <button
-          className={`search-btn mode-btn ${activeMode === 'recherche' ? 'active' : ''}`}
-          onClick={() => setActiveMode('recherche')}
-        >
-          <span className="search-date">🔍 Recherches</span>
-          <span className="search-stats">{index?.searches?.length || 0} sessions</span>
-        </button>
-        <button
-          className={`search-btn mode-btn manual-cv-nav ${activeMode === 'manual-cv' ? 'active' : ''}`}
-          onClick={() => setActiveMode('manual-cv')}
-        >
-          <span className="search-date">✨ CV depuis une annonce</span>
-          <span className="search-stats">Collez n’importe quelle offre</span>
-        </button>
-        <button
-          className={`search-btn mode-btn ${activeMode === 'agencies' ? 'active' : ''}`}
-          onClick={() => setActiveMode('agencies')}
-        >
-          <span className="search-date">🏢 Agences web</span>
-          <span className="search-stats">Prospection hors annonces</span>
-        </button>
-        <button
-          className={`search-btn mode-btn ${activeMode === 'candidatures' ? 'active' : ''}`}
-          onClick={() => setActiveMode('candidatures')}
-        >
-          <span className="search-date">📝 Candidatures</span>
-          <span className="search-stats">Lettres prêtes</span>
-        </button>
-        <button
-          className={`search-btn mode-btn ${activeMode === 'postulees' ? 'active' : ''}`}
-          onClick={() => setActiveMode('postulees')}
-        >
-          <span className="search-date">✅ Postulées</span>
-          <span className="search-stats">{nbPostulees > 0 ? `${nbPostulees} postulées` : 'Aucune'}</span>
-        </button>
-        <button
-          className={`search-btn mode-btn ${activeMode === 'weather' ? 'active' : ''}`}
-          onClick={() => setActiveMode('weather')}
-        >
-          <span className="search-date">🌦️ Météo</span>
-          <span className="search-stats">Direct sans backend</span>
-        </button>
-        <hr style={{borderColor:'#2a2a4a', margin:'1rem 0'}} />
+        <h2>Navigation</h2>
+        {NAV_ITEMS.map(item => (
+          <button
+            key={item.id}
+            className={`search-btn mode-btn ${item.id === 'manual-cv' ? 'manual-cv-nav' : ''} ${activeMode === item.id ? 'active' : ''}`}
+            onClick={() => goTo(item.id)}
+          >
+            <span className="search-date">{item.icon} {item.label}</span>
+            <span className="search-stats">{navHint(item)}</span>
+          </button>
+        ))}
+        <hr className="sidebar-divider" />
+        <h2>Sessions</h2>
         {index?.searches?.map(search => (
           <button
             key={search.id}
             className={`search-btn ${search.id === activeSearch && activeMode === 'recherche' ? 'active' : ''}`}
-            onClick={() => { setActiveMode('recherche'); setActiveSearch(search.id) }}
+            onClick={() => openSearch(search.id)}
           >
             <span className="search-date">{search.date}</span>
             <span className="search-stats">{search.total} offres · ⭐{search.postuler}</span>
@@ -1241,34 +1253,40 @@ function App() {
                   const isPreparing = preparePendingKey === prepareKey
                   return (
                     <article key={i} className={`job-card ${recoClass}`}>
+                      <div className="card-top">
+                        <div className="card-badges">
+                          <span className={`badge-${recoClass}`}>{reco}</span>
+                        </div>
+                        {job.score != null && (
+                          <span className="job-score"><strong>{job.score}</strong>/100</span>
+                        )}
+                      </div>
                       <div className="job-header">
-                        <h3>{i + 1}. {job.title}</h3>
-                        <span className={`badge-${recoClass}`}>{reco}</span>
+                        <h3>{job.title}</h3>
+                        <p className="job-company">{job.company}</p>
                       </div>
                       <div className="job-meta">
-                        <span>{job.company}</span>
                         <span>📍 {job.location}</span>
                         <span>📋 {job.contract_type || '?'}</span>
-                        <span>📊 {job.score}/100</span>
                         {job.published_at && <span>📅 {job.published_at.slice(0, 10)}</span>}
                       </div>
-                      {ai.raison_breve && <p className="job-analysis">💬 {ai.raison_breve}</p>}
-                      {ai.points_forts?.length > 0 && (
-                        <div className="job-points">
-                          <strong>✅ Points forts :</strong>
-                          <ul>{ai.points_forts.slice(0, 3).map((p, idx) => <li key={idx}>{p}</li>)}</ul>
-                        </div>
-                      )}
-                      {ai.points_faibles?.length > 0 && (
-                        <div className="job-points warning">
-                          <strong>⚠️ Vigilance :</strong>
-                          <ul>{ai.points_faibles.slice(0, 2).map((p, idx) => <li key={idx}>{p}</li>)}</ul>
-                        </div>
-                      )}
-                      {job.url && (
-                        <a href={job.url} target="_blank" rel="noopener noreferrer" className="job-link">
-                          🔗 Voir l'offre
-                        </a>
+                      {(ai.raison_breve || ai.points_forts?.length > 0 || ai.points_faibles?.length > 0) && (
+                        <details className="job-analysis-details">
+                          <summary>Analyse détaillée</summary>
+                          {ai.raison_breve && <p className="job-analysis">💬 {ai.raison_breve}</p>}
+                          {ai.points_forts?.length > 0 && (
+                            <div className="job-points">
+                              <strong>Points forts</strong>
+                              <ul>{ai.points_forts.slice(0, 3).map((p, idx) => <li key={idx}>{p}</li>)}</ul>
+                            </div>
+                          )}
+                          {ai.points_faibles?.length > 0 && (
+                            <div className="job-points warning">
+                              <strong>Vigilance</strong>
+                              <ul>{ai.points_faibles.slice(0, 2).map((p, idx) => <li key={idx}>{p}</li>)}</ul>
+                            </div>
+                          )}
+                        </details>
                       )}
                       <div className="prepare-actions">
                         <button
@@ -1276,8 +1294,13 @@ function App() {
                           onClick={() => handlePrepareCandidature(job)}
                           disabled={isPreparing}
                         >
-                          {isPreparing ? 'Création de la lettre…' : '📝 Créer la lettre de motivation'}
+                          {isPreparing ? 'Création de la lettre…' : '📝 Créer la lettre'}
                         </button>
+                        {job.url && (
+                          <a href={job.url} target="_blank" rel="noopener noreferrer" className="job-link">
+                            🔗 Voir l'offre
+                          </a>
+                        )}
                       </div>
                     </article>
                   )
@@ -1292,6 +1315,75 @@ function App() {
           </div>
         )}
       </main>
+
+      {/* Bouton flottant — équivalent mobile du bouton en tête de sidebar */}
+      <button
+        className="fab"
+        onClick={launchSearch}
+        disabled={searchLaunching || searchStatus.running}
+      >
+        {launchLabel}
+      </button>
+
+      {/* Barre de navigation basse — mobile uniquement */}
+      <nav className="bottom-nav">
+        {NAV_ITEMS.filter(item => item.primary).map(item => (
+          <button
+            key={item.id}
+            className={`bottom-nav-item ${activeMode === item.id ? 'active' : ''}`}
+            onClick={() => goTo(item.id)}
+          >
+            <span className="nav-icon">{item.icon}</span>
+            {item.label}
+            {item.id === 'postulees' && nbPostulees > 0 && (
+              <span className="nav-count">{nbPostulees}</span>
+            )}
+          </button>
+        ))}
+        <button
+          className={`bottom-nav-item ${moreOpen ? 'active' : ''}`}
+          onClick={() => setMoreOpen(o => !o)}
+        >
+          <span className="nav-icon">⋯</span>
+          Plus
+        </button>
+      </nav>
+
+      {moreOpen && (
+        <>
+          <button
+            className="more-backdrop"
+            aria-label="Fermer"
+            onClick={() => setMoreOpen(false)}
+          />
+          <div className="more-sheet">
+            <h2>Autres vues</h2>
+            {NAV_ITEMS.filter(item => !item.primary).map(item => (
+              <button
+                key={item.id}
+                className={`search-btn ${activeMode === item.id ? 'active' : ''}`}
+                onClick={() => goTo(item.id)}
+              >
+                <span className="search-date">{item.icon} {item.label}</span>
+                <span className="search-stats">{item.hint}</span>
+              </button>
+            ))}
+            <h2>Sessions de recherche</h2>
+            {index?.searches?.length > 0 ? index.searches.map(search => (
+              <button
+                key={search.id}
+                className={`search-btn ${search.id === activeSearch && activeMode === 'recherche' ? 'active' : ''}`}
+                onClick={() => openSearch(search.id)}
+              >
+                <span className="search-date">{search.date}</span>
+                <span className="search-stats">{search.total} offres · ⭐{search.postuler}</span>
+              </button>
+            )) : (
+              <p className="search-stats">Aucune session pour l'instant.</p>
+            )}
+          </div>
+        </>
+      )}
     </div>
   )
 }

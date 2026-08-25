@@ -13,8 +13,8 @@ export default defineConfig({
         name: 'Job Search Automation',
         short_name: 'Jobs',
         description: 'Recherche d\'emploi automatisée : offres, candidatures et suivi.',
-        theme_color: '#0f0f1a',
-        background_color: '#0f0f1a',
+        theme_color: '#0d0d16',
+        background_color: '#0d0d16',
         display: 'standalone',
         start_url: '/',
         icons: [
