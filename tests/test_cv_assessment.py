@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -8,6 +9,10 @@ from cv_generator.cv_assessment import (
     load_assessment_config,
     validate_assessment_config,
 )
+from cv_generator.job_analyzer import _experience_plan
+
+
+FIXTURES = Path(__file__).parent / "fixtures" / "cv_assessment_cases.json"
 
 
 def _master():
@@ -124,3 +129,70 @@ def test_unknown_skill_blocks_truthfulness():
 
     assert assessment["truthfulness"]["status"] == "fail"
     assert assessment["overall_status"] == "blocked"
+
+
+def test_assessment_is_stable_for_identical_evidence():
+    args = (
+        {"title": "Développeur PHP Symfony", "description": "PHP Symfony"},
+        _master(),
+        _plan(),
+        _cv(),
+    )
+    parsing = {"status": "pass", "missing": [], "reason": "PDF lisible"}
+
+    first = build_cv_assessment(*args, parseability=parsing)
+    second = build_cv_assessment(*args, parseability=parsing)
+
+    assert first == second
+
+
+@pytest.mark.parametrize("case", json.loads(FIXTURES.read_text(encoding="utf-8")), ids=lambda item: item["id"])
+def test_conditional_experience_golden_cases(case):
+    catalog = {
+        "web": {
+            "period": {"start": "2024", "end": None},
+            "tags": ["wordpress", "symfony", "developpement web"],
+            "highlights": ["Développement et maintenance web"],
+            "visibility": "default",
+        },
+        "training": {
+            "period": {"start": "2022", "end": None},
+            "tags": ["formateur web", "formation", "html", "javascript"],
+            "highlights": ["Formation HTML CSS JavaScript"],
+            "visibility": "only_if_relevant",
+        },
+        "accueil": {
+            "period": {"start": "2024-07", "end": "2025-12"},
+            "tags": ["gardien", "hote d'accueil", "accueil", "gestion de site", "locataires"],
+            "highlights": ["Accueil des locataires et gestion de site"],
+            "visibility": "only_if_relevant",
+        },
+        "logistics": {
+            "period": {"start": "2018", "end": "2021"},
+            "tags": ["logistique", "preparation de commandes", "conditionnement"],
+            "highlights": ["Préparation de commandes et conditionnement"],
+            "visibility": "only_if_relevant",
+        },
+        "animation": {
+            "period": {"start": "2013", "end": "2018"},
+            "tags": ["animateur periscolaire", "centre de loisirs", "enfants", "projets pedagogiques"],
+            "highlights": ["Animation en centre de loisirs"],
+            "visibility": "only_if_relevant",
+        },
+    }
+    master = {
+        "experience_catalog": catalog,
+        "adaptation_rules": {"experience_priority_by_variant": {"webmaster": ["web"]}},
+        "layout_constraints": {"max_experiences": 5},
+    }
+    selected = {"id": "webmaster", "experience_refs": ["web"]}
+
+    plan = _experience_plan(
+        {"title": case["title"], "description": case["description"]},
+        selected,
+        master,
+    )
+    selected_ids = {item["experience_id"] for item in plan}
+
+    assert set(case["expected_conditional"]).issubset(selected_ids)
+    assert set(case["forbidden_conditional"]).isdisjoint(selected_ids)

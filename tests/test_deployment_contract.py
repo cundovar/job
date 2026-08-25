@@ -22,3 +22,13 @@ def test_job_cards_use_a_stable_react_key():
 
     assert "<article key={prepareKey}" in app_source
     assert "<article key={i}" not in app_source
+
+
+def test_runtime_installs_pdf_parser_and_assessment_config():
+    requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
+    dockerfile = (PROJECT_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    config = PROJECT_ROOT / "config" / "cv_assessment.json"
+
+    assert "pypdf==" in requirements
+    assert "COPY config/ ./config/" in dockerfile
+    assert config.exists()

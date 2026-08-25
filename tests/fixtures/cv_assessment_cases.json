@@ -1,0 +1,58 @@
+[
+  {
+    "id": "webmaster",
+    "title": "Webmaster WordPress",
+    "description": "Administration WordPress, maintenance de sites et gestion de contenu",
+    "expected_conditional": [],
+    "forbidden_conditional": ["accueil", "logistics", "animation"]
+  },
+  {
+    "id": "formateur",
+    "title": "Formateur web",
+    "description": "Formation HTML CSS JavaScript et accompagnement pédagogique",
+    "expected_conditional": ["training"],
+    "forbidden_conditional": ["accueil", "logistics"]
+  },
+  {
+    "id": "symfony",
+    "title": "Développeur Symfony",
+    "description": "Développement PHP Symfony et API REST",
+    "expected_conditional": [],
+    "forbidden_conditional": ["accueil", "logistics", "animation"]
+  },
+  {
+    "id": "accueil",
+    "title": "Gardien hôte d'accueil",
+    "description": "Accueil des locataires, gestion de site et coordination de la maintenance",
+    "expected_conditional": ["accueil"],
+    "forbidden_conditional": ["logistics", "animation"]
+  },
+  {
+    "id": "logistique",
+    "title": "Préparateur logistique",
+    "description": "Préparation de commandes, conditionnement et réception fournisseurs",
+    "expected_conditional": ["logistics"],
+    "forbidden_conditional": ["accueil", "animation"]
+  },
+  {
+    "id": "animation",
+    "title": "Animateur périscolaire",
+    "description": "Centre de loisirs, enfants et projets pédagogiques",
+    "expected_conditional": ["animation"],
+    "forbidden_conditional": ["accueil", "logistics"]
+  },
+  {
+    "id": "hors_cible",
+    "title": "Comptable senior",
+    "description": "Clôture comptable, consolidation et normes IFRS",
+    "expected_conditional": [],
+    "forbidden_conditional": ["accueil", "logistics", "animation", "training"]
+  },
+  {
+    "id": "insuffisant",
+    "title": "Poste",
+    "description": "Description insuffisante",
+    "expected_conditional": [],
+    "forbidden_conditional": ["accueil", "logistics", "animation", "training"]
+  }
+]

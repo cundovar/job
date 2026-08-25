@@ -237,6 +237,17 @@ python3 -m hermes_commands.job_relance
 python3 -m hermes_commands.job_status
 ```
 
+### CV personnalisé et version ATS
+
+La génération produit deux présentations du même contenu vérifié :
+
+- `cv_ats.pdf`, sobre et mono-colonne, pour les formulaires de candidature ;
+- `cv_final.pdf`, avec la mise en page design, pour un envoi direct ou une lecture humaine.
+
+Elle expose séparément l'éligibilité, le parsing, la correspondance, la qualité humaine et la véracité. Les scores sont des indicateurs internes et ne reproduisent pas une note secrète d'un ATS. Voir [docs/CV_ASSESSMENT.md](docs/CV_ASSESSMENT.md).
+
+Les sorties Markdown et Canva ne sont plus générées.
+
 ### Agents IA par abonnement sur Netcup
 
 Sur le déploiement Coolify, l'analyse des annonces et la création des CV utilisent

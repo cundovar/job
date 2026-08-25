@@ -43,7 +43,7 @@ cvs:
 
   - id: webmaster
     name: "Webmaster / Administrateur de Sites Web"
-    path: "/home/cundo/Bureau/perso/EMPLOI/CV/webmaster (1).pdf"
+    path: "/home/cundo/Bureau/perso/EMPLOI/CV/webmaster.pdf"
     alternatives: []
     best_for:
       - webmaster
