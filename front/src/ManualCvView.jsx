@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Clipboard, FileDown, Globe, LoaderCircle, Sparkles, TriangleAlert } from 'lucide-react'
+import { FileDown, Globe, LoaderCircle, Sparkles, TriangleAlert } from 'lucide-react'
+import CvAssessment from './CvAssessment'
 
 const POLL_INTERVAL_MS = 2500
 const GENERATION_TIMEOUT_MS = 15 * 60 * 1000
@@ -29,8 +30,9 @@ async function readJson(response) {
 function generatedCvIsComplete(status) {
   return Boolean(
     status?.files?.['cv_final.pdf'] &&
+    status?.files?.['cv_ats.pdf'] &&
     status?.files?.['cv_agent_trace.json'] &&
-    status?.files?.['cv_canva_copy.md']
+    status?.files?.['cv_assessment.json']
   )
 }
 
@@ -287,15 +289,16 @@ export default function ManualCvView({ onOpenCandidatures }) {
             <h2>{result.candidature?.poste || form.title || 'CV personnalisé'}</h2>
             <p>{result.candidature?.entreprise || form.company || 'Annonce personnalisée'}</p>
           </div>
+          <CvAssessment assessment={result.status?.assessment} legacyReview={result.status?.review} />
           <div className="cv-actions">
             <a className="download-btn primary" href={downloadUrl(result.id, 'cv_final.pdf')} download>
-              <FileDown /> Télécharger le PDF
+              <FileDown /> PDF design
+            </a>
+            <a className="download-btn" href={downloadUrl(result.id, 'cv_ats.pdf')} download>
+              <FileDown /> PDF ATS
             </a>
             <a className="download-btn" href={downloadUrl(result.id, 'cv_final.html')} download>
               <Globe /> Télécharger HTML
-            </a>
-            <a className="download-btn" href={downloadUrl(result.id, 'cv_canva_copy.md')} download>
-              <Clipboard /> Version Canva
             </a>
             <a className="download-btn" href={downloadUrl(result.id, 'cv_final.json')} download>
               JSON

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   AlarmClock, ArrowLeft, Bell, Briefcase, Building2, Calendar, Check, CircleCheck, CircleDot,
   Clipboard, Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow,
-  CloudSun, DoorOpen, Download, Ellipsis, ExternalLink, Eye, FileDown, FileText, Globe,
+  CloudSun, DoorOpen, Ellipsis, ExternalLink, FileDown, FileText, Globe,
   GraduationCap, LoaderCircle, MapPin, Mail, MessageCircle, Palette, PenLine,
   Rocket, RotateCw,
   Search, Send, Server, Snowflake, Sparkles, Star, Sun, Target, Thermometer,
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import './App.css'
 import ManualCvView from './ManualCvView'
+import CvAssessment from './CvAssessment'
 
 const DATA_URL = '/data'
 
@@ -43,8 +44,7 @@ function fmtSession(search) {
 
 function hasGeneratedCv(status) {
   return Boolean(
-    status?.files?.['cv_final.md'] ||
-    status?.files?.['cv_canva_copy.md'] ||
+    status?.files?.['cv_final.pdf'] ||
     status?.files?.['cv_final.html']
   )
 }
@@ -70,7 +70,6 @@ function CandidaturesView() {
   const [pendingId, setPendingId] = useState(null)  // id en cours de traitement (spinner)
   const [apiError, setApiError] = useState(null)    // message d'erreur discret
   const [cvStatuses, setCvStatuses] = useState({})  // { [id]: { exists, files, review } }
-  const [cvPreviews, setCvPreviews] = useState({})   // { [id]: contenu cv_canva_copy.md }
   const [cvPendingId, setCvPendingId] = useState(null)
   const [cvFeedback, setCvFeedback] = useState(null) // { id, type, text }
   const cvPollControllerRef = useRef(null)
@@ -140,29 +139,6 @@ function CandidaturesView() {
     }
   }
 
-  const refreshCvPreview = async (id) => {
-    if (!id) return null
-    try {
-      if (backendOk) {
-        const res = await fetch(`/api/applications/${id}/cv/download/cv_canva_copy.md`)
-        const text = await res.text()
-        if (res.ok && !isProbablyHtml(res, text)) {
-          setCvPreviews(prev => ({ ...prev, [id]: text }))
-          return text
-        }
-      }
-
-      // Fallback production statique.
-      const staticRes = await fetch(`${DATA_URL}/cv/${id}/cv_canva_copy.md`)
-      if (!staticRes.ok) throw new Error(`HTTP ${staticRes.status}`)
-      const text = await staticRes.text()
-      setCvPreviews(prev => ({ ...prev, [id]: text }))
-      return text
-    } catch {
-      return null
-    }
-  }
-
   const waitForCvGeneration = async (id, signal) => {
     const deadline = Date.now() + 15 * 60 * 1000
     let consecutiveFetchErrors = 0
@@ -201,7 +177,7 @@ function CandidaturesView() {
         }
         consecutiveFetchErrors += 1
         if (consecutiveFetchErrors >= 5) {
-          throw new Error('Le serveur est momentanément injoignable pendant la génération.')
+          throw new Error('Le serveur est momentanément injoignable pendant la génération.', { cause: err })
         }
       }
     }
@@ -232,8 +208,6 @@ function CandidaturesView() {
       if (!hasGeneratedCv(finalStatus) || !finalStatus?.files?.['cv_final.pdf']) {
         throw new Error('Les fichiers attendus du CV sont absents.')
       }
-      const preview = await refreshCvPreview(id)
-      if (!preview) throw new Error("Le CV a été créé mais son aperçu n'est pas disponible.")
       setCvFeedback({
         id,
         type: 'success',
@@ -256,9 +230,10 @@ function CandidaturesView() {
 
   useEffect(() => {
     if (!selected) return
-    refreshCvStatus(selected).then(status => {
-      if (hasGeneratedCv(status)) refreshCvPreview(selected)
-    })
+    const timeout = setTimeout(() => refreshCvStatus(selected), 0)
+    return () => clearTimeout(timeout)
+    // refreshCvStatus dépend déjà de backendOk, volontairement listé ci-dessous.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, backendOk])
 
   // Marque une candidature comme postulée
@@ -302,7 +277,6 @@ function CandidaturesView() {
     const cvStatus = cvStatuses[selected]
     const cvReady = hasGeneratedCv(cvStatus)
     const cvReview = cvStatus?.review
-    const cvPreview = cvPreviews[selected]
     return (
       <div className="candidature-detail">
         <button className="tab back-btn" onClick={() => setSelected(null)}><ArrowLeft /> Retour</button>
@@ -385,9 +359,8 @@ function CandidaturesView() {
             </button>
             {cvReady && (
               <>
-                <a className="download-btn" href={cvFileUrl(selected, 'cv_final.pdf', cvStatus)} download><FileDown /> Télécharger PDF</a>
-                <a className="download-btn" href={cvFileUrl(selected, 'cv_final.md', cvStatus)} download><Download /> Télécharger MD</a>
-                <a className="download-btn" href={cvFileUrl(selected, 'cv_canva_copy.md', cvStatus)} download><Clipboard /> Télécharger Canva</a>
+                <a className="download-btn" href={cvFileUrl(selected, 'cv_final.pdf', cvStatus)} download><FileDown /> PDF design</a>
+                {cvStatus?.files?.['cv_ats.pdf'] && <a className="download-btn" href={cvFileUrl(selected, 'cv_ats.pdf', cvStatus)} download><FileDown /> PDF ATS</a>}
                 <a className="download-btn" href={cvFileUrl(selected, 'cv_final.html', cvStatus)} download><Globe /> Télécharger HTML</a>
                 <a className="download-btn" href={cvFileUrl(selected, 'cv_final.json', cvStatus)} download>JSON</a>
               </>
@@ -408,22 +381,7 @@ function CandidaturesView() {
               )}
             </div>
           )}
-          {cvReview && (
-            <div className="cv-review">
-              <span>Qualité : <strong>{cvReview.quality_score}/100</strong></span>
-              <span>ATS : <strong>{cvReview.ats_score}/100</strong></span>
-              <span>Statut : <strong>{cvReview.status}</strong></span>
-            </div>
-          )}
-          {cvReady && cvPreview && (
-            <>
-              <h3><Eye /> Aperçu CV — version Canva</h3>
-              <button className="copy-btn" onClick={() => copyLettre(cvPreview)}>
-                {copied ? <><Check /> Copié !</> : <><Clipboard /> Copier le CV Canva</>}
-              </button>
-              <pre className="lettre-content">{cvPreview}</pre>
-            </>
-          )}
+          {cvReady && <CvAssessment assessment={cvStatus?.assessment} legacyReview={cvReview} />}
         </section>
       </div>
     )
@@ -898,7 +856,10 @@ function WeatherView() {
   }
 
   useEffect(() => {
-    loadWeather('Paris')
+    const timeout = setTimeout(() => loadWeather('Paris'), 0)
+    return () => clearTimeout(timeout)
+    // Chargement initial unique de la météo par défaut.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const current = weather?.current
