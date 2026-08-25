@@ -24,7 +24,7 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
-COPY main.py pipeline.py ./
+COPY main.py pipeline.py front_export.py ./
 COPY assets/ ./assets/
 COPY agents/ ./agents/
 COPY analyzers/ ./analyzers/

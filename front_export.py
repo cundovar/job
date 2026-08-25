@@ -10,7 +10,7 @@ lit jamais ce fichier : il ne connait que front/public/data/*.
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -20,17 +20,17 @@ FRONT_DATA_DIR = Path(__file__).resolve().parent / "front" / "public" / "data"
 # skills.backend / skills.frontend / core_strengths). Le front affiche tout ce
 # qui ne matche aucune de ces trois categories sous "Nouvelles Portes".
 CATEGORY_KEYWORDS = {
-    "backend": [
-        "php", "symfony", "node.js", "node ", "mysql", "mariadb",
-        "backend", "back-end", "back end", "développeur api", "developpeur api",
+    "webmaster_formateur": [
+        "webmaster", "wordpress", "woocommerce", "formateur", "formatrice",
+        "ingénieur pédagogique", "ingenieur pedagogique", "pédagogie", "pedagogie",
     ],
     "frontend": [
         "react", "vue.js", "vuejs", "nuxt", "next.js", "javascript", "typescript",
         "frontend", "front-end", "front end",
     ],
-    "webmaster_formateur": [
-        "webmaster", "wordpress", "woocommerce", "formateur", "formatrice",
-        "formation", "pédagogie", "pedagogie", "e-commerce",
+    "backend": [
+        "php", "symfony", "node.js", "node ", "mysql", "mariadb",
+        "backend", "back-end", "back end", "développeur api", "developpeur api",
     ],
 }
 CATCHALL_CATEGORY = "nouvelles_portes"
@@ -38,7 +38,15 @@ CATEGORY_ORDER = (*CATEGORY_KEYWORDS, CATCHALL_CATEGORY)
 
 
 def _categorize(job: Dict[str, Any]) -> str:
+    # Le titre est beaucoup plus fiable que la description pour l'onglet front.
+    # Exemple : une offre WordPress/PHP doit rester dans Web & Formateur, même si
+    # la description contient aussi PHP ; une offre Symfony "e-commerce" ne doit
+    # pas basculer webmaster juste à cause du contexte métier.
+    title = str(job.get("title", "")).lower()
     text = f"{job.get('title', '')} {job.get('description', '')}".lower()
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        if any(keyword in title for keyword in keywords):
+            return category
     for category, keywords in CATEGORY_KEYWORDS.items():
         if any(keyword in text for keyword in keywords):
             return category
@@ -151,6 +159,7 @@ def export_front_data(jobs: List[Dict[str, Any]], search_id: str | None = None) 
     entry = {
         "id": search_id,
         "date": search_id,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "total": len(all_jobs),
         "postuler": postuler,
         "peut_etre": peut_etre,
