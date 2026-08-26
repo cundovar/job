@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -9,6 +10,8 @@ from applications import ApplicationTracker, build_application_package
 from pipeline import load_criteria
 
 PROJECT = Path(__file__).resolve().parents[1]
+HERMES_HOME = Path(os.getenv("HERMES_HOME", "/data/hermes"))
+INDEX_SCRIPT = HERMES_HOME / "scripts" / "job_search_json_candidatures.py"
 
 
 def main() -> None:
@@ -30,7 +33,7 @@ def main() -> None:
     record = ApplicationTracker("data/applications_tracker.json").mark_ready(job, package)
 
     index_result = subprocess.run(
-        ["python3", "/home/cundo/.hermes/scripts/job_search_json_candidatures.py"],
+        ["python3", str(INDEX_SCRIPT)],
         cwd=PROJECT,
         text=True,
         capture_output=True,
@@ -46,8 +49,8 @@ def main() -> None:
         "directory": package.directory,
         "motivation_letter_path": package.motivation_letter_path,
         "application_email_path": package.application_email_path,
-        "cv_path": package.recommended_cv.cv_path,
         "cv_name": package.recommended_cv.cv_name,
+        "cv_variant": package.recommended_cv.cv_id,
         "record": record,
         "index": json.loads(index_result.stdout.strip() or "{}"),
     }

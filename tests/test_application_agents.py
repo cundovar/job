@@ -1,8 +1,18 @@
-from agents import generate_application_email, generate_motivation_letter
+from types import SimpleNamespace
+
+import pytest
+
+from agents import (
+    MotivationLetterError,
+    generate_application_email,
+    generate_motivation_letter,
+)
+from agents import motivation_letter_agent
 from applications import recommend_cv
 
 
-def test_generate_motivation_letter_uses_job_cv_and_profile():
+def test_generate_motivation_letter_delegates_to_hermes(monkeypatch):
+    """La redaction est deleguee a Hermes : on verifie l'appel, pas le texte."""
     job = {
         "title": "Webmaster institutionnel WordPress",
         "company": "Ville Test",
@@ -11,21 +21,36 @@ def test_generate_motivation_letter_uses_job_cv_and_profile():
         "ai_analysis": {"angle_motivation": "Insister sur CMS, qualite web et support utilisateurs."},
     }
     recommendation = recommend_cv(job)
-    profile = {
-        "name": "Facundo Varas (Cundo)",
-        "core_strengths": ["Développeur full-stack freelance PHP/Symfony", "Formateur développement web"],
-        "experiences": [
-            "Le Pôle S (2022-2025) : Encadrant Technique Développeur — formateur web full-stack",
-            "DevDoc (varascundo.com) : plateforme pédagogique Vue.js, 15+ technos",
-        ],
-    }
+    captured = {}
 
-    letter = generate_motivation_letter(job, recommendation, profile)
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return SimpleNamespace(returncode=0, stdout="# Lettre\n\nMadame, Monsieur,", stderr="")
 
-    assert "Webmaster institutionnel WordPress" in letter
-    assert "Ville Test" in letter
-    assert "Pôle S" in letter  # experience should appear
-    assert recommendation.cv_name in letter
+    monkeypatch.setattr(motivation_letter_agent.subprocess, "run", fake_run)
+    monkeypatch.setattr(motivation_letter_agent, "_hermes_binary", lambda: "/usr/bin/hermes")
+
+    letter = generate_motivation_letter(job, recommendation, {"name": "Facundo Varas"})
+
+    assert letter.startswith("# Lettre")
+    assert "--skills" in captured["cmd"]
+    assert "agent-redacteur-lettres" in captured["cmd"]
+    assert "Ville Test" in captured["cmd"][2]  # le prompt porte les donnees de l'offre
+
+
+def test_generate_motivation_letter_raises_instead_of_degrading(monkeypatch):
+    """Aucun fallback template : un echec Hermes doit remonter."""
+    job = {"title": "Dev", "company": "X", "description": ""}
+    recommendation = recommend_cv(job)
+
+    def fake_run(cmd, **kwargs):
+        return SimpleNamespace(returncode=1, stdout="", stderr="HTTP 429: usage limit reached")
+
+    monkeypatch.setattr(motivation_letter_agent.subprocess, "run", fake_run)
+    monkeypatch.setattr(motivation_letter_agent, "_hermes_binary", lambda: "/usr/bin/hermes")
+
+    with pytest.raises(MotivationLetterError):
+        generate_motivation_letter(job, recommendation, {})
 
 
 def test_generate_application_email_mentions_cv_to_attach():

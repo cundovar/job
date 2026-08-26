@@ -23,7 +23,6 @@ class ApplicationPackage:
     directory: str
     job_path: str
     resume_path: str
-    cv_recommendation_path: str
     motivation_letter_path: str
     application_email_path: str
     metadata_path: str
@@ -59,7 +58,7 @@ def _build_application_dir(
     return directory
 
 
-def _offer_resume_markdown(job: Dict[str, Any], recommendation: CVRecommendation) -> str:
+def _offer_resume_markdown(job: Dict[str, Any]) -> str:
     analysis = job.get("ai_analysis", {}) if isinstance(job.get("ai_analysis"), dict) else {}
     summary = summarize_job(job)
     description = _job_value(job, "description")
@@ -80,30 +79,11 @@ def _offer_resume_markdown(job: Dict[str, Any], recommendation: CVRecommendation
             f"- Score : {job.get('score', 'Non renseigne')}",
             f"- Recommandation : {analysis.get('recommandation', 'Non renseignee')}",
             "",
-            "## CV conseille",
-            "",
-            f"- Profil : {recommendation.cv_name}",
-            f"- Fichier : {recommendation.cv_path}",
-            f"- Raison : {recommendation.reason}",
-            "",
             summary.to_markdown(),
             "",
             "## Description courte",
             "",
             short_description or "Description non renseignee.",
-            "",
-        ]
-    )
-
-
-def _cv_recommendation_text(recommendation: CVRecommendation) -> str:
-    return "\n".join(
-        [
-            f"CV conseille : {recommendation.cv_name}",
-            f"Fichier : {recommendation.cv_path}",
-            f"Score de correspondance : {recommendation.score}",
-            f"Mots-cles detectes : {', '.join(recommendation.matched_keywords) or 'Aucun'}",
-            f"Raison : {recommendation.reason}",
             "",
         ]
     )
@@ -120,14 +100,12 @@ def build_application_package(
 
     job_path = directory / "job.json"
     resume_path = directory / "offre_resume.md"
-    cv_recommendation_path = directory / "cv_recommande.txt"
     motivation_letter_path = directory / "lettre_motivation.md"
     application_email_path = directory / "mail_candidature.md"
     metadata_path = directory / "metadata.json"
 
     job_path.write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
-    resume_path.write_text(_offer_resume_markdown(job, recommendation), encoding="utf-8")
-    cv_recommendation_path.write_text(_cv_recommendation_text(recommendation), encoding="utf-8")
+    resume_path.write_text(_offer_resume_markdown(job), encoding="utf-8")
     motivation_letter_path.write_text(
         generate_motivation_letter(job, recommendation, user_profile),
         encoding="utf-8",
@@ -149,7 +127,6 @@ def build_application_package(
         "files": {
             "job": str(job_path),
             "resume": str(resume_path),
-            "cv_recommendation": str(cv_recommendation_path),
             "motivation_letter": str(motivation_letter_path),
             "application_email": str(application_email_path),
             "metadata": str(metadata_path),
@@ -161,7 +138,6 @@ def build_application_package(
         directory=str(directory),
         job_path=str(job_path),
         resume_path=str(resume_path),
-        cv_recommendation_path=str(cv_recommendation_path),
         motivation_letter_path=str(motivation_letter_path),
         application_email_path=str(application_email_path),
         metadata_path=str(metadata_path),

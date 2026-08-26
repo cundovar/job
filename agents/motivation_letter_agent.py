@@ -1,86 +1,71 @@
 """
-Motivation letter generation — personalised for Facundo "Cundo" Varas.
-Uses the full user_profile from criteria.yaml.
+Motivation letter generation — delegated to Hermes.
+
+Single source of truth: the Hermes skill `agent-redacteur-lettres`.
+This module contains NO writing logic. It builds the request, calls Hermes in
+one-shot mode with the skill preloaded, and returns what Hermes wrote.
+
+If Hermes cannot answer, this raises. There is deliberately no template
+fallback: a degraded letter that looks finished is worse than a visible error.
 """
 from __future__ import annotations
 
-import re
-from typing import Any, Dict, List
+import json
+import os
+import shutil
+import subprocess
+from typing import Any, Dict
 
-from .summary_agent import summarize_job
-
-
-def _job_value(job: Dict[str, Any], key: str, default: str = "") -> str:
-    value = job.get(key, default)
-    return str(value).strip() if value is not None else default
-
-
-def _analysis_value(job: Dict[str, Any], key: str, default: str = "") -> str:
-    analysis = job.get("ai_analysis", {})
-    if not isinstance(analysis, dict):
-        return default
-    value = analysis.get(key, default)
-    return str(value).strip() if value else default
+SKILL = "agent-redacteur-lettres"
+DEFAULT_TIMEOUT = 300
 
 
-def _pick_experiences(job: Dict, profile: Dict) -> list[str]:
-    """Select 2-3 most relevant experiences for this job."""
-    experiences = profile.get("experiences", [])
-    title = _job_value(job, "title", "").lower()
-    desc = _job_value(job, "description", "").lower()
-
-    scored = []
-    for exp in experiences:
-        exp_l = exp.lower()
-        score = 0
-        if "symfony" in title and "symfony" in exp_l:
-            score += 3
-        if "wordpress" in title and "wordpress" in exp_l:
-            score += 3
-        if "formateur" in title and ("formateur" in exp_l or "pole" in exp_l):
-            score += 3
-        if "ia" in title and ("n8n" in exp_l or "ia" in exp_l):
-            score += 3
-        if "vue" in title and "vue" in exp_l:
-            score += 2
-        if any(kw in desc for kw in ["ess", "association", "insertion", "impact"]):
-            if "insertion" in exp_l:
-                score += 2
-        scored.append((score, exp))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [exp for _, exp in scored[:3]]
+class MotivationLetterError(RuntimeError):
+    """Raised when Hermes could not produce a motivation letter."""
 
 
-def _candidate_positioning(job: Dict[str, Any]) -> str:
-    """Adapt the opening positioning to the job type.
+def _hermes_binary() -> str:
+    explicit = os.getenv("HERMES_BIN")
+    if explicit:
+        return explicit
+    found = shutil.which("hermes")
+    if found:
+        return found
+    fallback = os.path.expanduser("~/.local/bin/hermes")
+    if os.path.exists(fallback):
+        return fallback
+    raise MotivationLetterError(
+        "Binaire hermes introuvable (definir HERMES_BIN ou ajouter hermes au PATH)."
+    )
 
-    Cundo does not only apply as a full-stack developer: webmaster / CMS /
-    content administration roles are also first-class targets and should not
-    be introduced as if they were generic full-stack dev roles.
-    """
-    text = f"{_job_value(job, 'title')} {_job_value(job, 'description')}".lower()
-    if any(
-        kw in text
-        for kw in [
-            "webmaster",
-            "webmestre",
-            "administrateur web",
-            "administratrice web",
-            "administrateur de site",
-            "gestionnaire de contenu",
-            "cms",
-            "wordpress",
-            "maintenance site",
-            "site institutionnel",
-            "accessibilité",
-            "accessibilite",
-            "rgaa",
-        ]
-    ):
-        return "Webmaster et développeur web basé à Paris"
-    if any(kw in text for kw in ["formateur", "formation", "pédagog", "enseignant"]):
-        return "Développeur web et formateur basé à Paris"
-    return "Développeur web freelance basé à Paris"
+
+def _build_prompt(
+    job: Dict[str, Any],
+    recommendation: Any,
+    user_profile: Dict[str, Any] | None,
+) -> str:
+    payload = {
+        "offre": {
+            key: job.get(key)
+            for key in ("title", "company", "location", "contract", "url", "description", "score")
+        },
+        "analyse_ia": job.get("ai_analysis", {}),
+        "cv_recommande": {
+            "nom": getattr(recommendation, "cv_name", ""),
+            "raison": getattr(recommendation, "reason", ""),
+        },
+        "profil": user_profile or {},
+    }
+    return (
+        "Redige la lettre de motivation pour l'offre ci-dessous, en appliquant "
+        f"strictement la skill `{SKILL}`.\n\n"
+        "Contraintes de sortie :\n"
+        "- reponds UNIQUEMENT avec le texte de la lettre en markdown\n"
+        "- aucun preambule, aucun commentaire, aucun bloc de code\n"
+        "- n'ecris aucun fichier, le contenu est recupere sur stdout\n\n"
+        "Donnees :\n"
+        f"{json.dumps(payload, ensure_ascii=False, indent=2)}\n"
+    )
 
 
 def generate_motivation_letter(
@@ -88,104 +73,47 @@ def generate_motivation_letter(
     recommendation: Any,
     user_profile: Dict[str, Any] | None = None,
 ) -> str:
-    profile = user_profile or {}
-    summary = summarize_job(job)
-    candidate_name = profile.get("name", "Facundo Varas")
-    portfolio = profile.get("portfolio", "varascundo.com")
-    company = _job_value(job, "company", "votre structure")
-    title = _job_value(job, "title", "le poste proposé")
-    location = _job_value(job, "location", "")
-    positioning = _candidate_positioning(job)
-    angle = _analysis_value(job, "angle_motivation")
-    interesting_points = summary.why_interesting[:3]
-    risks = summary.risks[:2]
-    experiences = _pick_experiences(job, profile)
+    """Ask Hermes to write the letter. Raises MotivationLetterError on failure."""
+    prompt = _build_prompt(job, recommendation, user_profile)
+    timeout = int(os.getenv("HERMES_LETTER_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT)))
 
-    # Accroche contextualisée
-    job_context = f"{title} {_job_value(job, 'description', '')} {company}".lower()
-    has_ess = bool(
-        re.search(r"\bess\b", job_context)
-        or any(
-            kw in job_context
-            for kw in [
-                "économie sociale",
-                "economie sociale",
-                "association",
-                "fondation",
-                "insertion",
-                "impact social",
-                "culture",
-                "environnement",
-            ]
+    env = os.environ.copy()
+    env.setdefault("HERMES_HOME", "/data/hermes")
+
+    cmd = [_hermes_binary(), "-z", prompt, "--skills", SKILL, "-t", "file"]
+    model = os.getenv("HERMES_LETTER_MODEL")
+    if model:
+        cmd += ["-m", model]
+    provider = os.getenv("HERMES_LETTER_PROVIDER")
+    if provider:
+        cmd += ["--provider", provider]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            env=env,
+            check=False,
         )
-    )
-    intro_values = ""
-    if has_ess:
-        intro_values = (
-            " Les valeurs de votre structure — "
-            "ancrées dans l'impact social — résonnent avec mon parcours."
+    except subprocess.TimeoutExpired as exc:
+        raise MotivationLetterError(
+            f"Hermes n'a pas repondu en {timeout}s pour la redaction de la lettre."
+        ) from exc
+
+    output = (result.stdout or "").strip()
+    stderr = (result.stderr or "").strip()
+
+    if result.returncode != 0:
+        raise MotivationLetterError(
+            f"Hermes a echoue (code {result.returncode}) : {stderr or output or 'aucune sortie'}"
         )
-
-    lines = [
-        "# Lettre de motivation",
-        "",
-        "Madame, Monsieur,",
-        "",
-        (
-            f" {positioning}, "
-            f"je vous propose ma candidature pour le poste de {title} "
-            f"au sein de {company}.{intro_values}"
-        ),
-        "",
-    ]
-
-    # Paragraphe technique : expériences pertinentes
-    if experiences:
-        lines.append("Mon parcours récent illustre cette adéquation :")
-        lines.append("")
-        for exp in experiences:
-            lines.append(f"- {exp}")
-        lines.append("")
-
-    # Points d'accroche depuis l'analyse DeepSeek
-    if interesting_points:
-        lines.append(
-            "Dans votre offre, je retrouve plusieurs points d'accroche : "
-            + " ".join(interesting_points)
-            + "."
+    if not output:
+        raise MotivationLetterError(
+            f"Hermes n'a renvoye aucun texte. stderr : {stderr or 'vide'}"
         )
-        lines.append("")
+    if "usage limit" in output.lower() or "API call failed" in output:
+        raise MotivationLetterError(f"Hermes indisponible : {output}")
 
-    if angle:
-        lines.append(f"**Angle à valoriser :** {angle}")
-        lines.append("")
-
-    # CV recommandé
-    lines.append(
-        f"Pour ce poste, le CV conseillé est **{recommendation.cv_name}** "
-        f"({recommendation.reason.lower()})."
-    )
-    lines.append("")
-
-    # Points à anticiper
-    if risks:
-        lines.append(
-            "**Point à anticiper en entretien :** "
-            + " ".join(risks)
-            + " Je peux clarifier ces éléments en les reliant à mon expérience "
-            "globale et à ma capacité d'adaptation."
-        )
-        lines.append("")
-
-    # Conclusion
-    lines.extend([
-        "Je serais heureux d'échanger avec vous pour vous présenter "
-        "plus concrètement ma candidature et ma vision du poste.",
-        "",
-        "Cordialement,",
-        str(candidate_name),
-        f"Portfolio : {portfolio}",
-        "",
-    ])
-
-    return "\n".join(lines)
+    return output
