@@ -22,7 +22,7 @@ def test_build_application_package_creates_expected_files(tmp_path):
     assert Path(package.directory).exists()
     assert Path(package.job_path).exists()
     assert Path(package.resume_path).exists()
-    assert Path(package.cv_recommendation_path).exists()
+    assert not hasattr(package, "cv_recommendation_path")
     assert Path(package.motivation_letter_path).exists()
     assert Path(package.application_email_path).exists()
     assert Path(package.metadata_path).exists()
@@ -50,4 +50,4 @@ def test_build_application_package_uses_slugged_directory(tmp_path):
     directory_name = Path(package.directory).name
     assert "association-exemple" in directory_name
     assert "administrateur-applicatif-support-fonctionnel" in directory_name
-    assert package.recommended_cv.cv_id in ("dev_fullstack", "webmaster")
+    assert package.recommended_cv.cv_id in ("fullstack", "webmaster")

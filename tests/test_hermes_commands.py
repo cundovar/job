@@ -47,4 +47,4 @@ def test_format_job_list_includes_cv_and_action(tmp_path):
 
     assert "Webmaster WordPress" in output
     assert "Action : POSTULER" in output
-    assert "CV conseille : Webmaster / Administrateur de Sites Web" in output
+    assert "CV conseille : Webmaster / Administrateur de sites web" in output

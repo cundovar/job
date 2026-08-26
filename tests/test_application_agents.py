@@ -1,31 +1,66 @@
-from agents import generate_application_email, generate_motivation_letter
+from types import SimpleNamespace
+
+import pytest
+
+from agents import (
+    MotivationLetterError,
+    generate_application_email,
+    generate_motivation_letter,
+)
+from agents import motivation_letter_agent
+from utils.cli_agent_bridge import CLIBridgeError
 from applications import recommend_cv
 
 
-def test_generate_motivation_letter_uses_job_cv_and_profile():
+def test_generate_motivation_letter_delegates_to_bridge():
+    """La redaction passe par le bridge CLI : on verifie l'appel, pas le texte."""
     job = {
         "title": "Webmaster institutionnel WordPress",
         "company": "Ville Test",
-        "description": "CMS WordPress, accessibilite RGAA, documentation et service public.",
+        "description": "CMS WordPress, accessibilite RGAA, documentation.",
         "score": 86,
-        "ai_analysis": {"angle_motivation": "Insister sur CMS, qualite web et support utilisateurs."},
     }
     recommendation = recommend_cv(job)
-    profile = {
-        "name": "Facundo Varas (Cundo)",
-        "core_strengths": ["Développeur full-stack freelance PHP/Symfony", "Formateur développement web"],
-        "experiences": [
-            "Le Pôle S (2022-2025) : Encadrant Technique Développeur — formateur web full-stack",
-            "DevDoc (varascundo.com) : plateforme pédagogique Vue.js, 15+ technos",
-        ],
-    }
+    captured = {}
 
-    letter = generate_motivation_letter(job, recommendation, profile)
+    class FakeBridge:
+        def complete_json(self, *, agent_name, system_prompt, payload, preferred_provider=None):
+            captured["agent_name"] = agent_name
+            captured["system_prompt"] = system_prompt
+            captured["payload"] = payload
+            captured["provider"] = preferred_provider
+            return SimpleNamespace(
+                data={"lettre": "# Lettre\n\nMadame, Monsieur,"},
+                provider="codex_cli",
+                model="test",
+            )
 
-    assert "Webmaster institutionnel WordPress" in letter
-    assert "Ville Test" in letter
-    assert "Pôle S" in letter  # experience should appear
-    assert recommendation.cv_name in letter
+    letter = generate_motivation_letter(
+        job, recommendation, {"name": "Facundo Varas"}, bridge_client=FakeBridge()
+    )
+
+    assert letter.startswith("# Lettre")
+    assert captured["agent_name"] == "agent_redacteur_lettres"
+    assert captured["provider"] == "codex"
+    assert "Ville Test" in str(captured["payload"])
+    assert "lettre" in captured["system_prompt"]
+
+
+def test_generate_motivation_letter_falls_back_then_raises():
+    """Essaie codex puis claude, et remonte l'erreur — jamais de lettre degradee."""
+    job = {"title": "Dev", "company": "X", "description": ""}
+    recommendation = recommend_cv(job)
+    tried = []
+
+    class DeadBridge:
+        def complete_json(self, *, agent_name, system_prompt, payload, preferred_provider=None):
+            tried.append(preferred_provider)
+            raise CLIBridgeError("bridge indisponible")
+
+    with pytest.raises(MotivationLetterError):
+        generate_motivation_letter(job, recommendation, {}, bridge_client=DeadBridge())
+
+    assert tried == ["codex", "claude"]
 
 
 def test_generate_application_email_mentions_cv_to_attach():

@@ -46,7 +46,7 @@ class ApplicationTracker:
                 "company": job.get("company", ""),
                 "url": job.get("url", ""),
                 "score": job.get("score"),
-                "cv_used": package.recommended_cv.cv_path,
+                "cv_used": package.recommended_cv.cv_id,
                 "application_dir": package.directory,
                 "letter_path": package.motivation_letter_path,
                 "email_path": package.application_email_path,

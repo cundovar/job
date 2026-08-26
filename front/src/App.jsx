@@ -328,12 +328,6 @@ function CandidaturesView() {
             <pre className="lettre-content">{c?.mail}</pre>
           </>
         )}
-        {c?.cv_recommande && (
-          <>
-            <h2><FileText /> CV Recommandé</h2>
-            <pre className="lettre-content">{c?.cv_recommande}</pre>
-          </>
-        )}
 
         <section className="cv-generator-panel" aria-labelledby="cv-generator-title">
           <div className="cv-generator-heading">
@@ -428,7 +422,6 @@ function CandidaturesView() {
             </div>
             <div className="job-meta">
               <span><Calendar /> {c.date}</span>
-              {c.cv_recommande && <span><FileText /> {c.cv_recommande.split('\n')[0]?.substring(0, 50)}</span>}
               {isApplied && s.applied_at && (
                 <span className="meta-applied">
                   Postulé le {fmtDate(s.applied_at)} · relance le {fmtShort(s.follow_up_at)}

@@ -1,22 +1,24 @@
 """
-Select the best existing CV for a job offer.
+Select the best CV variant for a job offer.
+
+Variants come from data/cv_master_profile.json. There is no PDF path: the CV
+itself is generated on demand by cv_generator from the master profile, so a
+recommendation names a starting variant, not a file.
 """
 from __future__ import annotations
 
 import re
 import unicodedata
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Dict, List, Sequence
 
-from .cv_profiles import CVProfile, load_cv_profiles
+from .cv_variants import CVVariant, default_priority, load_cv_variants
 
 
 @dataclass(frozen=True)
 class CVRecommendation:
     cv_id: str
     cv_name: str
-    cv_path: str
     score: int
     matched_keywords: List[str]
     reason: str
@@ -29,7 +31,7 @@ def _normalize(value: str) -> str:
         if not unicodedata.combining(char)
     )
     lowered = without_accents.lower()
-    return re.sub(r"\s+", " ", lowered).strip()
+    return re.sub(r"[^a-z0-9]+", " ", lowered).strip()
 
 
 def _job_text(job: Dict) -> str:
@@ -43,48 +45,49 @@ def _job_text(job: Dict) -> str:
     return _normalize(" ".join(str(part) for part in parts if part))
 
 
-def _profile_score(profile: CVProfile, text: str) -> tuple[int, List[str]]:
+def _variant_score(variant: CVVariant, text: str) -> tuple[int, List[str]]:
+    """Match tags on word boundaries: 'ia' must not match inside 'social'."""
     matched = []
-    for keyword in profile.best_for:
-        normalized_keyword = _normalize(keyword)
-        if normalized_keyword and normalized_keyword in text:
-            matched.append(keyword)
-
+    for tag in variant.tags:
+        normalized = _normalize(tag)
+        if normalized and re.search(rf"\b{re.escape(normalized)}\b", text):
+            matched.append(tag)
     return len(matched), matched
-
-
-def _first_existing_path(profile: CVProfile) -> str:
-    for path in [profile.path, *profile.alternatives]:
-        if Path(path).exists():
-            return path
-    return profile.path
 
 
 def recommend_cv(
     job: Dict,
-    profiles: Sequence[CVProfile] | None = None,
+    variants: Sequence[CVVariant] | None = None,
 ) -> CVRecommendation:
-    cv_profiles = list(profiles) if profiles is not None else load_cv_profiles()
-    if not cv_profiles:
-        raise ValueError("No CV profiles configured")
+    cv_variants = list(variants) if variants is not None else load_cv_variants()
+    if not cv_variants:
+        raise ValueError("Aucune variante de CV dans cv_master_profile.json")
+
+    priority = default_priority() if variants is None else []
+
+    def tie_break(variant_id: str) -> int:
+        """Lower is better: honour positioning.default_priority on equal scores."""
+        try:
+            return priority.index(variant_id)
+        except ValueError:
+            return len(priority) + 1
 
     text = _job_text(job)
     ranked = []
-    for index, profile in enumerate(cv_profiles):
-        score, matched_keywords = _profile_score(profile, text)
-        ranked.append((score, -index, profile, matched_keywords))
+    for index, variant in enumerate(cv_variants):
+        score, matched = _variant_score(variant, text)
+        ranked.append((score, -tie_break(variant.id), -index, variant, matched))
 
-    score, _, best_profile, matched_keywords = max(ranked, key=lambda item: (item[0], item[1]))
-    cv_path = _first_existing_path(best_profile)
+    score, _, _, best, matched_keywords = max(ranked, key=lambda item: item[:3])
+
     if matched_keywords:
         reason = "Correspondance avec: " + ", ".join(matched_keywords[:5])
     else:
-        reason = "Aucun mot-cle fort detecte; CV par defaut le plus general dans la configuration."
+        reason = "Aucun mot-cle fort detecte; variante par defaut selon positioning.default_priority."
 
     return CVRecommendation(
-        cv_id=best_profile.id,
-        cv_name=best_profile.name,
-        cv_path=cv_path,
+        cv_id=best.id,
+        cv_name=best.name,
         score=score,
         matched_keywords=matched_keywords,
         reason=reason,
