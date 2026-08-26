@@ -1,6 +1,6 @@
 ---
 objective: "Chaque CV généré expose des contrôles d’éligibilité, parsing et véracité, des scores séparés de correspondance et de qualité, ainsi qu’une version ATS vérifiée distincte du CV graphique."
-status: in-progress
+status: implemented
 ---
 
 # Plan: Évaluation CV réaliste et export ATS
