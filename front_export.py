@@ -10,19 +10,38 @@ lit jamais ce fichier : il ne connait que front/public/data/*.
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 FRONT_DATA_DIR = Path(__file__).resolve().parent / "front" / "public" / "data"
 
-# Categorisation par mots-cles issus du profil utilisateur (config/criteria.yaml
-# skills.backend / skills.frontend / core_strengths). Le front affiche tout ce
-# qui ne matche aucune de ces trois categories sous "Nouvelles Portes".
+# Les categories sont explicites : "Nouvelles Portes" vise les postes hybrides
+# et l'automatisation IA. Les offres inconnues ont leur propre onglet afin de ne
+# plus mélanger des rôles développeur avec ces opportunités.
 CATEGORY_KEYWORDS = {
     "webmaster_formateur": [
         "webmaster", "wordpress", "woocommerce", "formateur", "formatrice",
         "ingénieur pédagogique", "ingenieur pedagogique", "pédagogie", "pedagogie",
+    ],
+    "nouvelles_portes": [
+        "ai ops automation", "ia ops automation", "ai automation", "ia automation",
+        "automation engineer", "automation developer", "automation specialist",
+        "n8n developer", "n8n", "workflow automation", "agent automation",
+        "agents ia", "agent ia", "ai agent", "agents ai", "low-code", "low code",
+        "no-code", "no code", "citizen developer", "ai operations", "ia operations",
+        "growth engineer automation", "growth engineering automation",
+        "power automate", "power apps", "power platform", "copilot studio", "dataverse",
+        "prompt engineering", "claude code", "consultant ia", "consultant ai",
+        "chatbot", "assistants ia", "assistant ia", "product owner", "amoa",
+        "médiateur numérique", "mediateur numerique", "médiation numérique",
+        "mediation numerique", "conseiller numérique", "conseiller numerique",
+        "accessibilité numérique", "accessibilite numerique", "rgaa",
+        "coordinateur numérique", "coordinateur numerique", "devrel",
+        "technical writer",
     ],
     "frontend": [
         "react", "vue.js", "vuejs", "nuxt", "next.js", "javascript", "typescript",
@@ -31,10 +50,29 @@ CATEGORY_KEYWORDS = {
     "backend": [
         "php", "symfony", "node.js", "node ", "mysql", "mariadb",
         "backend", "back-end", "back end", "développeur api", "developpeur api",
+        "java", "python", ".net", "dotnet", "c#", "fullstack", "full-stack",
+        "full stack", "software engineer", "software developer", "développeur",
+        "developpeur", "developer", "devops",
     ],
 }
-CATCHALL_CATEGORY = "nouvelles_portes"
-CATEGORY_ORDER = (*CATEGORY_KEYWORDS, CATCHALL_CATEGORY)
+CATCHALL_CATEGORY = "non_classees"
+ALREADY_SEEN_CATEGORY = "deja_vues"
+CATEGORY_ORDER = (*CATEGORY_KEYWORDS, CATCHALL_CATEGORY, ALREADY_SEEN_CATEGORY)
+
+TRACKING_QUERY_KEYS = {
+    "fbclid", "gclid", "mc_cid", "mc_eid", "ref", "source",
+}
+
+
+def _normalize_text(value: Any) -> str:
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = text.encode("ascii", "ignore").decode("ascii").casefold()
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", text).split())
+
+
+def _matches_any(text: str, keywords: List[str]) -> bool:
+    padded = f" {text} "
+    return any(f" {_normalize_text(keyword)} " in padded for keyword in keywords)
 
 
 def _categorize(job: Dict[str, Any]) -> str:
@@ -42,13 +80,13 @@ def _categorize(job: Dict[str, Any]) -> str:
     # Exemple : une offre WordPress/PHP doit rester dans Web & Formateur, même si
     # la description contient aussi PHP ; une offre Symfony "e-commerce" ne doit
     # pas basculer webmaster juste à cause du contexte métier.
-    title = str(job.get("title", "")).lower()
-    text = f"{job.get('title', '')} {job.get('description', '')}".lower()
+    title = _normalize_text(job.get("title", ""))
+    text = _normalize_text(f"{job.get('title', '')} {job.get('description', '')}")
     for category, keywords in CATEGORY_KEYWORDS.items():
-        if any(keyword in title for keyword in keywords):
+        if _matches_any(title, keywords):
             return category
     for category, keywords in CATEGORY_KEYWORDS.items():
-        if any(keyword in text for keyword in keywords):
+        if _matches_any(text, keywords):
             return category
     return CATCHALL_CATEGORY
 
@@ -64,27 +102,99 @@ def _job_for_front(job: Dict[str, Any]) -> Dict[str, Any]:
         "sector": job.get("sector"),
         "source": job.get("source"),
         "score": job.get("score"),
-        "published_at": job.get("scraped_at"),
+        "published_at": job.get("published_at") or job.get("scraped_at"),
+        "scraped_at": job.get("scraped_at"),
         "url": job.get("url"),
         "ai_analysis": job.get("ai_analysis"),
     }
 
 
 def _identity_part(value: Any) -> str:
-    return " ".join(str(value or "").casefold().split())
+    return _normalize_text(value)
+
+
+def _canonical_url(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = urlsplit(raw)
+        query = [
+            (key, item)
+            for key, item in parse_qsl(parsed.query, keep_blank_values=True)
+            if not key.casefold().startswith("utm_")
+            and key.casefold() not in TRACKING_QUERY_KEYS
+        ]
+        return urlunsplit(
+            (
+                parsed.scheme.casefold(),
+                parsed.netloc.casefold(),
+                parsed.path.rstrip("/"),
+                urlencode(sorted(query)),
+                "",
+            )
+        )
+    except ValueError:
+        return raw.casefold()
+
+
+def _job_identity_keys(job: Dict[str, Any]) -> set[str]:
+    keys: set[str] = set()
+    url = _canonical_url(job.get("url"))
+    if url:
+        keys.add(f"url:{url}")
+
+    title = _identity_part(job.get("title"))
+    company = _identity_part(job.get("company"))
+    location = _identity_part(job.get("location"))
+    if title and company:
+        keys.add(f"role:{title}|{company}|{location}")
+    return keys
 
 
 def _job_key(job: Dict[str, Any]) -> str:
-    url = _identity_part(job.get("url"))
-    if url:
-        return f"url:{url}"
-    fields = "|".join(
-        _identity_part(job.get(field))
-        for field in ("title", "company", "location")
-    )
-    if fields.strip("|"):
-        return f"fields:{fields}"
+    identity_keys = _job_identity_keys(job)
+    url_keys = sorted(key for key in identity_keys if key.startswith("url:"))
+    if url_keys:
+        return url_keys[0]
+    role_keys = sorted(key for key in identity_keys if key.startswith("role:"))
+    if role_keys:
+        return role_keys[0]
     return "payload:" + json.dumps(job, ensure_ascii=False, sort_keys=True, default=str)
+
+
+def _session_day(name: str) -> str | None:
+    iso_match = re.match(r"^(\d{4})-(\d{2})-(\d{2})", name)
+    if iso_match:
+        return "-".join(iso_match.groups())
+    compact_match = re.match(r"^(\d{4})(\d{2})(\d{2})", name)
+    if compact_match:
+        return "-".join(compact_match.groups())
+    return None
+
+
+def _load_seen_keys(current_day: str) -> set[str]:
+    seen: set[str] = set()
+    if not FRONT_DATA_DIR.exists():
+        return seen
+    for session_dir in FRONT_DATA_DIR.iterdir():
+        if not session_dir.is_dir():
+            continue
+        session_day = _session_day(session_dir.name)
+        if not session_day or session_day == current_day:
+            continue
+        for category_path in session_dir.glob("*.json"):
+            try:
+                payload = json.loads(category_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+            jobs = payload.get("jobs", []) if isinstance(payload, dict) else []
+            if not isinstance(jobs, list):
+                continue
+            for job in jobs:
+                if isinstance(job, dict):
+                    seen.update(_job_identity_keys(job))
+    return seen
 
 
 def _load_existing_buckets(search_dir: Path) -> Dict[str, List[Dict[str, Any]]]:
@@ -104,7 +214,9 @@ def _load_existing_buckets(search_dir: Path) -> Dict[str, List[Dict[str, Any]]]:
 def _merge_daily_jobs(
     search_dir: Path,
     jobs: List[Dict[str, Any]],
+    seen_keys: set[str] | None = None,
 ) -> Dict[str, List[Dict[str, Any]]]:
+    seen_keys = seen_keys or set()
     merged: Dict[str, tuple[str, Dict[str, Any]]] = {}
     for category, existing_jobs in _load_existing_buckets(search_dir).items():
         for job in existing_jobs:
@@ -114,7 +226,9 @@ def _merge_daily_jobs(
     # offre, sans supprimer les autres offres deja trouvees dans la journee.
     for job in jobs:
         front_job = _job_for_front(job)
-        merged[_job_key(front_job)] = (_categorize(job), front_job)
+        already_seen = bool(_job_identity_keys(front_job) & seen_keys)
+        category = ALREADY_SEEN_CATEGORY if already_seen else _categorize(job)
+        merged[_job_key(front_job)] = (category, front_job)
 
     buckets: Dict[str, List[Dict[str, Any]]] = {}
     for category, job in merged.values():
@@ -138,7 +252,8 @@ def export_front_data(jobs: List[Dict[str, Any]], search_id: str | None = None) 
     search_dir = FRONT_DATA_DIR / search_id
     search_dir.mkdir(parents=True, exist_ok=True)
 
-    buckets = _merge_daily_jobs(search_dir, jobs)
+    current_day = _session_day(search_id) or date.today().isoformat()
+    buckets = _merge_daily_jobs(search_dir, jobs, _load_seen_keys(current_day))
     for category in CATEGORY_ORDER:
         cat_jobs = buckets.get(category, [])
         (search_dir / f"{category}.json").write_text(
@@ -146,8 +261,15 @@ def export_front_data(jobs: List[Dict[str, Any]], search_id: str | None = None) 
         )
 
     all_jobs = [job for category_jobs in buckets.values() for job in category_jobs]
-    postuler = sum(1 for job in all_jobs if _recommendation(job) == "POSTULER")
-    peut_etre = sum(1 for job in all_jobs if _recommendation(job) == "PEUT-ÊTRE")
+    already_seen_jobs = buckets.get(ALREADY_SEEN_CATEGORY, [])
+    new_jobs = [
+        job
+        for category, category_jobs in buckets.items()
+        if category != ALREADY_SEEN_CATEGORY
+        for job in category_jobs
+    ]
+    postuler = sum(1 for job in new_jobs if _recommendation(job) == "POSTULER")
+    peut_etre = sum(1 for job in new_jobs if _recommendation(job) == "PEUT-ÊTRE")
 
     FRONT_DATA_DIR.mkdir(parents=True, exist_ok=True)
     index_path = FRONT_DATA_DIR / "index.json"
@@ -160,7 +282,9 @@ def export_front_data(jobs: List[Dict[str, Any]], search_id: str | None = None) 
         "id": search_id,
         "date": search_id,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "total": len(all_jobs),
+        "total": len(new_jobs),
+        "found_total": len(all_jobs),
+        "already_seen": len(already_seen_jobs),
         "postuler": postuler,
         "peut_etre": peut_etre,
         "categories": {

@@ -1192,7 +1192,11 @@ function App() {
             onClick={() => openSearch(search.id)}
           >
             <span className="search-date">{fmtSession(search)}</span>
-            <span className="search-stats">{search.total} offres · <Star /> {search.postuler}</span>
+            <span className="search-stats">
+              {search.total} nouvelles
+              {search.already_seen > 0 && ` · ${search.already_seen} déjà vues`}
+              {' · '}<Star /> {search.postuler}
+            </span>
           </button>
         ))}
       </aside>
@@ -1213,7 +1217,10 @@ function App() {
             <header className="search-header">
               <h1>Recherche du {fmtSession(currentSearch)}</h1>
               <div className="stats">
-                <span>{currentSearch.total} offres</span>
+                <span>{currentSearch.total} nouvelles</span>
+                {currentSearch.already_seen > 0 && (
+                  <span><RotateCw /> {currentSearch.already_seen} déjà vues</span>
+                )}
                 <span className="postuler"><Star /> {currentSearch.postuler} POSTULER</span>
                 <span className="peut-etre"><CircleDot /> {currentSearch.peut_etre} PEUT-ÊTRE</span>
               </div>
@@ -1234,7 +1241,9 @@ function App() {
                   {cat === 'backend' ? <><Server /> Backend</> :
                    cat === 'frontend' ? <><Palette /> Frontend</> :
                    cat === 'webmaster_formateur' ? <><GraduationCap /> Web &amp; Formateur</> :
-                   <><DoorOpen /> Nouvelles Portes</>}
+                   cat === 'nouvelles_portes' ? <><DoorOpen /> Nouvelles Portes</> :
+                   cat === 'deja_vues' ? <><RotateCw /> Déjà vues</> :
+                   <><CircleDot /> Non classées</>}
                   <span className="badge">{info.count}</span>
                 </button>
               ))}

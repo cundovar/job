@@ -167,6 +167,7 @@ def extract_search_keywords_by_category(criteria: Dict[str, Any]) -> Dict[str, l
             categories.setdefault("frontend", []).extend(keywords)
         elif any(kw in name for kw in ["pédagogique", "elearning", "e-learning", "accessibilité", "rgaa",
                                         "product owner", "amoa", "low-code", "automatisation",
+                                        "automation", "ai ops", "n8n",
                                         "consultant", "transformation", "devrel", "technical writer",
                                         "médiation", "mediateur", "inclusion", "lms", "moodle",
                                         "humanitaire", "association", "ong", "fondation"]):
