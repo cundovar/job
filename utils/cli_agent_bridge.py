@@ -10,6 +10,23 @@ from pathlib import Path
 from typing import Any, Dict
 
 
+def _default_socket_path() -> str:
+    """Container path first, then the project's data/ dir (same socket, bind-mounted)."""
+    container = "/app/data/.cv_cli_bridge.sock"
+    if Path(container).exists():
+        return container
+    local = Path(__file__).resolve().parent.parent / "data" / ".cv_cli_bridge.sock"
+    return str(local) if local.exists() else container
+
+
+def _default_token_file() -> str:
+    container = "/app/data/.cv_cli_bridge_token"
+    if Path(container).exists():
+        return container
+    local = Path(__file__).resolve().parent.parent / "data" / ".cv_cli_bridge_token"
+    return str(local) if local.exists() else container
+
+
 class CLIBridgeError(RuntimeError):
     """Raised when the private CLI bridge cannot return a JSON object."""
 
@@ -32,7 +49,7 @@ class CLIAgentBridgeClient:
     ) -> None:
         self.socket_path = socket_path or os.getenv(
             "CV_CLI_BRIDGE_SOCKET",
-            "/app/data/.cv_cli_bridge.sock",
+            _default_socket_path(),
         )
         provider_timeout = float(os.getenv("CV_CLI_BRIDGE_TIMEOUT_SECONDS", "300"))
         self.timeout = (
@@ -48,7 +65,7 @@ class CLIAgentBridgeClient:
                 token_file
                 or os.getenv(
                     "CV_CLI_BRIDGE_TOKEN_FILE",
-                    "/app/data/.cv_cli_bridge_token",
+                    _default_token_file(),
                 )
             )
             try:

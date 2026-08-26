@@ -1,119 +1,97 @@
 """
-Motivation letter generation — delegated to Hermes.
+Motivation letter generation — delegated to the subscription CLI bridge.
 
-Single source of truth: the Hermes skill `agent-redacteur-lettres`.
-This module contains NO writing logic. It builds the request, calls Hermes in
-one-shot mode with the skill preloaded, and returns what Hermes wrote.
+Single source of truth for the writing rules: config/agent_redacteur_lettres.md
+(mirror of the Hermes skill `agent-redacteur-lettres`). This module contains no
+writing logic of its own.
 
-If Hermes cannot answer, this raises. There is deliberately no template
-fallback: a degraded letter that looks finished is worse than a visible error.
+The bridge is used rather than the `hermes` binary because it is reachable from
+both the local environment and the Coolify container (data/ is bind-mounted, so
+the socket is shared). If the bridge cannot answer, this raises: there is
+deliberately no template fallback, since a degraded letter that looks finished
+is worse than a visible error.
 """
 from __future__ import annotations
 
-import json
-import os
-import shutil
-import subprocess
+from pathlib import Path
 from typing import Any, Dict
 
-SKILL = "agent-redacteur-lettres"
-DEFAULT_TIMEOUT = 300
+from utils.cli_agent_bridge import CLIAgentBridgeClient, CLIBridgeError
+
+AGENT_NAME = "agent_redacteur_lettres"
+PROMPT_FILE = "agent_redacteur_lettres.md"
 
 
 class MotivationLetterError(RuntimeError):
-    """Raised when Hermes could not produce a motivation letter."""
+    """Raised when no provider could produce a motivation letter."""
 
 
-def _hermes_binary() -> str:
-    explicit = os.getenv("HERMES_BIN")
-    if explicit:
-        return explicit
-    found = shutil.which("hermes")
-    if found:
-        return found
-    fallback = os.path.expanduser("~/.local/bin/hermes")
-    if os.path.exists(fallback):
-        return fallback
-    raise MotivationLetterError(
-        "Binaire hermes introuvable (definir HERMES_BIN ou ajouter hermes au PATH)."
+def _load_system_prompt() -> str:
+    prompt_path = Path(__file__).resolve().parent.parent / "config" / PROMPT_FILE
+    try:
+        content = prompt_path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise MotivationLetterError(f"Prompt introuvable : {prompt_path}") from exc
+    if not content:
+        raise MotivationLetterError(f"Prompt vide : {prompt_path}")
+    return (
+        f"{content}\n\n"
+        "## Format de reponse (impose par l'appelant)\n\n"
+        "Reponds UNIQUEMENT avec un objet JSON valide, sans bloc de code :\n"
+        '{"lettre": "<texte complet de la lettre en markdown>", '
+        '"angle_motivation": "<angle retenu en une phrase>"}'
     )
 
 
-def _build_prompt(
+def _build_payload(
     job: Dict[str, Any],
     recommendation: Any,
     user_profile: Dict[str, Any] | None,
-) -> str:
-    payload = {
+) -> Dict[str, Any]:
+    return {
         "offre": {
             key: job.get(key)
             for key in ("title", "company", "location", "contract", "url", "description", "score")
         },
         "analyse_ia": job.get("ai_analysis", {}),
-        "cv_recommande": {
+        "variante_cv": {
+            "id": getattr(recommendation, "cv_id", ""),
             "nom": getattr(recommendation, "cv_name", ""),
             "raison": getattr(recommendation, "reason", ""),
         },
         "profil": user_profile or {},
     }
-    return (
-        "Redige la lettre de motivation pour l'offre ci-dessous, en appliquant "
-        f"strictement la skill `{SKILL}`.\n\n"
-        "Contraintes de sortie :\n"
-        "- reponds UNIQUEMENT avec le texte de la lettre en markdown\n"
-        "- aucun preambule, aucun commentaire, aucun bloc de code\n"
-        "- n'ecris aucun fichier, le contenu est recupere sur stdout\n\n"
-        "Donnees :\n"
-        f"{json.dumps(payload, ensure_ascii=False, indent=2)}\n"
-    )
 
 
 def generate_motivation_letter(
     job: Dict[str, Any],
     recommendation: Any,
     user_profile: Dict[str, Any] | None = None,
+    bridge_client: CLIAgentBridgeClient | None = None,
 ) -> str:
-    """Ask Hermes to write the letter. Raises MotivationLetterError on failure."""
-    prompt = _build_prompt(job, recommendation, user_profile)
-    timeout = int(os.getenv("HERMES_LETTER_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT)))
+    """Ask the CLI bridge to write the letter. Raises MotivationLetterError on failure."""
+    bridge = bridge_client or CLIAgentBridgeClient()
+    payload = _build_payload(job, recommendation, user_profile)
+    system_prompt = _load_system_prompt()
 
-    env = os.environ.copy()
-    env.setdefault("HERMES_HOME", "/data/hermes")
+    errors = []
+    for provider in ("codex", "claude"):
+        try:
+            result = bridge.complete_json(
+                agent_name=AGENT_NAME,
+                system_prompt=system_prompt,
+                payload=payload,
+                preferred_provider=provider,
+            )
+        except CLIBridgeError as exc:
+            errors.append(f"{provider}: {exc}")
+            continue
 
-    cmd = [_hermes_binary(), "-z", prompt, "--skills", SKILL, "-t", "file"]
-    model = os.getenv("HERMES_LETTER_MODEL")
-    if model:
-        cmd += ["-m", model]
-    provider = os.getenv("HERMES_LETTER_PROVIDER")
-    if provider:
-        cmd += ["--provider", provider]
+        letter = (result.data.get("lettre") or "").strip()
+        if letter:
+            return letter
+        errors.append(f"{provider}: reponse sans champ 'lettre'")
 
-    try:
-        result = subprocess.run(
-            cmd,
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-            env=env,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise MotivationLetterError(
-            f"Hermes n'a pas repondu en {timeout}s pour la redaction de la lettre."
-        ) from exc
-
-    output = (result.stdout or "").strip()
-    stderr = (result.stderr or "").strip()
-
-    if result.returncode != 0:
-        raise MotivationLetterError(
-            f"Hermes a echoue (code {result.returncode}) : {stderr or output or 'aucune sortie'}"
-        )
-    if not output:
-        raise MotivationLetterError(
-            f"Hermes n'a renvoye aucun texte. stderr : {stderr or 'vide'}"
-        )
-    if "usage limit" in output.lower() or "API call failed" in output:
-        raise MotivationLetterError(f"Hermes indisponible : {output}")
-
-    return output
+    raise MotivationLetterError(
+        "Aucun fournisseur n'a pu rediger la lettre. " + " | ".join(errors)
+    )

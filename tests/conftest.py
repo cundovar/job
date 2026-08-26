@@ -1,6 +1,6 @@
 """Shared fixtures: keep the suite offline.
 
-build_application_package now delegates letter writing to Hermes. Tests must not
+build_application_package now delegates letter writing to the CLI bridge. Tests must not
 depend on a live provider (or on Cundo's quota), so any test touching the
 builder gets a stubbed letter. Tests that specifically exercise the delegation
 live in test_application_agents.py and patch subprocess themselves.

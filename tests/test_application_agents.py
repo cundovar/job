@@ -8,49 +8,59 @@ from agents import (
     generate_motivation_letter,
 )
 from agents import motivation_letter_agent
+from utils.cli_agent_bridge import CLIBridgeError
 from applications import recommend_cv
 
 
-def test_generate_motivation_letter_delegates_to_hermes(monkeypatch):
-    """La redaction est deleguee a Hermes : on verifie l'appel, pas le texte."""
+def test_generate_motivation_letter_delegates_to_bridge():
+    """La redaction passe par le bridge CLI : on verifie l'appel, pas le texte."""
     job = {
         "title": "Webmaster institutionnel WordPress",
         "company": "Ville Test",
-        "description": "CMS WordPress, accessibilite RGAA, documentation et service public.",
+        "description": "CMS WordPress, accessibilite RGAA, documentation.",
         "score": 86,
-        "ai_analysis": {"angle_motivation": "Insister sur CMS, qualite web et support utilisateurs."},
     }
     recommendation = recommend_cv(job)
     captured = {}
 
-    def fake_run(cmd, **kwargs):
-        captured["cmd"] = cmd
-        return SimpleNamespace(returncode=0, stdout="# Lettre\n\nMadame, Monsieur,", stderr="")
+    class FakeBridge:
+        def complete_json(self, *, agent_name, system_prompt, payload, preferred_provider=None):
+            captured["agent_name"] = agent_name
+            captured["system_prompt"] = system_prompt
+            captured["payload"] = payload
+            captured["provider"] = preferred_provider
+            return SimpleNamespace(
+                data={"lettre": "# Lettre\n\nMadame, Monsieur,"},
+                provider="codex_cli",
+                model="test",
+            )
 
-    monkeypatch.setattr(motivation_letter_agent.subprocess, "run", fake_run)
-    monkeypatch.setattr(motivation_letter_agent, "_hermes_binary", lambda: "/usr/bin/hermes")
-
-    letter = generate_motivation_letter(job, recommendation, {"name": "Facundo Varas"})
+    letter = generate_motivation_letter(
+        job, recommendation, {"name": "Facundo Varas"}, bridge_client=FakeBridge()
+    )
 
     assert letter.startswith("# Lettre")
-    assert "--skills" in captured["cmd"]
-    assert "agent-redacteur-lettres" in captured["cmd"]
-    assert "Ville Test" in captured["cmd"][2]  # le prompt porte les donnees de l'offre
+    assert captured["agent_name"] == "agent_redacteur_lettres"
+    assert captured["provider"] == "codex"
+    assert "Ville Test" in str(captured["payload"])
+    assert "lettre" in captured["system_prompt"]
 
 
-def test_generate_motivation_letter_raises_instead_of_degrading(monkeypatch):
-    """Aucun fallback template : un echec Hermes doit remonter."""
+def test_generate_motivation_letter_falls_back_then_raises():
+    """Essaie codex puis claude, et remonte l'erreur — jamais de lettre degradee."""
     job = {"title": "Dev", "company": "X", "description": ""}
     recommendation = recommend_cv(job)
+    tried = []
 
-    def fake_run(cmd, **kwargs):
-        return SimpleNamespace(returncode=1, stdout="", stderr="HTTP 429: usage limit reached")
-
-    monkeypatch.setattr(motivation_letter_agent.subprocess, "run", fake_run)
-    monkeypatch.setattr(motivation_letter_agent, "_hermes_binary", lambda: "/usr/bin/hermes")
+    class DeadBridge:
+        def complete_json(self, *, agent_name, system_prompt, payload, preferred_provider=None):
+            tried.append(preferred_provider)
+            raise CLIBridgeError("bridge indisponible")
 
     with pytest.raises(MotivationLetterError):
-        generate_motivation_letter(job, recommendation, {})
+        generate_motivation_letter(job, recommendation, {}, bridge_client=DeadBridge())
+
+    assert tried == ["codex", "claude"]
 
 
 def test_generate_application_email_mentions_cv_to_attach():
