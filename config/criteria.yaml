@@ -383,6 +383,21 @@ target_positions:
       - "coordinateur produit"
     score_weight: 58
 
+  - name: "AI Ops / Automation"
+    priority: 1
+    keywords:
+      - "ai ops automation"
+      - "ai automation engineer"
+      - "automation developer"
+      - "automation specialist"
+      - "ai operations"
+      - "growth engineer automation"
+      - "growth engineering automation"
+      - "agent automation"
+      - "consultant ia automatisation"
+      - "assistant automatisation ia"
+    score_weight: 75
+
   - name: "Low-code / Automatisation n8n"
     priority: 1
     keywords:
@@ -397,6 +412,15 @@ target_positions:
       - "no-code"
       - "no code"
       - "citizen developer"
+      - "n8n developer"
+      - "agents ia"
+      - "agent ia"
+      - "claude code"
+      - "prompt engineering"
+      - "power automate"
+      - "power apps"
+      - "copilot studio"
+      - "dataverse"
     score_weight: 70
 
   - name: "Consultant transformation digitale"

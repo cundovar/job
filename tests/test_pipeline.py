@@ -1,6 +1,11 @@
 from pathlib import Path
 
-from pipeline import run_job_search
+from pipeline import (
+    extract_search_keywords,
+    extract_search_keywords_by_category,
+    load_criteria,
+    run_job_search,
+)
 
 
 class FakeScraper:
@@ -73,3 +78,15 @@ user_profile:
     assert result["jobs"][0]["score"] == 95
     assert result["jobs"][0]["ai_analysis"]["recommandation"] == "PEUT-ÊTRE"
     assert Path("data/jobs_cache.json").exists()
+
+
+def test_search_keywords_include_ai_ops_automation_roles():
+    criteria = load_criteria()
+    keywords = extract_search_keywords(criteria)
+    categories = extract_search_keywords_by_category(criteria)
+
+    assert "ai ops automation" in keywords
+    assert "ai automation engineer" in keywords
+    assert "automation developer" in keywords
+    assert "n8n" in keywords
+    assert "ai ops automation" in categories["nouvelles_portes"]
