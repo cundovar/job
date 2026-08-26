@@ -22,21 +22,22 @@ const CV_TASK_KILL_GRACE_MS = 5000;
 const CV_TASK_RETENTION_MS = 60 * 60 * 1000;
 const REQUIRED_FRESH_CV_FILES = [
   'cv_final.pdf',
+  'cv_ats.pdf',
   'cv_agent_trace.json',
-  'cv_canva_copy.md',
+  'cv_assessment.json',
 ];
 const CV_FILES = new Set([
   'cv_adaptation_plan.json',
   'cv_draft.json',
-  'cv_draft.md',
   'cv_review.json',
   'cv_final_review.json',
   'cv_final.json',
   'cv_agent_trace.json',
-  'cv_final.md',
-  'cv_canva_copy.md',
   'cv_final.html',
   'cv_final.pdf',
+  'cv_ats.html',
+  'cv_ats.pdf',
+  'cv_assessment.json',
 ]);
 
 function applicationDir(id) {
@@ -64,7 +65,16 @@ function cvStatus(id) {
       review = null;
     }
   }
-  return { exists: fs.existsSync(cvDir), files, review };
+  let assessment = null;
+  const assessmentPath = path.join(cvDir, 'cv_assessment.json');
+  if (fs.existsSync(assessmentPath)) {
+    try {
+      assessment = JSON.parse(fs.readFileSync(assessmentPath, 'utf-8'));
+    } catch {
+      assessment = null;
+    }
+  }
+  return { exists: fs.existsSync(cvDir), files, review, assessment };
 }
 
 function hasFreshCvOutputs(id, startedAtMs) {

@@ -1,0 +1,28 @@
+{
+  "schema_version": "cv_assessment_v1",
+  "match_weights": {
+    "required_skills": 35,
+    "experience_evidence": 30,
+    "role_context": 15,
+    "education_certifications": 10,
+    "constraints": 10
+  },
+  "human_quality_weights": {
+    "relevance": 30,
+    "clarity": 25,
+    "evidence": 20,
+    "concision": 15,
+    "layout_readiness": 10
+  },
+  "bands": {
+    "strong": 85,
+    "credible": 70,
+    "weak": 55
+  },
+  "eligibility_checks": {
+    "work_authorization": ["autorisation de travail", "permis de travail", "droit de travailler"],
+    "driver_license": ["permis b obligatoire", "permis de conduire obligatoire"],
+    "english": ["anglais obligatoire", "anglais courant requis", "anglais fluent"],
+    "degree": ["diplôme obligatoire", "diplome obligatoire", "bac+2 obligatoire", "bac+3 obligatoire", "bac+5 obligatoire"]
+  }
+}

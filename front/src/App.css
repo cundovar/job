@@ -919,6 +919,66 @@ h3 > .lucide {
   background: var(--surface-sunken);
   color: var(--text);
 }
+.cv-assessment {
+  display: grid;
+  gap: var(--sp-3);
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-sunken);
+}
+.cv-assessment-heading,
+.cv-assessment-grid,
+.cv-assessment-control,
+.cv-assessment-score {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.cv-assessment-heading h3 { margin: var(--sp-1) 0 0; }
+.cv-assessment-status,
+.cv-assessment-control strong {
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--r-full);
+  font-size: var(--fs-xs);
+}
+.cv-assessment-status.ready,
+.cv-assessment-control strong.pass { background: var(--ok-bg); color: var(--ok); }
+.cv-assessment-status.review,
+.cv-assessment-control strong.review { background: var(--warn-bg); color: var(--warn); }
+.cv-assessment-status.blocked,
+.cv-assessment-control strong.fail { background: var(--danger-bg); color: var(--danger); }
+.cv-assessment-grid { align-items: stretch; }
+.cv-assessment-controls,
+.cv-assessment-scores {
+  display: grid;
+  gap: var(--sp-2);
+  flex: 1 1 280px;
+}
+.cv-assessment-control,
+.cv-assessment-score {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+.cv-assessment-score strong { color: var(--text-strong); font-size: var(--fs-lg); }
+.cv-assessment-score small { color: var(--text-muted); }
+.cv-assessment-alerts {
+  padding: var(--sp-3);
+  border: 1px solid var(--warn-border);
+  border-radius: var(--r-sm);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: var(--fs-sm);
+}
+.cv-assessment-alerts ul { margin: var(--sp-2) 0 0 var(--sp-4); }
+@media (max-width: 680px) {
+  .cv-assessment-grid { align-items: stretch; flex-direction: column; }
+  .cv-assessment-heading { align-items: flex-start; }
+}
 
 /* ============================================================
    7. CV DEPUIS UNE ANNONCE

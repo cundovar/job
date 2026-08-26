@@ -79,12 +79,18 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
     plan = []
     for exp_id in ordered_ids:
         exp = catalog[exp_id]
+        matched_tags = [tag for tag in exp.get("tags", []) if normalize(tag) in text]
+        visibility = str(exp.get("visibility") or "default")
+        if visibility.startswith("only_") and not matched_tags:
+            continue
         score = 0
         if exp_id in preferred:
             score += 6
         if exp_id in refs:
             score += 3
-        score += sum(2 for tag in exp.get("tags", []) if normalize(tag) in text)
+        score += 2 * len(matched_tags)
+        if visibility.startswith("only_") and matched_tags:
+            score += 8
         highlights = exp.get("highlights", [])
         picked = []
         for item in highlights:
