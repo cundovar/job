@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 import sys
 from pathlib import Path
 
-from applications import ApplicationTracker, build_application_package
+from applications import (
+    ApplicationTracker,
+    build_application_package,
+    rebuild_candidatures_index,
+)
 from pipeline import load_criteria
 
 PROJECT = Path(__file__).resolve().parents[1]
-HERMES_HOME = Path(os.getenv("HERMES_HOME", "/data/hermes"))
-INDEX_SCRIPT = HERMES_HOME / "scripts" / "job_search_json_candidatures.py"
 
 
 def main() -> None:
@@ -30,17 +30,11 @@ def main() -> None:
         output_dir="output/applications",
         user_profile=criteria.get("user_profile", {}),
     )
-    record = ApplicationTracker("data/applications_tracker.json").mark_ready(job, package)
-
-    index_result = subprocess.run(
-        ["python3", str(INDEX_SCRIPT)],
-        cwd=PROJECT,
-        text=True,
-        capture_output=True,
-        check=False,
+    index_result = rebuild_candidatures_index(
+        PROJECT / "output" / "applications",
+        PROJECT / "front" / "public" / "data" / "candidatures.json",
     )
-    if index_result.returncode != 0:
-        raise SystemExit(index_result.stderr or index_result.stdout or "Erreur génération index candidatures")
+    record = ApplicationTracker("data/applications_tracker.json").mark_ready(job, package)
 
     directory = Path(package.directory)
     result = {
@@ -52,7 +46,7 @@ def main() -> None:
         "cv_name": package.recommended_cv.cv_name,
         "cv_variant": package.recommended_cv.cv_id,
         "record": record,
-        "index": json.loads(index_result.stdout.strip() or "{}"),
+        "index": index_result,
     }
     print(json.dumps(result, ensure_ascii=False))
 
