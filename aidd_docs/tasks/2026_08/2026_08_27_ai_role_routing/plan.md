@@ -1,6 +1,6 @@
 ---
 objective: "Chaque rôle IA utilise un fournisseur, un modèle et un niveau de raisonnement dédiés, avec des secours ordonnés et les garde-fous existants préservés."
-status: in-progress
+status: implemented
 ---
 
 # Plan: Routage IA par rôle
