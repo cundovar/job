@@ -16,7 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict
 
-from utils.cli_agent_bridge import CLIAgentBridgeClient, CLIBridgeError
+from utils.cli_agent_bridge import CLIAgentBridgeClient
 
 AGENT_NAME = "agent_redacteur_lettres"
 PROMPT_FILE = "agent_redacteur_lettres.md"
@@ -70,28 +70,20 @@ def generate_motivation_letter(
     bridge_client: CLIAgentBridgeClient | None = None,
 ) -> str:
     """Ask the CLI bridge to write the letter. Raises MotivationLetterError on failure."""
-    bridge = bridge_client or CLIAgentBridgeClient()
     payload = _build_payload(job, recommendation, user_profile)
     system_prompt = _load_system_prompt()
+    from cv_generator.ai_agents import CVAgentError, CVLLMClient
 
-    errors = []
-    for provider in ("codex", "claude"):
-        try:
-            result = bridge.complete_json(
-                agent_name=AGENT_NAME,
-                system_prompt=system_prompt,
-                payload=payload,
-                preferred_provider=provider,
-            )
-        except CLIBridgeError as exc:
-            errors.append(f"{provider}: {exc}")
-            continue
+    try:
+        result = CVLLMClient(bridge_client=bridge_client).complete_json(
+            agent_name=AGENT_NAME,
+            system_prompt=system_prompt,
+            payload=payload,
+        )
+    except CVAgentError as exc:
+        raise MotivationLetterError(str(exc)) from exc
 
-        letter = (result.data.get("lettre") or "").strip()
-        if letter:
-            return letter
-        errors.append(f"{provider}: reponse sans champ 'lettre'")
-
-    raise MotivationLetterError(
-        "Aucun fournisseur n'a pu rediger la lettre. " + " | ".join(errors)
-    )
+    letter = (result.data.get("lettre") or "").strip()
+    if not letter:
+        raise MotivationLetterError("L'agent IA n'a pas renvoyé de lettre.")
+    return letter

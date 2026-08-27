@@ -1,0 +1,51 @@
+{
+  "schema_version": "ai_role_routing_v1",
+  "models": {
+    "deepseek_job": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "model_env": "JOB_DEEPSEEK_MODEL"
+    },
+    "deepseek_cv": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "model_env": "CV_DEEPSEEK_MODEL"
+    },
+    "codex_low": {
+      "provider": "codex_cli",
+      "model": "gpt-5.6-sol",
+      "model_env": "AI_CODEX_SOL_MODEL",
+      "reasoning_effort": "low"
+    },
+    "codex_medium": {
+      "provider": "codex_cli",
+      "model": "gpt-5.6-sol",
+      "model_env": "AI_CODEX_SOL_MODEL",
+      "reasoning_effort": "medium"
+    },
+    "codex_high": {
+      "provider": "codex_cli",
+      "model": "gpt-5.6-sol",
+      "model_env": "AI_CODEX_SOL_MODEL",
+      "reasoning_effort": "high"
+    },
+    "claude_sonnet": {
+      "provider": "claude_cli",
+      "model": "sonnet",
+      "model_env": "AI_CLAUDE_SONNET_MODEL"
+    },
+    "claude_opus_5": {
+      "provider": "claude_cli",
+      "model": "opus",
+      "model_env": "AI_CLAUDE_OPUS_MODEL"
+    }
+  },
+  "roles": {
+    "job_offer_analyzer": ["deepseek_job", "codex_low", "claude_sonnet"],
+    "cv_job_analyzer": ["claude_sonnet", "codex_medium", "deepseek_cv"],
+    "cv_creator": ["codex_medium", "claude_sonnet", "deepseek_cv"],
+    "cv_quality_checker": ["claude_opus_5", "codex_high", "deepseek_cv"],
+    "cv_style_reviser": ["codex_medium", "claude_sonnet", "deepseek_cv"],
+    "agent_redacteur_lettres": ["claude_opus_5", "codex_medium", "deepseek_cv"]
+  }
+}

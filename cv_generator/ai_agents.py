@@ -12,6 +12,7 @@ from cv_generator.cv_creator import create_cv_draft
 from cv_generator.cv_quality_checker import review_cv as review_cv_rules
 from cv_generator.job_analyzer import analyze_job_for_cv as analyze_job_rules
 from cv_generator.utils import compact_items, flatten_skills, normalize, period_to_text
+from utils.ai_role_routing import AIRouteStep, legacy_route, load_role_route
 from utils.cli_agent_bridge import CLIAgentBridgeClient
 
 
@@ -58,14 +59,15 @@ def _parse_json_response(content: str) -> Dict[str, Any]:
 class CVLLMClient:
     """Subscription CLI bridge first, then optional API fallbacks."""
 
-    def __init__(self) -> None:
+    def __init__(self, bridge_client: CLIAgentBridgeClient | None = None) -> None:
         timeout = float(os.getenv("CV_AI_TIMEOUT_SECONDS", os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "60")))
-        self._cli_bridge = CLIAgentBridgeClient()
-        self._provider_order = [
-            item.strip().lower()
-            for item in os.getenv("CV_AI_PROVIDER_ORDER", "cli,deepseek,claude").split(",")
-            if item.strip()
-        ]
+        self._cli_bridge = bridge_client or CLIAgentBridgeClient()
+        provider_override = os.getenv("CV_AI_PROVIDER_ORDER")
+        self._provider_order = (
+            [item.strip().lower() for item in provider_override.split(",") if item.strip()]
+            if provider_override
+            else None
+        )
         deepseek_key = os.getenv("DEEPSEEK_API_KEY")
         self._deepseek = (
             OpenAI(
@@ -91,12 +93,16 @@ class CVLLMClient:
         system_prompt: str,
         payload: Dict[str, Any],
         preferred_provider: str | None = None,
+        preferred_model: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> AgentResult:
         result = self._cli_bridge.complete_json(
             agent_name=agent_name,
             system_prompt=system_prompt,
             payload=payload,
             preferred_provider=preferred_provider,
+            preferred_model=preferred_model,
+            reasoning_effort=reasoning_effort,
         )
         return AgentResult(
             data=result.data,
@@ -104,11 +110,17 @@ class CVLLMClient:
             model=result.model,
         )
 
-    def _call_deepseek(self, system_prompt: str, user_message: str) -> AgentResult:
+    def _call_deepseek(
+        self,
+        system_prompt: str,
+        user_message: str,
+        model: str | None = None,
+    ) -> AgentResult:
         if self._deepseek is None:
             raise CVAgentError("DEEPSEEK_API_KEY absente")
+        selected_model = model or self._deepseek_model
         response = self._deepseek.chat.completions.create(
-            model=self._deepseek_model,
+            model=selected_model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
@@ -117,9 +129,14 @@ class CVLLMClient:
             max_tokens=self._max_tokens,
         )
         content = response.choices[0].message.content or ""
-        return AgentResult(_parse_json_response(content), "deepseek", self._deepseek_model)
+        return AgentResult(_parse_json_response(content), "deepseek", selected_model)
 
-    def _call_claude(self, system_prompt: str, user_message: str) -> AgentResult:
+    def _call_claude(
+        self,
+        system_prompt: str,
+        user_message: str,
+        model: str | None = None,
+    ) -> AgentResult:
         if not self._anthropic_key:
             raise CVAgentError("ANTHROPIC_API_KEY absente")
         try:
@@ -127,15 +144,21 @@ class CVLLMClient:
         except ImportError as exc:
             raise CVAgentError("Le paquet anthropic n'est pas installé") from exc
         client = anthropic.Anthropic(api_key=self._anthropic_key)
+        selected_model = model or self._claude_model
         response = client.messages.create(
-            model=self._claude_model,
+            model=selected_model,
             max_tokens=self._max_tokens,
             temperature=self._temperature,
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
         )
         content = "".join(block.text for block in response.content if hasattr(block, "text"))
-        return AgentResult(_parse_json_response(content), "anthropic", self._claude_model)
+        return AgentResult(_parse_json_response(content), "anthropic", selected_model)
+
+    def _route_for(self, agent_name: str) -> List[AIRouteStep]:
+        if self._provider_order is not None:
+            return legacy_route(self._provider_order)
+        return load_role_route(agent_name)
 
     def complete_json(
         self,
@@ -150,22 +173,32 @@ class CVLLMClient:
             + json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         )
         errors: List[str] = []
-        for provider in self._provider_order:
+        for step in self._route_for(agent_name):
+            provider = step.provider
             try:
                 if provider in {"cli", "bridge"}:
                     return self._call_cli_bridge(agent_name, system_prompt, payload)
                 if provider == "codex_cli":
                     return self._call_cli_bridge(
-                        agent_name, system_prompt, payload, preferred_provider="codex"
+                        agent_name,
+                        system_prompt,
+                        payload,
+                        preferred_provider="codex",
+                        preferred_model=step.model,
+                        reasoning_effort=step.reasoning_effort,
                     )
                 if provider == "claude_cli":
                     return self._call_cli_bridge(
-                        agent_name, system_prompt, payload, preferred_provider="claude"
+                        agent_name,
+                        system_prompt,
+                        payload,
+                        preferred_provider="claude",
+                        preferred_model=step.model,
                     )
                 if provider == "deepseek":
-                    return self._call_deepseek(system_prompt, user_message)
+                    return self._call_deepseek(system_prompt, user_message, step.model)
                 if provider in {"claude", "anthropic"}:
-                    return self._call_claude(system_prompt, user_message)
+                    return self._call_claude(system_prompt, user_message, step.model)
                 errors.append(f"{provider}: fournisseur inconnu")
             except Exception as exc:
                 errors.append(f"{provider}: {exc}")

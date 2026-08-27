@@ -1,5 +1,5 @@
 ---
-status: pending
+status: in-progress
 ---
 
 # Phase 3: Tests et documentation

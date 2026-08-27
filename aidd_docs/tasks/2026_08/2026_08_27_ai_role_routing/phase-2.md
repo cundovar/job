@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 ---
 
 # Phase 2: Routage ordonné par rôle
