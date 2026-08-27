@@ -29,6 +29,8 @@ class FakeProviderBridge:
         system_prompt,
         payload,
         preferred_provider=None,
+        preferred_model=None,
+        reasoning_effort=None,
     ):
         self.calls.append(
             {
@@ -36,6 +38,8 @@ class FakeProviderBridge:
                 "system_prompt": system_prompt,
                 "payload": payload,
                 "preferred_provider": preferred_provider,
+                "preferred_model": preferred_model,
+                "reasoning_effort": reasoning_effort,
             }
         )
         return {
@@ -99,12 +103,38 @@ def test_unix_bridge_authentication_permissions_and_provider_selection(unix_brid
             "system_prompt": "Retourne du JSON.",
             "payload": {"job": {"title": "Webmaster"}},
             "preferred_provider": "codex",
+            "preferred_model": "gpt-5.6-sol",
+            "reasoning_effort": "medium",
         },
     )
 
     assert response["ok"] is True
     assert response["provider"] == "codex_cli"
     assert bridge.calls[0]["preferred_provider"] == "codex"
+    assert bridge.calls[0]["preferred_model"] == "gpt-5.6-sol"
+    assert bridge.calls[0]["reasoning_effort"] == "medium"
+
+
+def test_unix_bridge_rejects_invalid_model_or_reasoning(unix_bridge):
+    socket_path, bridge = unix_bridge
+    base = {
+        "operation": "complete_json",
+        "token": TOKEN,
+        "agent_name": "cv_creator",
+        "system_prompt": "Retourne du JSON.",
+        "payload": {},
+        "preferred_provider": "codex",
+    }
+
+    assert _request(socket_path, {**base, "preferred_model": "bad model --flag"}) == {
+        "ok": False,
+        "error": "invalid_request",
+    }
+    assert _request(socket_path, {**base, "reasoning_effort": "ultra"}) == {
+        "ok": False,
+        "error": "invalid_request",
+    }
+    assert bridge.calls == []
 
 
 def test_unix_bridge_rejects_non_object_json(unix_bridge):

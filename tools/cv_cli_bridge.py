@@ -30,6 +30,8 @@ class BridgeExecutionError(RuntimeError):
 
 _MODEL_LOCK = threading.Lock()
 _MAX_REQUEST_BYTES = 1_500_000
+_MODEL_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,99}")
+_CODEX_REASONING_EFFORTS = {"low", "medium", "high"}
 _DISABLED_CODEX_FEATURES = (
     "shell_tool",
     "unified_exec",
@@ -121,7 +123,14 @@ class CLIAgentBridge:
             "claude": shutil.which("claude") is not None,
         }
 
-    def _codex(self, system_prompt: str, user_message: str) -> Dict[str, Any]:
+    def _codex(
+        self,
+        system_prompt: str,
+        user_message: str,
+        *,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+    ) -> Dict[str, Any]:
         executable = shutil.which("codex")
         if not executable:
             raise BridgeExecutionError("Codex CLI est absent.")
@@ -157,8 +166,13 @@ class CLIAgentBridge:
                     str(output_path),
                 ]
             )
-            if self.codex_model:
-                command.extend(["--model", self.codex_model])
+            selected_model = model or self.codex_model
+            if selected_model:
+                command.extend(["--model", selected_model])
+            if reasoning_effort:
+                command.extend(
+                    ["--config", f'model_reasoning_effort="{reasoning_effort}"']
+                )
             command.append("-")
             try:
                 result = subprocess.run(
@@ -183,7 +197,13 @@ class CLIAgentBridge:
             )
         return _parse_json_response(content)
 
-    def _claude(self, system_prompt: str, user_message: str) -> Dict[str, Any]:
+    def _claude(
+        self,
+        system_prompt: str,
+        user_message: str,
+        *,
+        model: str | None = None,
+    ) -> Dict[str, Any]:
         executable = shutil.which("claude")
         if not executable:
             raise BridgeExecutionError("Claude Code est absent.")
@@ -211,8 +231,9 @@ class CLIAgentBridge:
             "--system-prompt",
             protected_system,
         ]
-        if self.claude_model:
-            command.extend(["--model", self.claude_model])
+        selected_model = model or self.claude_model
+        if selected_model:
+            command.extend(["--model", selected_model])
         try:
             result = subprocess.run(
                 command,
@@ -237,6 +258,8 @@ class CLIAgentBridge:
         system_prompt: str,
         payload: Dict[str, Any],
         preferred_provider: str | None = None,
+        preferred_model: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> Dict[str, Any]:
         user_message = _user_message(agent_name, payload)
         providers = [preferred_provider] if preferred_provider else self.provider_order
@@ -246,11 +269,20 @@ class CLIAgentBridge:
                 started = time.monotonic()
                 try:
                     if provider == "codex":
-                        data = self._codex(system_prompt, user_message)
-                        model = self.codex_model or "subscription-default"
+                        data = self._codex(
+                            system_prompt,
+                            user_message,
+                            model=preferred_model,
+                            reasoning_effort=reasoning_effort,
+                        )
+                        model = preferred_model or self.codex_model or "subscription-default"
                     elif provider == "claude":
-                        data = self._claude(system_prompt, user_message)
-                        model = self.claude_model or "subscription-default"
+                        data = self._claude(
+                            system_prompt,
+                            user_message,
+                            model=preferred_model,
+                        )
+                        model = preferred_model or self.claude_model or "subscription-default"
                     else:
                         errors.append(f"Fournisseur inconnu: {provider}")
                         continue
@@ -305,6 +337,8 @@ class BridgeRequestHandler(socketserver.StreamRequestHandler):
         system_prompt = request.get("system_prompt")
         payload = request.get("payload")
         preferred_provider = request.get("preferred_provider")
+        preferred_model = request.get("preferred_model")
+        reasoning_effort = request.get("reasoning_effort")
         if (
             operation != "complete_json"
             or not isinstance(agent_name, str)
@@ -313,6 +347,15 @@ class BridgeRequestHandler(socketserver.StreamRequestHandler):
             or len(system_prompt) > 50_000
             or not isinstance(payload, dict)
             or preferred_provider not in {None, "codex", "claude"}
+            or (
+                preferred_model is not None
+                and (
+                    not isinstance(preferred_model, str)
+                    or not _MODEL_PATTERN.fullmatch(preferred_model)
+                )
+            )
+            or reasoning_effort not in {None, *_CODEX_REASONING_EFFORTS}
+            or (reasoning_effort is not None and preferred_provider != "codex")
         ):
             self._reply({"ok": False, "error": "invalid_request"})
             return
@@ -322,6 +365,8 @@ class BridgeRequestHandler(socketserver.StreamRequestHandler):
                 system_prompt,
                 payload,
                 preferred_provider=preferred_provider,
+                preferred_model=preferred_model,
+                reasoning_effort=reasoning_effort,
             )
         except Exception as exc:
             self._reply(

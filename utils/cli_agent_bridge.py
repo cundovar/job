@@ -80,6 +80,8 @@ class CLIAgentBridgeClient:
         system_prompt: str,
         payload: Dict[str, Any],
         preferred_provider: str | None = None,
+        preferred_model: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> CLIBridgeResult:
         if not self.token:
             raise CLIBridgeError("Jeton du bridge CLI absent")
@@ -92,6 +94,10 @@ class CLIAgentBridgeClient:
         }
         if preferred_provider:
             request["preferred_provider"] = preferred_provider
+        if preferred_model:
+            request["preferred_model"] = preferred_model
+        if reasoning_effort:
+            request["reasoning_effort"] = reasoning_effort
         encoded = (
             json.dumps(request, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
             + b"\n"
