@@ -12,8 +12,9 @@ from utils.cli_agent_bridge import CLIBridgeError
 from applications import recommend_cv
 
 
-def test_generate_motivation_letter_delegates_to_bridge():
+def test_generate_motivation_letter_delegates_to_bridge(monkeypatch):
     """La redaction passe par le bridge CLI : on verifie l'appel, pas le texte."""
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     job = {
         "title": "Webmaster institutionnel WordPress",
         "company": "Ville Test",
@@ -57,8 +58,9 @@ def test_generate_motivation_letter_delegates_to_bridge():
     assert "lettre" in captured["system_prompt"]
 
 
-def test_generate_motivation_letter_falls_back_then_raises():
+def test_generate_motivation_letter_falls_back_then_raises(monkeypatch):
     """Essaie Opus puis Codex, et remonte l'erreur — jamais de lettre degradee."""
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     job = {"title": "Dev", "company": "X", "description": ""}
     recommendation = recommend_cv(job)
     tried = []

@@ -3,10 +3,12 @@ import os
 import socket
 import stat
 import threading
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from tools.cv_cli_bridge import create_server
+from tools.cv_cli_bridge import CLIAgentBridge, create_server
 from utils.cli_agent_bridge import CLIAgentBridgeClient
 
 
@@ -174,3 +176,42 @@ def test_client_timeout_covers_two_provider_attempts(monkeypatch):
     )
 
     assert client.timeout == 54
+
+
+def test_cli_commands_apply_requested_model_and_codex_effort(tmp_path, monkeypatch):
+    monkeypatch.setenv("CV_CLI_BRIDGE_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.setattr("tools.cv_cli_bridge.shutil.which", lambda name: f"/usr/bin/{name}")
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if command[0].endswith("codex"):
+            output_path = Path(command[command.index("--output-last-message") + 1])
+            output_path.write_text('{"status":"ok"}', encoding="utf-8")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return SimpleNamespace(returncode=0, stdout='{\"status\":\"ok\"}', stderr="")
+
+    monkeypatch.setattr("tools.cv_cli_bridge.subprocess.run", fake_run)
+    bridge = CLIAgentBridge()
+
+    codex = bridge.complete_json(
+        "cv_creator",
+        "Retourne du JSON.",
+        {},
+        preferred_provider="codex",
+        preferred_model="gpt-5.6-sol",
+        reasoning_effort="medium",
+    )
+    claude = bridge.complete_json(
+        "cv_quality_checker",
+        "Retourne du JSON.",
+        {},
+        preferred_provider="claude",
+        preferred_model="opus",
+    )
+
+    assert codex["model"] == "gpt-5.6-sol"
+    assert "--model" in commands[0] and "gpt-5.6-sol" in commands[0]
+    assert 'model_reasoning_effort="medium"' in commands[0]
+    assert claude["model"] == "opus"
+    assert "--model" in commands[1] and "opus" in commands[1]

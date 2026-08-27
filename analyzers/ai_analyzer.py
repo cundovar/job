@@ -1,9 +1,4 @@
-"""
-AI analysis with subscription CLIs — strict scoring and PASSER filter.
-The system prompt is loaded from config/agent_juge_offres.md (single source of truth).
-The candidate profile is injected at call time from criteria.yaml.
-Fallback chain: subscription CLI bridge → DeepSeek API → Anthropic API.
-"""
+"""AI offer analysis with role-specific routing and a strict PASSER filter."""
 from __future__ import annotations
 
 import json
@@ -152,8 +147,6 @@ class AIAnalyzer:
 
     def analyze_job(self, job: Dict, criteria: Dict) -> Dict:
         """Analyze a job offer against the full criteria (user_profile injected in prompt).
-
-        Chain: subscription CLI bridge → DeepSeek → Claude.
 
         Args:
             job: Scraped job dict (title, company, location, contract_type, salary, description, score).

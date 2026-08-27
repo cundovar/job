@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 ---
 
 # Phase 3: Tests et documentation

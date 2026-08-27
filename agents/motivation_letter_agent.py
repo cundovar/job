@@ -1,15 +1,13 @@
 """
-Motivation letter generation — delegated to the subscription CLI bridge.
+Motivation letter generation — delegated to the role-routed AI client.
 
 Single source of truth for the writing rules: config/agent_redacteur_lettres.md
 (mirror of the Hermes skill `agent-redacteur-lettres`). This module contains no
 writing logic of its own.
 
-The bridge is used rather than the `hermes` binary because it is reachable from
-both the local environment and the Coolify container (data/ is bind-mounted, so
-the socket is shared). If the bridge cannot answer, this raises: there is
-deliberately no template fallback, since a degraded letter that looks finished
-is worse than a visible error.
+Claude Opus is preferred, then Codex and DeepSeek are attempted in order. If no
+provider can answer, this raises: there is deliberately no template fallback,
+since a degraded letter that looks finished is worse than a visible error.
 """
 from __future__ import annotations
 

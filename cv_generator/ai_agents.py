@@ -57,7 +57,7 @@ def _parse_json_response(content: str) -> Dict[str, Any]:
 
 
 class CVLLMClient:
-    """Subscription CLI bridge first, then optional API fallbacks."""
+    """Execute the provider/model fallback route configured for each AI role."""
 
     def __init__(self, bridge_client: CLIAgentBridgeClient | None = None) -> None:
         timeout = float(os.getenv("CV_AI_TIMEOUT_SECONDS", os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "60")))
