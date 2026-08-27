@@ -3,10 +3,12 @@ import os
 import socket
 import stat
 import threading
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from tools.cv_cli_bridge import create_server
+from tools.cv_cli_bridge import CLIAgentBridge, create_server
 from utils.cli_agent_bridge import CLIAgentBridgeClient
 
 
@@ -29,6 +31,8 @@ class FakeProviderBridge:
         system_prompt,
         payload,
         preferred_provider=None,
+        preferred_model=None,
+        reasoning_effort=None,
     ):
         self.calls.append(
             {
@@ -36,6 +40,8 @@ class FakeProviderBridge:
                 "system_prompt": system_prompt,
                 "payload": payload,
                 "preferred_provider": preferred_provider,
+                "preferred_model": preferred_model,
+                "reasoning_effort": reasoning_effort,
             }
         )
         return {
@@ -99,12 +105,38 @@ def test_unix_bridge_authentication_permissions_and_provider_selection(unix_brid
             "system_prompt": "Retourne du JSON.",
             "payload": {"job": {"title": "Webmaster"}},
             "preferred_provider": "codex",
+            "preferred_model": "gpt-5.6-sol",
+            "reasoning_effort": "medium",
         },
     )
 
     assert response["ok"] is True
     assert response["provider"] == "codex_cli"
     assert bridge.calls[0]["preferred_provider"] == "codex"
+    assert bridge.calls[0]["preferred_model"] == "gpt-5.6-sol"
+    assert bridge.calls[0]["reasoning_effort"] == "medium"
+
+
+def test_unix_bridge_rejects_invalid_model_or_reasoning(unix_bridge):
+    socket_path, bridge = unix_bridge
+    base = {
+        "operation": "complete_json",
+        "token": TOKEN,
+        "agent_name": "cv_creator",
+        "system_prompt": "Retourne du JSON.",
+        "payload": {},
+        "preferred_provider": "codex",
+    }
+
+    assert _request(socket_path, {**base, "preferred_model": "bad model --flag"}) == {
+        "ok": False,
+        "error": "invalid_request",
+    }
+    assert _request(socket_path, {**base, "reasoning_effort": "ultra"}) == {
+        "ok": False,
+        "error": "invalid_request",
+    }
+    assert bridge.calls == []
 
 
 def test_unix_bridge_rejects_non_object_json(unix_bridge):
@@ -144,3 +176,42 @@ def test_client_timeout_covers_two_provider_attempts(monkeypatch):
     )
 
     assert client.timeout == 54
+
+
+def test_cli_commands_apply_requested_model_and_codex_effort(tmp_path, monkeypatch):
+    monkeypatch.setenv("CV_CLI_BRIDGE_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.setattr("tools.cv_cli_bridge.shutil.which", lambda name: f"/usr/bin/{name}")
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if command[0].endswith("codex"):
+            output_path = Path(command[command.index("--output-last-message") + 1])
+            output_path.write_text('{"status":"ok"}', encoding="utf-8")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return SimpleNamespace(returncode=0, stdout='{\"status\":\"ok\"}', stderr="")
+
+    monkeypatch.setattr("tools.cv_cli_bridge.subprocess.run", fake_run)
+    bridge = CLIAgentBridge()
+
+    codex = bridge.complete_json(
+        "cv_creator",
+        "Retourne du JSON.",
+        {},
+        preferred_provider="codex",
+        preferred_model="gpt-5.6-sol",
+        reasoning_effort="medium",
+    )
+    claude = bridge.complete_json(
+        "cv_quality_checker",
+        "Retourne du JSON.",
+        {},
+        preferred_provider="claude",
+        preferred_model="opus",
+    )
+
+    assert codex["model"] == "gpt-5.6-sol"
+    assert "--model" in commands[0] and "gpt-5.6-sol" in commands[0]
+    assert 'model_reasoning_effort="medium"' in commands[0]
+    assert claude["model"] == "opus"
+    assert "--model" in commands[1] and "opus" in commands[1]

@@ -6,13 +6,24 @@ class FakeBridgeClient:
     def __init__(self):
         self.calls = []
 
-    def complete_json(self, *, agent_name, system_prompt, payload, preferred_provider=None):
+    def complete_json(
+        self,
+        *,
+        agent_name,
+        system_prompt,
+        payload,
+        preferred_provider=None,
+        preferred_model=None,
+        reasoning_effort=None,
+    ):
         self.calls.append(
             {
                 "agent_name": agent_name,
                 "system_prompt": system_prompt,
                 "payload": payload,
                 "preferred_provider": preferred_provider,
+                "preferred_model": preferred_model,
+                "reasoning_effort": reasoning_effort,
             }
         )
         return CLIBridgeResult(

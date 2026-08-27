@@ -1,11 +1,19 @@
 # Bridge IA Codex / Claude sur Netcup
 
-Le générateur de CV et l'analyse des annonces utilisent en priorité les CLI
-d'abonnement installés sur le VPS :
+Le générateur utilise un ordre différent pour chaque rôle. La configuration de
+référence se trouve dans `config/ai_role_routing.json`.
 
-1. Codex CLI ;
-2. Claude Code si Codex échoue et si la session Claude est valide ;
-3. DeepSeek API puis Anthropic API uniquement comme replis facultatifs.
+| Rôle | Principal | Secours 1 | Secours 2 |
+|---|---|---|---|
+| Filtrage des annonces | DeepSeek | Codex faible | Claude Sonnet |
+| Analyse CV et sélection des expériences | Claude Sonnet | Codex moyen | DeepSeek |
+| Rédaction du CV | Codex Sol moyen | Claude Sonnet | DeepSeek |
+| Juge qualité | Claude Opus 5 | Codex Sol élevé | DeepSeek |
+| Correction finale | Codex Sol moyen | Claude Sonnet | DeepSeek |
+| Lettre de motivation | Claude Opus 5 | Codex Sol moyen | DeepSeek |
+
+Le résumé d'annonce et le mail standard restent entièrement déterministes en
+Python. Ils ne consomment aucun appel IA.
 
 ## Architecture
 
@@ -65,8 +73,13 @@ test -S data/.cv_cli_bridge.sock && echo "socket OK"
 
 | Variable | Défaut | Usage |
 |---|---|---|
-| `CV_AI_PROVIDER_ORDER` | `cli,deepseek,claude` | Ordre pour les agents du CV |
-| `JOB_AI_PROVIDER_ORDER` | valeur CV, sinon `cli,deepseek,claude` | Ordre pour le juge d'annonces |
+| `CV_AI_PROVIDER_ORDER` | non défini | Surcharge globale désactivant le routage par rôle pour les agents du CV |
+| `JOB_AI_PROVIDER_ORDER` | non défini | Surcharge globale du routage du juge d'annonces |
+| `AI_CODEX_SOL_MODEL` | `gpt-5.6-sol` | Modèle Codex demandé par les rôles faible, moyen et élevé |
+| `AI_CLAUDE_SONNET_MODEL` | `sonnet` | Alias ou nom complet Claude Sonnet |
+| `AI_CLAUDE_OPUS_MODEL` | `opus` | Alias ou nom complet Claude Opus 5 |
+| `JOB_DEEPSEEK_MODEL` | `deepseek-v4-flash` | Modèle DeepSeek pour le filtrage des annonces |
+| `CV_DEEPSEEK_MODEL` | `deepseek-v4-flash` | Modèle DeepSeek pour les secours CV et lettre |
 | `CV_CLI_BRIDGE_TIMEOUT_SECONDS` | `300` | Délai maximal par fournisseur CLI |
 | `CV_CLI_BRIDGE_CLIENT_TIMEOUT_SECONDS` | `630` | Délai client couvrant Codex puis Claude |
 | `CV_CLI_BRIDGE_CODEX_MODEL` | modèle Codex par défaut | Modèle CLI forcé |
@@ -75,8 +88,10 @@ test -S data/.cv_cli_bridge.sock && echo "socket OK"
 | `CV_CLI_BRIDGE_REQUEST_TIMEOUT_SECONDS` | `10` | Délai d'envoi d'une requête socket |
 | `CV_CLI_BRIDGE_MAX_CONNECTIONS` | `8` | Connexions socket simultanées maximales |
 
-Les clés `DEEPSEEK_API_KEY` et `ANTHROPIC_API_KEY` ne sont plus obligatoires
-pour ces deux pipelines.
+`DEEPSEEK_API_KEY` est requise pour les étapes ou replis DeepSeek. La clé
+`ANTHROPIC_API_KEY` reste facultative car les routes standards utilisent Claude
+Code via l'abonnement. L'alias Claude CLI `opus` suit le dernier Opus disponible
+sur l'abonnement ; il représente ici Claude Opus 5.
 
 ## Reconnexion Claude Code
 
@@ -100,4 +115,6 @@ Codex reste utilisable pendant que Claude est déconnecté.
 - Claude exécuté sans outil, MCP, plugin, hook ni source de réglages ;
 - aucune annonce, réponse IA, sortie brute des CLI ou valeur du jeton dans les journaux ;
 - connexions partielles limitées par délai et nombre maximal ;
-- contrôles Python du CV toujours appliqués après chaque agent.
+- contrôles Python du CV toujours appliqués après chaque agent ;
+- modèle et niveau de raisonnement validés avant tout appel CLI ;
+- échec technique ou JSON invalide suivi du secours suivant pour ce rôle.

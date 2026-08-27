@@ -1,9 +1,4 @@
-"""
-AI analysis with subscription CLIs — strict scoring and PASSER filter.
-The system prompt is loaded from config/agent_juge_offres.md (single source of truth).
-The candidate profile is injected at call time from criteria.yaml.
-Fallback chain: subscription CLI bridge → DeepSeek API → Anthropic API.
-"""
+"""AI offer analysis with role-specific routing and a strict PASSER filter."""
 from __future__ import annotations
 
 import json
@@ -15,6 +10,7 @@ from typing import Dict
 import yaml
 from openai import OpenAI
 
+from utils.ai_role_routing import AIRouteStep, legacy_route, load_role_route
 from utils.cli_agent_bridge import CLIAgentBridgeClient
 
 
@@ -45,14 +41,12 @@ def _parse_json_response(content: str) -> Dict:
 class AIAnalyzer:
     def __init__(self, bridge_client: CLIAgentBridgeClient | None = None) -> None:
         self._bridge = bridge_client or CLIAgentBridgeClient()
-        self._provider_order = [
-            item.strip().lower()
-            for item in os.getenv(
-                "JOB_AI_PROVIDER_ORDER",
-                os.getenv("CV_AI_PROVIDER_ORDER", "cli,deepseek,claude"),
-            ).split(",")
-            if item.strip()
-        ]
+        provider_override = os.getenv("JOB_AI_PROVIDER_ORDER") or os.getenv("CV_AI_PROVIDER_ORDER")
+        self._provider_order = (
+            [item.strip().lower() for item in provider_override.split(",") if item.strip()]
+            if provider_override
+            else None
+        )
         deepseek_key = os.getenv("DEEPSEEK_API_KEY")
         self._deepseek = (
             OpenAI(
@@ -81,12 +75,12 @@ class AIAnalyzer:
             self._claude = anthropic.Anthropic(api_key=api_key)
         return self._claude
 
-    def _call_deepseek(self, user_message: str) -> Dict:
+    def _call_deepseek(self, user_message: str, model: str | None = None) -> Dict:
         """Call DeepSeek API."""
         if self._deepseek is None:
             raise RuntimeError("DEEPSEEK_API_KEY manquante")
         response = self._deepseek.chat.completions.create(
-            model=self._deepseek_model,
+            model=model or self._deepseek_model,
             messages=[
                 {"role": "system", "content": self._system_prompt},
                 {"role": "user", "content": user_message},
@@ -116,6 +110,8 @@ class AIAnalyzer:
         job: Dict,
         criteria: Dict,
         preferred_provider: str | None = None,
+        preferred_model: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> Dict:
         """Call Codex/Claude subscription CLI through the private host bridge."""
         safe_job = {
@@ -139,13 +135,18 @@ class AIAnalyzer:
                 "job_offer": safe_job,
             },
             preferred_provider=preferred_provider,
+            preferred_model=preferred_model,
+            reasoning_effort=reasoning_effort,
         )
         return result.data
 
+    def _route(self) -> list[AIRouteStep]:
+        if self._provider_order is not None:
+            return legacy_route(self._provider_order)
+        return load_role_route("job_offer_analyzer")
+
     def analyze_job(self, job: Dict, criteria: Dict) -> Dict:
         """Analyze a job offer against the full criteria (user_profile injected in prompt).
-
-        Chain: subscription CLI bridge → DeepSeek → Claude.
 
         Args:
             job: Scraped job dict (title, company, location, contract_type, salary, description, score).
@@ -219,16 +220,28 @@ class AIAnalyzer:
         )
 
         errors = []
-        for provider in self._provider_order:
+        for step in self._route():
+            provider = step.provider
             try:
                 if provider in {"cli", "bridge"}:
                     return self._call_cli_bridge(job, criteria)
                 if provider == "codex_cli":
-                    return self._call_cli_bridge(job, criteria, preferred_provider="codex")
+                    return self._call_cli_bridge(
+                        job,
+                        criteria,
+                        preferred_provider="codex",
+                        preferred_model=step.model,
+                        reasoning_effort=step.reasoning_effort,
+                    )
                 if provider == "claude_cli":
-                    return self._call_cli_bridge(job, criteria, preferred_provider="claude")
+                    return self._call_cli_bridge(
+                        job,
+                        criteria,
+                        preferred_provider="claude",
+                        preferred_model=step.model,
+                    )
                 if provider == "deepseek":
-                    return self._call_deepseek(user_message)
+                    return self._call_deepseek(user_message, step.model)
                 if provider in {"claude", "anthropic"}:
                     return self._call_claude(user_message)
                 errors.append(f"{provider}: fournisseur inconnu")

@@ -12,8 +12,9 @@ from utils.cli_agent_bridge import CLIBridgeError
 from applications import recommend_cv
 
 
-def test_generate_motivation_letter_delegates_to_bridge():
+def test_generate_motivation_letter_delegates_to_bridge(monkeypatch):
     """La redaction passe par le bridge CLI : on verifie l'appel, pas le texte."""
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     job = {
         "title": "Webmaster institutionnel WordPress",
         "company": "Ville Test",
@@ -24,11 +25,21 @@ def test_generate_motivation_letter_delegates_to_bridge():
     captured = {}
 
     class FakeBridge:
-        def complete_json(self, *, agent_name, system_prompt, payload, preferred_provider=None):
+        def complete_json(
+            self,
+            *,
+            agent_name,
+            system_prompt,
+            payload,
+            preferred_provider=None,
+            preferred_model=None,
+            reasoning_effort=None,
+        ):
             captured["agent_name"] = agent_name
             captured["system_prompt"] = system_prompt
             captured["payload"] = payload
             captured["provider"] = preferred_provider
+            captured["model"] = preferred_model
             return SimpleNamespace(
                 data={"lettre": "# Lettre\n\nMadame, Monsieur,"},
                 provider="codex_cli",
@@ -41,26 +52,37 @@ def test_generate_motivation_letter_delegates_to_bridge():
 
     assert letter.startswith("# Lettre")
     assert captured["agent_name"] == "agent_redacteur_lettres"
-    assert captured["provider"] == "codex"
+    assert captured["provider"] == "claude"
+    assert captured["model"] == "opus"
     assert "Ville Test" in str(captured["payload"])
     assert "lettre" in captured["system_prompt"]
 
 
-def test_generate_motivation_letter_falls_back_then_raises():
-    """Essaie codex puis claude, et remonte l'erreur — jamais de lettre degradee."""
+def test_generate_motivation_letter_falls_back_then_raises(monkeypatch):
+    """Essaie Opus puis Codex, et remonte l'erreur — jamais de lettre degradee."""
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     job = {"title": "Dev", "company": "X", "description": ""}
     recommendation = recommend_cv(job)
     tried = []
 
     class DeadBridge:
-        def complete_json(self, *, agent_name, system_prompt, payload, preferred_provider=None):
+        def complete_json(
+            self,
+            *,
+            agent_name,
+            system_prompt,
+            payload,
+            preferred_provider=None,
+            preferred_model=None,
+            reasoning_effort=None,
+        ):
             tried.append(preferred_provider)
             raise CLIBridgeError("bridge indisponible")
 
     with pytest.raises(MotivationLetterError):
         generate_motivation_letter(job, recommendation, {}, bridge_client=DeadBridge())
 
-    assert tried == ["codex", "claude"]
+    assert tried == ["claude", "codex"]
 
 
 def test_generate_application_email_mentions_cv_to_attach():
