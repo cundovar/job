@@ -14,6 +14,7 @@ def test_build_application_package_creates_expected_files(tmp_path):
         "url": "https://example.com/job",
         "score": 86,
         "description": "Gestion CMS WordPress, accessibilite RGAA et site institutionnel.",
+        "candidate_instructions": "Mettre en avant DevDoc et le CI/CD.",
         "ai_analysis": {"recommandation": "POSTULER"},
     }
 

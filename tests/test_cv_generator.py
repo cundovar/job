@@ -33,9 +33,13 @@ from cv_generator.utils import load_json
 class FakeCVAgentClient:
     def __init__(self):
         self.calls = []
+        self.payloads = []
+        self.system_prompts = []
 
     def complete_json(self, *, agent_name, system_prompt, payload):
         self.calls.append(agent_name)
+        self.payloads.append(payload)
+        self.system_prompts.append(system_prompt)
         if agent_name == "cv_job_analyzer":
             data = {
                 "selected_base_variant": "webmaster",
@@ -329,6 +333,7 @@ def test_pipeline_automatically_applies_relevant_corrections_until_validated(tmp
         "title": "Webmaster WordPress",
         "company": "Ville Test",
         "description": "Gestion CMS WordPress, maintenance, contenus et documentation utilisateurs.",
+        "candidate_instructions": "Mettre en avant DevDoc sans inventer de compétence.",
     }
     client = RetryCVAgentClient()
 
@@ -346,6 +351,46 @@ def test_pipeline_automatically_applies_relevant_corrections_until_validated(tmp
     assert trace["automatic_corrections_exhausted"] is False
     assert client.calls.count("cv_style_reviser") == 2
     assert client.calls.count("cv_quality_checker") == 3
+    assert {payload["consignes_candidat"] for payload in client.payloads} == {
+        "Mettre en avant DevDoc sans inventer de compétence."
+    }
+    assert all(
+        "candidate_instructions" not in payload["annonce_complete"]
+        for payload in client.payloads
+    )
+    assert {
+        "cv_job_analyzer",
+        "cv_creator",
+        "cv_quality_checker",
+        "cv_style_reviser",
+    } <= set(client.calls)
+    assert trace["job"]["candidate_instructions_present"] is True
+    assert trace["job"]["candidate_instructions_chars"] == 51
+    assert "Mettre en avant DevDoc" not in json.dumps(trace, ensure_ascii=False)
+
+
+def test_empty_candidate_instructions_preserve_the_existing_agent_contract(tmp_path):
+    job = {
+        "title": "Webmaster WordPress",
+        "company": "Ville Test",
+        "description": "Gestion WordPress, maintenance et documentation utilisateurs.",
+    }
+    client = FakeCVAgentClient()
+
+    prepare_custom_cv(
+        job,
+        application_dir=tmp_path,
+        master_path="data/cv_master_profile.json",
+        llm_client=client,
+    )
+    trace = json.loads((tmp_path / "cv" / "cv_agent_trace.json").read_text(encoding="utf-8"))
+
+    assert all(payload["consignes_candidat"] == "" for payload in client.payloads)
+    assert trace["job"]["candidate_instructions_present"] is False
+    assert trace["job"]["candidate_instructions_chars"] == 0
+    for prompt in (ANALYZER_PROMPT, CREATOR_PROMPT, REVIEWER_PROMPT, REVISER_PROMPT):
+        assert "consignes_candidat" in prompt
+        assert "source de vérité" in prompt
 
 
 def test_pipeline_stops_automatic_corrections_at_the_safety_limit(tmp_path):
