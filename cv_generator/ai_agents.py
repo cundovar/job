@@ -10,7 +10,12 @@ from openai import OpenAI
 
 from cv_generator.cv_creator import create_cv_draft
 from cv_generator.cv_quality_checker import review_cv as review_cv_rules
-from cv_generator.job_analyzer import _select_experience_mix, analyze_job_for_cv as analyze_job_rules
+from cv_generator.job_analyzer import (
+    _max_experiences,
+    _merge_mandatory_skills,
+    _select_experience_mix,
+    analyze_job_for_cv as analyze_job_rules,
+)
 from cv_generator.utils import compact_items, flatten_skills, normalize, period_to_text
 from utils.ai_role_routing import AIRouteStep, legacy_route, load_role_route
 from utils.cli_agent_bridge import CLIAgentBridgeClient
@@ -448,13 +453,13 @@ def _sanitize_plan(
             seen.add(exp_id)
     for rule_item in rule_plan.get("experience_plan", []):
         exp_id = rule_item.get("experience_id")
-        if rule_item.get("selection_role") != "complementary" or exp_id in seen or exp_id not in catalog:
+        if exp_id in seen or exp_id not in catalog:
             continue
         highlights = catalog[exp_id].get("highlights", [])
         indexes = [highlights.index(text) for text in rule_item.get("highlights", []) if text in highlights][:3]
         experience_plan.append({**rule_item, "highlight_indexes": indexes})
         seen.add(exp_id)
-    max_experiences = int(master.get("layout_constraints", {}).get("max_experiences", 4))
+    max_experiences = _max_experiences(master, variant_id)
     experience_plan = _select_experience_mix(experience_plan, catalog, max_experiences)
     experience_plan.sort(
         key=lambda item: _period_key(catalog.get(item["experience_id"], {}).get("period")),
@@ -463,6 +468,7 @@ def _sanitize_plan(
     skills = _sanitize_skill_mapping(proposed.get("skills_to_emphasize"), master)
     if not skills:
         skills = _sanitize_skill_mapping(selected.get("skills", {}), master)
+    skills = _merge_mandatory_skills(skills, master, variant_id)
     title_default = (
         master.get("positioning", {}).get("title_variants", {}).get(variant_id)
         or selected.get("title")
@@ -505,7 +511,12 @@ def _remove_forbidden(text: str, forbidden: Iterable[Any]) -> str:
     return re.sub(r"\s+", " ", result).strip(" ,;:-")
 
 
-def _sanitize_skill_sections(value: Any, base_cv: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _sanitize_skill_sections(
+    value: Any,
+    base_cv: Dict[str, Any],
+    master: Dict[str, Any],
+    variant_id: str,
+) -> List[Dict[str, Any]]:
     mapping: Dict[str, List[str]] = {}
     if isinstance(value, list):
         for section in value:
@@ -513,7 +524,13 @@ def _sanitize_skill_sections(value: Any, base_cv: Dict[str, Any], master: Dict[s
                 mapping[str(section.get("title") or "Compétences")] = section.get("items", [])
     sanitized = _sanitize_skill_mapping(mapping, master)
     if not sanitized:
-        return base_cv.get("skills", [])
+        sanitized = {
+            str(section.get("title") or "Compétences"): section.get("items", [])
+            for section in base_cv.get("skills", [])
+            if isinstance(section, dict)
+        }
+    sanitized = _merge_mandatory_skills(sanitized, master, variant_id)
+    sanitized = _sanitize_skill_mapping(sanitized, master)
     return [{"title": title, "items": items} for title, items in sanitized.items()]
 
 
@@ -556,12 +573,12 @@ def _sanitize_cv_content(
         exp_id = plan_item.get("experience_id")
         source = catalog.get(exp_id)
         proposed_exp = proposed_experiences.get(exp_id)
-        if not source or not proposed_exp:
+        if not source:
             continue
         highlights = source.get("highlights", [])
         allowed_indexes = set(plan_item.get("highlight_indexes") or range(len(highlights)))
         bullets: List[str] = []
-        for bullet in proposed_exp.get("bullets", []):
+        for bullet in proposed_exp.get("bullets", []) if proposed_exp else []:
             if not isinstance(bullet, dict):
                 continue
             indexes = _source_indexes(
@@ -585,10 +602,26 @@ def _sanitize_cv_content(
             )
             if len(bullets) >= max_bullets:
                 break
+        if not bullets:
+            fallback_indexes = sorted(allowed_indexes)[:max_bullets]
+            for index in fallback_indexes:
+                text = _remove_forbidden(_clip(highlights[index], max_chars), forbidden)
+                if not text:
+                    continue
+                bullets.append(text)
+                grounding.append(
+                    {
+                        "experience_id": exp_id,
+                        "bullet": text,
+                        "source_highlight_indexes": [index],
+                        "source_highlights": [highlights[index]],
+                    }
+                )
         if bullets:
             experiences.append(
                 {
                     "id": exp_id,
+                    "selection_role": plan_item.get("selection_role", "core"),
                     "organization": source.get("organization", ""),
                     "title": source.get("title", ""),
                     "period": period_to_text(source.get("period")),
@@ -622,6 +655,13 @@ def _sanitize_cv_content(
         )
         if len(projects) >= int(constraints.get("max_projects", 1)):
             break
+    selected_project_ids = {item.get("id") for item in projects}
+    for project_id, project in base_projects.items():
+        if project_id in selected_project_ids:
+            continue
+        projects.append(project)
+        if len(projects) >= int(constraints.get("max_projects", 1)):
+            break
 
     profile = _remove_forbidden(
         _clip(
@@ -639,7 +679,12 @@ def _sanitize_cv_content(
         "profile": profile,
         "contact": base_cv.get("contact", {}),
         "location": base_cv.get("location", ""),
-        "skills": _sanitize_skill_sections(proposed.get("skills"), base_cv, master),
+        "skills": _sanitize_skill_sections(
+            proposed.get("skills"),
+            base_cv,
+            master,
+            str(plan.get("selected_base_variant") or ""),
+        ),
         "experiences": experiences,
         "projects": projects,
         "education": base_cv.get("education", []),

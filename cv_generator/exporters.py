@@ -164,7 +164,7 @@ def cv_to_html(
             f"{escape(', '.join(section.get('items', [])))}</p>"
         )
     main.append(_section("Expériences"))
-    for exp in cv.get("experiences", [])[:4]:
+    for exp in cv.get("experiences", []):
         bullets = "".join(f"<li>{escape(str(b))}</li>" for b in exp.get("bullets", [])[:4])
         main.append(
             "<article class='experience'>"
@@ -395,7 +395,7 @@ def cv_to_pdf(
             y -= text_height(text, main_w, body_size, leading)
             y -= 6.5 * scale
         y -= 22.0 * scale + 36.0 * scale
-        for exp in cv.get("experiences", [])[:4]:
+        for exp in cv.get("experiences", []):
             meta_h = text_height(exp.get("period", ""), meta_w, meta_size, meta_leading, True)
             meta_h += 3.0 * scale + text_height(exp.get("organization", ""), meta_w, meta_size, meta_leading)
             desc_h = text_height(str(exp.get("title", "")).upper(), desc_w, title_size, title_leading, True)
@@ -497,7 +497,7 @@ def cv_to_pdf(
         y -= 6.5 * content_scale
     y -= 22.0 * content_scale
     y = draw_section("Expériences", main_x, y, content_scale)
-    for exp in cv.get("experiences", [])[:4]:
+    for exp in cv.get("experiences", []):
         item_top = y
         meta_y = draw_wrapped(str(exp.get("period", "")), main_x, item_top, meta_w, meta_size, meta_leading, bold=True, color=primary)
         meta_y -= 3.0 * content_scale

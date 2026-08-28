@@ -75,7 +75,7 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
             "suggested_fix": "Le couper en deux lignes avant l'export.",
         })
     base_variant = draft.get("base_variant")
-    if base_variant in {"webmaster", "wordpress", "formateur_developpement_web", "formateur_ia", "accessibilite"} and "full stack" in cv_text:
+    if base_variant in {"webmaster", "wordpress", "formateur_generaliste", "accessibilite"} and "full stack" in cv_text:
         problems.append({
             "severity": "medium",
             "section": "positioning",

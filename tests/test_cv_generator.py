@@ -2,7 +2,7 @@ import io
 import json
 
 from cv_generator import prepare_custom_cv
-from cv_generator.ai_agents import AgentResult, CVLLMClient, _sanitize_plan
+from cv_generator.ai_agents import AgentResult, CVLLMClient, _sanitize_cv_content, _sanitize_plan
 from cv_generator.exporters import (
     DEFAULT_PORTRAIT,
     PDF_PORTRAIT_DIAMETER,
@@ -444,6 +444,68 @@ def test_unrelated_job_does_not_force_a_personal_project():
     projects = create_cv_draft(job, master, plan)["cv"]["projects"]
 
     assert projects == []
+
+
+def test_backend_trainer_plan_keeps_practice_pedagogy_and_ai_proofs():
+    master = load_json("data/cv_master_profile.json")
+    job = {
+        "title": "Formateur Développement backend MVC",
+        "description": (
+            "Architecture MVC, bonnes pratiques de code, Bachelor Développement Full Stack, "
+            "formateur professionnel en activité sur le développement backend et enseignement supérieur."
+        ),
+    }
+
+    plan = analyze_job_for_cv(job, master)
+    draft = create_cv_draft(job, master, plan)
+    ids = {item["experience_id"] for item in plan["experience_plan"]}
+    skills = {item for section in draft["cv"]["skills"] for item in section["items"]}
+
+    assert plan["selected_base_variant"] == "formateur_developpement_web"
+    assert {
+        "pole_s",
+        "qualiscope_backend",
+        "helene_massage_ayurveda",
+        "konexio_formateur_benevole",
+        "mairie_chelles",
+    } <= ids
+    assert "bioconcept_accueil" not in ids
+    assert {"PHP 8", "Symfony 6/7", "Doctrine ORM", "ChatGPT", "Claude"} <= skills
+    assert [project["id"] for project in draft["cv"]["projects"]] == ["wp_site_builder"]
+
+
+def test_writer_cannot_silently_drop_planned_experiences_or_project():
+    master = load_json("data/cv_master_profile.json")
+    job = {
+        "title": "Formateur Développement backend MVC",
+        "description": "Architecture MVC, bonnes pratiques de code et transmission du développement backend.",
+    }
+    plan = analyze_job_for_cv(job, master)
+    base = create_cv_draft(job, master, plan)
+    proposed = {
+        "title": "Formateur backend",
+        "profile": "Formateur et développeur backend.",
+        "skills": [{"title": "Backend", "items": ["PHP 8", "Symfony 6/7"]}],
+        "experiences": [],
+        "projects": [],
+    }
+
+    sanitized = _sanitize_cv_content(
+        proposed,
+        job,
+        master,
+        plan,
+        base,
+        AgentResult(data=proposed, provider="test", model="test"),
+        "test_writer",
+    )
+
+    assert {item["id"] for item in sanitized["cv"]["experiences"]} == {
+        item["experience_id"] for item in plan["experience_plan"]
+    }
+    assert [project["id"] for project in sanitized["cv"]["projects"]] == ["wp_site_builder"]
+    skills = {item for section in sanitized["cv"]["skills"] for item in section["items"]}
+    assert {"ChatGPT", "Claude"} <= skills
 
 
 def test_experience_plan_is_reverse_chronological_after_selection():
