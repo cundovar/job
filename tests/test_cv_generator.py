@@ -11,6 +11,7 @@ from cv_generator.exporters import (
     cv_to_pdf,
 )
 from cv_generator.cv_quality_checker import review_cv
+from cv_generator.cv_creator import create_cv_draft
 from cv_generator.layout import title_requires_wrap, wrap_tracked_title
 from cv_generator.job_analyzer import _experience_plan, analyze_job_for_cv
 from cv_generator.utils import load_json
@@ -228,6 +229,15 @@ def test_mediation_variant_keeps_ai_and_konexio_dates():
     variant = next(item for item in master["cv_variants"] if item["id"] == "formateur_generaliste")
     assert "ChatGPT" in variant["skills"]["tools"]
     assert "Claude" in variant["skills"]["tools"]
+
+
+def test_conditional_education_is_selected_from_job_keywords():
+    master = load_json("data/cv_master_profile.json")
+    job = {"title": "Animateur petite enfance", "description": "Animation auprès d'enfants."}
+    plan = analyze_job_for_cv(job, master)
+    draft = create_cv_draft(job, master, plan)
+
+    assert any(item["title"] == "CAP Petite Enfance" for item in draft["cv"]["education"])
 
 
 def test_experience_plan_is_reverse_chronological_after_selection():

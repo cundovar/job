@@ -2,7 +2,23 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from .utils import compact_items, period_to_text
+from .utils import compact_items, normalize, period_to_text
+
+
+def _education_for_job(job: Dict[str, Any], person: Dict[str, Any], plan: Dict[str, Any], limit: int = 2) -> List[Dict[str, Any]]:
+    """Keep default studies and add conditional ones when the job matches their tags."""
+    job_text = normalize(" ".join(str(job.get(key) or "") for key in ("title", "description")))
+    priority_text = normalize(" ".join(str(item) for item in plan.get("priority_keywords", [])))
+    selected: List[Dict[str, Any]] = []
+    conditional: List[Dict[str, Any]] = []
+    for education in person.get("education", []):
+        if education.get("visibility") != "only_if_relevant":
+            selected.append(education)
+            continue
+        tags = [normalize(tag) for tag in education.get("tags", [])]
+        if any(tag and (tag in job_text or tag in priority_text) for tag in tags):
+            conditional.append(education)
+    return (conditional + selected)[:limit]
 
 
 def _skills_sections(plan: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -77,7 +93,7 @@ def create_cv_draft(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str,
         "skills": _skills_sections(plan, master),
         "experiences": _experiences(plan, master),
         "projects": _projects(plan, master),
-        "education": [edu for edu in person.get("education", []) if edu.get("visibility") != "only_if_relevant"][:2],
+        "education": _education_for_job(job, person, plan),
         "languages": person.get("languages", []),
     }
     return {
