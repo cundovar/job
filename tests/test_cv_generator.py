@@ -410,6 +410,42 @@ def test_quality_checker_flags_an_overloaded_skill_block():
     assert any(problem["section"] == "skills" for problem in review["problems"])
 
 
+def test_job_application_pipeline_project_is_selected_for_scraping_role():
+    master = load_json("data/cv_master_profile.json")
+    job = {
+        "title": "Développeur Python — automatisation de candidatures",
+        "description": "Scraping web, API, analyse d'annonces, génération de CV et lettres de motivation.",
+    }
+    plan = analyze_job_for_cv(job, master)
+    projects = create_cv_draft(job, master, plan)["cv"]["projects"]
+
+    assert [project["id"] for project in projects] == ["job_search_pipeline"]
+
+
+def test_wordpress_project_remains_selected_for_wordpress_role():
+    master = load_json("data/cv_master_profile.json")
+    job = {
+        "title": "Webmaster WordPress",
+        "description": "Administration WordPress, Gutenberg et maintenance de sites.",
+    }
+    plan = analyze_job_for_cv(job, master)
+    projects = create_cv_draft(job, master, plan)["cv"]["projects"]
+
+    assert [project["id"] for project in projects] == ["wp_site_builder"]
+
+
+def test_unrelated_job_does_not_force_a_personal_project():
+    master = load_json("data/cv_master_profile.json")
+    job = {
+        "title": "Agent de sécurité",
+        "description": "Surveillance de nuit et contrôle des accès.",
+    }
+    plan = analyze_job_for_cv(job, master)
+    projects = create_cv_draft(job, master, plan)["cv"]["projects"]
+
+    assert projects == []
+
+
 def test_experience_plan_is_reverse_chronological_after_selection():
     ids = ["freelance", "current", "qualiscope", "pole_s"]
     periods = {

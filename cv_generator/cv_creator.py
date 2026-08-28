@@ -63,22 +63,41 @@ def _experiences(plan: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str,
     return result
 
 
-def _projects(plan: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _projects(job: Dict[str, Any], plan: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str, Any]]:
     variant = plan.get("selected_base_variant")
     max_projects = int(master.get("layout_constraints", {}).get("max_projects", 1))
+    variant_data = next((item for item in master.get("cv_variants", []) if item.get("id") == variant), {})
+    project_refs = set(variant_data.get("project_refs", []))
+    direct_job_text = normalize(" ".join(str(job.get(key) or "") for key in ("title", "description")))
+    relevance_text = normalize(
+        " ".join([direct_job_text, *[str(keyword) for keyword in plan.get("priority_keywords", [])]])
+    )
+    variant_keywords = [
+        *master.get("adaptation_rules", {}).get("variant_selection", {}).get(variant, []),
+        *variant_data.get("tags", []),
+    ]
+    variant_relevant = any(
+        normalized and normalized in direct_job_text
+        for normalized in (normalize(keyword) for keyword in variant_keywords)
+    )
     projects = []
     for project_id, project in master.get("project_catalog", {}).items():
-        if variant in {"automatisation", "formateur_ia", "wordpress", "webmaster"} or any(
-            kw in plan.get("priority_keywords", []) for kw in project.get("technologies", [])
-        ):
-            projects.append({
+        keywords = [*project.get("tags", []), *project.get("technologies", [])]
+        normalized_keywords = [normalize(keyword) for keyword in keywords]
+        matches = sum(1 for keyword in normalized_keywords if keyword and keyword in relevance_text)
+        preferred = variant_relevant and variant in project.get("preferred_for", [])
+        referenced = variant_relevant and project_id in project_refs
+        score = matches * 3 + (5 if preferred else 0) + (8 if referenced else 0)
+        if score > 0:
+            projects.append((score, {
                 "id": project_id,
                 "title": project.get("title", ""),
                 "year": project.get("year"),
                 "description": project.get("description", ""),
                 "technologies": project.get("technologies", []),
-            })
-    return projects[:max_projects]
+            }))
+    projects.sort(key=lambda item: (item[0], item[1].get("year") or 0), reverse=True)
+    return [project for _, project in projects[:max_projects]]
 
 
 def create_cv_draft(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any]) -> Dict[str, Any]:
@@ -95,7 +114,7 @@ def create_cv_draft(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str,
         "location": person.get("location", "Paris / Île-de-France"),
         "skills": _skills_sections(plan, master),
         "experiences": _experiences(plan, master),
-        "projects": _projects(plan, master),
+        "projects": _projects(job, plan, master),
         "education": _education_for_job(job, person, plan),
         "languages": person.get("languages", []),
     }
