@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from .utils import normalize
+from .layout import title_requires_wrap
 
 
 def _collect_cv_text(draft: Dict[str, Any]) -> str:
@@ -36,8 +37,17 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
             "suggested_fix": "Ajouter les mots-clés manquants quand ils sont vrais dans le profil.",
         })
     profile = cv.get("profile", "")
-    if len(profile) > int(constraints.get("max_profile_chars", 420)):
+    if len(profile) > int(constraints.get("max_profile_chars", 240)):
         problems.append({"severity": "medium", "section": "profile", "problem": "Résumé trop long pour Canva.", "suggested_fix": "Réduire le résumé à deux phrases."})
+    skill_count = sum(len(section.get("items", [])) for section in cv.get("skills", []))
+    max_skills = int(constraints.get("max_skill_items_total", 10))
+    if skill_count > max_skills:
+        problems.append({
+            "severity": "medium",
+            "section": "skills",
+            "problem": f"Le CV présente {skill_count} compétences, au-delà de la limite de {max_skills}.",
+            "suggested_fix": "Conserver uniquement les compétences les plus utiles à l'annonce.",
+        })
     max_bullets = int(constraints.get("max_bullets_per_experience", 3))
     max_bullet_chars = int(constraints.get("max_bullet_chars", 145))
     for exp in cv.get("experiences", []):
@@ -57,8 +67,15 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
             "problem": "Formulation interdite ou trop survendue détectée.",
             "suggested_fix": "Supprimer ou reformuler les affirmations interdites.",
         })
+    if title_requires_wrap(str(cv.get("title") or "")):
+        problems.append({
+            "severity": "medium",
+            "section": "header",
+            "problem": "Le sous-titre est trop large sur une ligne et risque de dépasser la colonne imprimable.",
+            "suggested_fix": "Le couper en deux lignes avant l'export.",
+        })
     base_variant = draft.get("base_variant")
-    if base_variant in {"webmaster", "wordpress", "formateur_developpement_web", "formateur_ia", "accessibilite"} and "full stack" in cv_text:
+    if base_variant in {"webmaster", "wordpress", "formateur_generaliste", "accessibilite"} and "full stack" in cv_text:
         problems.append({
             "severity": "medium",
             "section": "positioning",

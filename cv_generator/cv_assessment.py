@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
+from .job_analyzer import _max_experiences
 from .utils import flatten_skills, job_text, normalize
 
 
@@ -246,14 +247,15 @@ def evaluate_human_quality(
         for bullet in item.get("bullets", [])
     )
     profile = str(cv.get("profile") or "")
+    max_experiences = _max_experiences(master, str(plan.get("selected_base_variant") or ""))
     components = {
         "relevance": {"score": _ratio_score(len(experiences), len(planned))},
-        "clarity": {"score": 100 if 80 <= len(profile) <= int(constraints.get("max_profile_chars", 420)) else 70},
+        "clarity": {"score": 100 if 80 <= len(profile) <= int(constraints.get("max_profile_chars", 240)) else 70},
         "evidence": {"score": _ratio_score(len(grounding), bullet_count)},
         "concision": {"score": max(0, 100 - long_bullets * 25)},
         "layout_readiness": {
             "score": 100
-            if len(experiences) <= int(constraints.get("max_experiences", 4))
+            if len(experiences) <= max_experiences
             else 50
         },
     }

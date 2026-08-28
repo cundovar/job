@@ -18,6 +18,18 @@ def _trace_item(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _apply_final_review_status(assessment: Dict[str, Any], final_review: Dict[str, Any]) -> Dict[str, Any]:
+    assessment["final_ai_review"] = {
+        "status": final_review.get("status"),
+        "quality_score": final_review.get("quality_score"),
+        "ats_score": final_review.get("ats_score"),
+        "verdict": final_review.get("verdict"),
+    }
+    if final_review.get("status") == "needs_revision":
+        assessment["overall_status"] = "review"
+    return assessment
+
+
 def prepare_custom_cv(
     job: Dict[str, Any],
     application_dir: str | Path,
@@ -35,6 +47,13 @@ def prepare_custom_cv(
     review = agents.review(job, master, plan, draft)
     final_cv = agents.revise(job, master, plan, draft, review)
     final_review = agents.review(job, master, plan, final_cv)
+    trace_runs = [_trace_item(plan), _trace_item(draft), _trace_item(review)]
+    correction_retried = final_review.get("status") == "needs_revision"
+    if correction_retried:
+        trace_runs.extend([_trace_item(final_cv), _trace_item(final_review)])
+        final_cv = agents.revise(job, master, plan, final_cv, final_review)
+        final_review = agents.review(job, master, plan, final_cv)
+    trace_runs.extend([_trace_item(final_cv), _trace_item(final_review)])
 
     trace = {
         "pipeline": "ai_cv_pipeline_v2",
@@ -44,13 +63,8 @@ def prepare_custom_cv(
             "url": job.get("url"),
             "description_chars": len(str(job.get("description") or "")),
         },
-        "runs": [
-            _trace_item(plan),
-            _trace_item(draft),
-            _trace_item(review),
-            _trace_item(final_cv),
-            _trace_item(final_review),
-        ],
+        "runs": trace_runs,
+        "correction_retried": correction_retried,
         "python_guardrails": [
             "identifiants d'expériences limités au JSON maître",
             "intitulés, organisations, dates, diplômes et contacts recopiés depuis la source",
@@ -72,6 +86,7 @@ def prepare_custom_cv(
     cv_to_ats_pdf(final_cv, output_dir / "cv_ats.pdf")
     parseability = validate_ats_pdf(output_dir / "cv_ats.pdf", final_cv)
     assessment = build_cv_assessment(job, master, plan, final_cv, parseability=parseability)
+    assessment = _apply_final_review_status(assessment, final_review)
     save_json(output_dir / "cv_assessment.json", assessment)
 
     return {

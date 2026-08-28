@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { FileDown, Globe, LoaderCircle, Sparkles, TriangleAlert } from 'lucide-react'
+import { FileDown, Globe, LoaderCircle, RotateCw, Sparkles, TriangleAlert } from 'lucide-react'
 import CvAssessment from './CvAssessment'
 
 const POLL_INTERVAL_MS = 2500
 const GENERATION_TIMEOUT_MS = 15 * 60 * 1000
+const LAST_RESULT_STORAGE_KEY = 'job-search:last-manual-cv-result'
 
 const initialForm = {
   title: '',
@@ -48,15 +49,31 @@ function generationLabel(stage) {
   return ''
 }
 
+function loadLastResult() {
+  if (typeof window === 'undefined') return null
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(LAST_RESULT_STORAGE_KEY) || 'null')
+    return stored?.id && stored?.status ? stored : null
+  } catch {
+    return null
+  }
+}
+
 export default function ManualCvView({ onOpenCandidatures }) {
   const [form, setForm] = useState(initialForm)
   const [stage, setStage] = useState('idle')
   const [error, setError] = useState('')
-  const [result, setResult] = useState(null)
+  const [result, setResult] = useState(loadLastResult)
   const controllerRef = useRef(null)
   const isBusy = ['preparing', 'queued', 'running'].includes(stage)
+  const needsRevision = result?.status?.review?.status === 'needs_revision'
 
   useEffect(() => () => controllerRef.current?.abort(), [])
+
+  useEffect(() => {
+    if (!result?.id || !result?.status || typeof window === 'undefined') return
+    window.localStorage.setItem(LAST_RESULT_STORAGE_KEY, JSON.stringify(result))
+  }, [result])
 
   const updateField = event => {
     const { name, value } = event.target
@@ -177,6 +194,35 @@ export default function ManualCvView({ onOpenCandidatures }) {
     }
   }
 
+  const handleRegenerate = async () => {
+    if (!result?.id || isBusy) return
+    controllerRef.current?.abort()
+    const controller = new AbortController()
+    controllerRef.current = controller
+    setError('')
+    setStage('queued')
+    try {
+      const response = await fetch(
+        `/api/applications/${encodeURIComponent(result.id)}/cv/prepare`,
+        { method: 'POST', signal: controller.signal }
+      )
+      const generation = await readJson(response)
+      const finalStatus = await waitForGeneration(result.id, controller.signal, generation.status)
+      setResult(previous => ({ ...previous, status: finalStatus }))
+      setStage('completed')
+    } catch (regenerationError) {
+      if (regenerationError.name === 'AbortError') return
+      setStage('failed')
+      setError(
+        regenerationError instanceof TypeError
+          ? 'Impossible de joindre le serveur. Vérifiez le déploiement puis réessayez.'
+          : regenerationError.message || 'Impossible de régénérer le CV.'
+      )
+    } finally {
+      if (controllerRef.current === controller) controllerRef.current = null
+    }
+  }
+
   return (
     <div className="manual-cv-view">
       <header className="manual-cv-header">
@@ -265,7 +311,11 @@ export default function ManualCvView({ onOpenCandidatures }) {
 
       {(isBusy || stage === 'completed') && (
         <section className="manual-cv-progress" aria-live="polite">
-          <h2>{generationLabel(stage)}</h2>
+          <h2>
+            {stage === 'completed' && needsRevision
+              ? 'CV généré, mais le juge demande encore des corrections.'
+              : generationLabel(stage)}
+          </h2>
           <ol>
             <li className={stage !== 'idle' ? 'done' : ''}>
               <strong>1</strong><span>Dossier et données de l’annonce</span>
@@ -285,14 +335,24 @@ export default function ManualCvView({ onOpenCandidatures }) {
       {result && (
         <section className="manual-cv-result">
           <div>
-            <span className="manual-cv-kicker">CV prêt</span>
+            <span className="manual-cv-kicker">{needsRevision ? 'CV à corriger' : 'CV prêt'}</span>
             <h2>{result.candidature?.poste || form.title || 'CV personnalisé'}</h2>
             <p>{result.candidature?.entreprise || form.company || 'Annonce personnalisée'}</p>
           </div>
-          <CvAssessment assessment={result.status?.assessment} legacyReview={result.status?.review} />
+          <CvAssessment assessment={result.status?.assessment} finalReview={result.status?.review} />
           <div className="cv-actions">
+            <button
+              type="button"
+              className="prepare-btn"
+              onClick={handleRegenerate}
+              disabled={isBusy}
+            >
+              {isBusy
+                ? <><LoaderCircle className="spin" /> Régénération…</>
+                : <><RotateCw /> Régénérer avec les corrections</>}
+            </button>
             <a className="download-btn primary" href={downloadUrl(result.id, 'cv_final.pdf')} download>
-              <FileDown /> PDF design
+              <FileDown /> {needsRevision ? 'PDF à relire' : 'PDF design'}
             </a>
             <a className="download-btn" href={downloadUrl(result.id, 'cv_ats.pdf')} download>
               <FileDown /> PDF ATS

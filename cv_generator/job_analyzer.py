@@ -66,6 +66,50 @@ def _priority_keywords(job: Dict[str, Any], selected: Dict[str, Any], master: Di
     return compact_items(explicit, limit=14)
 
 
+def _select_experience_mix(
+    plan: List[Dict[str, Any]],
+    catalog: Dict[str, Any],
+    max_experiences: int,
+) -> List[Dict[str, Any]]:
+    """Reserve the last of four slots for one relevant human/creative experience."""
+    if max_experiences < 4:
+        return plan[:max_experiences]
+    complementary = [
+        item
+        for item in plan
+        if catalog.get(item.get("experience_id"), {}).get("cv_role") == "complementary"
+    ]
+    if not complementary:
+        return plan[:max_experiences]
+    core = [item for item in plan if item not in complementary]
+    return core[: max_experiences - 1] + complementary[:1]
+
+
+def _max_experiences(master: Dict[str, Any], variant_id: str) -> int:
+    constraints = master.get("layout_constraints", {})
+    by_variant = constraints.get("max_experiences_by_variant", {})
+    return int(by_variant.get(variant_id, constraints.get("max_experiences", 4)))
+
+
+def _merge_mandatory_skills(
+    skills: Dict[str, Any],
+    master: Dict[str, Any],
+    variant_id: str,
+) -> Dict[str, List[str]]:
+    mandatory = master.get("adaptation_rules", {}).get("mandatory_skills_by_variant", {}).get(variant_id, {})
+    result: Dict[str, List[str]] = {}
+    seen = set()
+    for source in (mandatory, skills):
+        for section, items in source.items():
+            target = result.setdefault(str(section), [])
+            for item in items if isinstance(items, list) else []:
+                key = normalize(item)
+                if key and key not in seen:
+                    target.append(str(item))
+                    seen.add(key)
+    return {section: items for section, items in result.items() if items}
+
+
 def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str, Any]]:
     text = job_text(job)
     catalog = master.get("experience_catalog", {})
@@ -80,8 +124,10 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
     for exp_id in ordered_ids:
         exp = catalog[exp_id]
         matched_tags = [tag for tag in exp.get("tags", []) if normalize(tag) in text]
+        trigger_tags = exp.get("selection_triggers", exp.get("tags", []))
+        matched_triggers = [tag for tag in trigger_tags if normalize(tag) in text]
         visibility = str(exp.get("visibility") or "default")
-        if visibility.startswith("only_") and not matched_tags:
+        if visibility.startswith("only_") and not matched_triggers:
             continue
         score = 0
         if exp_id in preferred:
@@ -89,7 +135,7 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
         if exp_id in refs:
             score += 3
         score += 2 * len(matched_tags)
-        if visibility.startswith("only_") and matched_tags:
+        if visibility.startswith("only_") and matched_triggers:
             score += 8
         highlights = exp.get("highlights", [])
         picked = []
@@ -103,14 +149,15 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
             plan.append({
                 "experience_id": exp_id,
                 "priority": score,
+                "selection_role": exp.get("cv_role", "core"),
                 "reason": f"Expérience alignée avec la variante {variant_id} et les mots-clés de l'annonce.",
                 "highlights": compact_items(picked, limit=3, max_chars=145),
             })
     # Relevance determines which experiences are kept. Their presentation is
     # then always reverse chronological, as recruiters expect on a CV.
     plan.sort(key=lambda item: item["priority"], reverse=True)
-    max_experiences = int(master.get("layout_constraints", {}).get("max_experiences", 4))
-    selected_plan = plan[:max_experiences]
+    max_experiences = _max_experiences(master, variant_id)
+    selected_plan = _select_experience_mix(plan, catalog, max_experiences)
     selected_plan.sort(
         key=lambda item: _period_sort_key(catalog.get(item["experience_id"], {}).get("period")),
         reverse=True,
@@ -125,7 +172,7 @@ def analyze_job_for_cv(job: Dict[str, Any], master: Dict[str, Any]) -> Dict[str,
     target_title = title_variants.get(variant_id) or selected.get("title") or "Développeur web / Webmaster"
     keywords = _priority_keywords(job, selected, master)
     experience_plan = _experience_plan(job, selected, master)
-    selected_skills = selected.get("skills", {})
+    selected_skills = _merge_mandatory_skills(selected.get("skills", {}), master, variant_id)
     text = job_text(job)
     skills_to_reduce = []
     for skill, confidence in master.get("skills_confidence", {}).items():

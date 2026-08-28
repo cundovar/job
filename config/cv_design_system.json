@@ -63,7 +63,7 @@
   },
   "components": {
     "portrait": {"shape": "circle", "diameter_px": 82, "crop": "head_and_shoulders", "filter": "grayscale", "border": "none", "position": "top_left_sidebar"},
-    "identity_header": {"position": "top_main_column", "alignment": "left", "elements": ["person_name", "target_title"]},
+    "identity_header": {"position": "beside_portrait", "alignment": "left", "vertical_alignment": "center_with_portrait", "elements": ["person_name", "target_title"]},
     "section_title": {"text_style": "section_heading", "underline": {"width_px": 31, "height_px": 3, "color": "#788481", "top_offset_px": 7}},
     "contact_item": {"layout": "icon_then_text", "icon_style": "small_monochrome_outline", "icon_width_px": 9, "gap_px": 5},
     "skills_block": {"layout": "inline_categories", "category_weight": 700, "separator": ":", "item_separator": ", "},

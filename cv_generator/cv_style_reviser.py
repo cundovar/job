@@ -12,7 +12,7 @@ def revise_cv_style(master: Dict[str, Any], plan: Dict[str, Any], draft: Dict[st
     final["source_draft_agent"] = draft.get("agent")
     cv = final.get("cv", {})
     constraints = master.get("layout_constraints", {})
-    max_profile = int(constraints.get("max_profile_chars", 420))
+    max_profile = int(constraints.get("max_profile_chars", 240))
     profile = cv.get("profile", "")
     if len(profile) > max_profile:
         cv["profile"] = profile[: max_profile - 1].rstrip(" ,;:") + "…"
