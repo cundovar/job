@@ -216,6 +216,9 @@ indices de preuves doivent exister dans source_verite. Conserve les vrais intitu
 Le titre cible et le positionnement peuvent être adaptés, sans augmenter le niveau réel.
 La préanalyse Python est une suggestion de départ: tu peux retirer, ajouter ou réordonner tout
 élément sourcé. Tu as la responsabilité finale de la pertinence du plan.
+Les consignes_candidat sont des préférences éditoriales prioritaires, séparées de l'annonce.
+Respecte-les lorsqu'elles sont réalisables avec la source de vérité. Si elles demandent une
+affirmation absente, contradictoire ou interdite, refuse cette partie et ajoute un avertissement.
 N'inclus une expérience que si elle apporte une preuve explicite à un critère de l'annonce.
 Il est préférable de retenir moins d'expériences plutôt que de remplir les emplacements avec
 des expériences faibles ou hors sujet. Respecte la visibilité conditionnelle de la source.
@@ -250,6 +253,8 @@ ajouter de mission, résultat, chiffre, outil, niveau, date ou diplôme absent d
 Tu décides du contenu final: le brouillon Python n'est pas obligatoire. Sélectionne, omets et
 réordonne librement les expériences, compétences, projets et formations selon l'annonce,
 à condition que chaque élément existe dans la source de vérité.
+Applique les consignes_candidat comme préférences éditoriales prioritaires. Elles ne peuvent
+jamais autoriser une expérience, une compétence ou un niveau absent de la source de vérité.
 Présente les expériences retenues dans un ordre antéchronologique cohérent. Utilise
 skills_confidence pour ne jamais présenter des bases ou notions comme une maîtrise solide.
 Pour une annonce large de développement web, conserve une stack projet représentative de
@@ -283,6 +288,8 @@ l'annonce absente du profil est un écart, pas une compétence à ajouter. Signa
 chaque problème et propose une correction fondée sur la source. Tu es responsable du verdict,
 du score qualité et du score ATS. Le contrôle Python joint sert uniquement à signaler les
 erreurs factuelles ou techniques; il ne décide pas de la pertinence éditoriale.
+Vérifie aussi que les consignes_candidat réalisables ont été respectées. Signale précisément
+toute consigne oubliée, mais ne pénalise pas le CV pour une demande impossible ou non sourcée.
 Pour une annonce hybride de formation web et IA, renseigne les cinq piliers de couverture.
 Chaque preuve doit citer uniquement un identifiant d'expérience ou de projet existant dans la
 source. Un pilier manquant doit produire une correction concrète et influencer ton verdict.
@@ -319,6 +326,8 @@ les vrais intitulés d'expérience. Préserve la provenance de chaque puce avec 
 highlights. N'ajoute que des compétences dont le libellé exact existe dans la source.
 Tu peux ajouter, retirer ou réordonner tout élément sourcé; aucune sélection Python n'est
 obligatoire. Le jugement IA décide de la pertinence, Python ne contrôle que la vérité et le format.
+Applique les consignes_candidat et les corrections du juge ensemble. Si une consigne contredit
+la source de vérité ou exige une invention, ignore seulement cette partie et reste factuel.
 Respecte les niveaux de skills_confidence et l'ordre antéchronologique. Une exigence de l'annonce
 absente de la source reste un écart honnête; elle ne doit jamais être transformée en compétence.
 Utilise evidence_coverage du jugement pour combler chaque pilier partiel ou manquant avec les
@@ -386,6 +395,14 @@ def _as_string_list(value: Any, limit: int = 20) -> List[str]:
     if not isinstance(value, list):
         return []
     return compact_items((str(item) for item in value), limit=limit)
+
+
+def _candidate_instructions(job: Dict[str, Any]) -> str:
+    return _clip(job.get("candidate_instructions"), 2000)
+
+
+def _announcement_context(job: Dict[str, Any]) -> Dict[str, Any]:
+    return {key: value for key, value in job.items() if key != "candidate_instructions"}
 
 
 def _int_score(value: Any, fallback: int) -> int:
@@ -928,7 +945,8 @@ class AICVPipeline:
             "cv_job_analyzer",
             ANALYZER_PROMPT,
             {
-                "annonce_complete": job,
+                "annonce_complete": _announcement_context(job),
+                "consignes_candidat": _candidate_instructions(job),
                 "source_verite": _truth_context(master),
                 "preanalyse_python": rule_plan,
             },
@@ -947,7 +965,8 @@ class AICVPipeline:
             "cv_creator",
             CREATOR_PROMPT,
             {
-                "annonce_complete": job,
+                "annonce_complete": _announcement_context(job),
+                "consignes_candidat": _candidate_instructions(job),
                 "source_verite": _truth_context(master),
                 "plan_adaptation": plan,
                 "brouillon_structurel_python": base,
@@ -976,7 +995,8 @@ class AICVPipeline:
             "cv_quality_checker",
             REVIEWER_PROMPT,
             {
-                "annonce_complete": job,
+                "annonce_complete": _announcement_context(job),
+                "consignes_candidat": _candidate_instructions(job),
                 "source_verite": _truth_context(master),
                 "plan_adaptation": plan,
                 "cv_a_juger": draft,
@@ -998,7 +1018,8 @@ class AICVPipeline:
             "cv_style_reviser",
             REVISER_PROMPT,
             {
-                "annonce_complete": job,
+                "annonce_complete": _announcement_context(job),
+                "consignes_candidat": _candidate_instructions(job),
                 "source_verite": _truth_context(master),
                 "plan_adaptation": plan,
                 "brouillon": draft,

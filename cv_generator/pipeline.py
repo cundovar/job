@@ -74,6 +74,12 @@ def prepare_custom_cv(
             "company": job.get("company"),
             "url": job.get("url"),
             "description_chars": len(str(job.get("description") or "")),
+            "candidate_instructions_present": bool(
+                str(job.get("candidate_instructions") or "").strip()
+            ),
+            "candidate_instructions_chars": len(
+                str(job.get("candidate_instructions") or "").strip()
+            ),
         },
         "runs": trace_runs,
         "correction_retried": automatic_revision_rounds > 0,
