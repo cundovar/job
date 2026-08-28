@@ -1,6 +1,6 @@
 ---
 objective: "Permettre au candidat de transmettre des consignes éditoriales séparées de l'annonce et de les faire respecter par toute la chaîne IA sans contourner la source de vérité."
-status: in-progress
+status: implemented
 ---
 
 # Plan: Consignes personnelles pour le CV
