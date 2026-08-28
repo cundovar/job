@@ -223,6 +223,9 @@ Quand l'annonce combine formation, développement web et IA, couvre trois pilier
 preuves distinctes: pédagogie auprès du public visé, réalisation technique réelle et pratique
 de l'IA. Recherche aussi une réalisation publique pertinente quand la source fournit un lien.
 Choisis librement les meilleures preuves: aucun identifiant d'expérience n'est obligatoire.
+Préférence permanente du candidat: pour toute variante de formateur, conserve l'expérience
+mairie_chelles comme preuve humaine complémentaire d'animation, de projets pédagogiques et de
+travail avec des groupes. Cette préférence vient du candidat, pas d'une décision Python.
 
 JSON attendu:
 {
@@ -252,6 +255,8 @@ skills_confidence pour ne jamais présenter des bases ou notions comme une maît
 Pour une annonce large de développement web, conserve une stack projet représentative de
 plusieurs couches pertinentes plutôt qu'une technologie isolée. Ne prétends jamais avoir animé
 des formations en ligne ou à distance sans preuve explicite dans la source de vérité.
+Pour tout CV de formateur, respecte la préférence permanente d'inclure mairie_chelles en fin de
+parcours comme preuve humaine complémentaire, sans lui faire remplacer une preuve métier centrale.
 Les intitulés d'expériences ne sont jamais réécrits. Chaque puce doit citer les indices des
 highlights qui la prouvent. Les compétences doivent reprendre exactement un libellé autorisé.
 Respecte strictement les limites Canva fournies.
@@ -278,9 +283,11 @@ l'annonce absente du profil est un écart, pas une compétence à ajouter. Signa
 chaque problème et propose une correction fondée sur la source. Tu es responsable du verdict,
 du score qualité et du score ATS. Le contrôle Python joint sert uniquement à signaler les
 erreurs factuelles ou techniques; il ne décide pas de la pertinence éditoriale.
-Pour une annonce hybride de formation web et IA, renseigne les quatre piliers de couverture.
+Pour une annonce hybride de formation web et IA, renseigne les cinq piliers de couverture.
 Chaque preuve doit citer uniquement un identifiant d'expérience ou de projet existant dans la
 source. Un pilier manquant doit produire une correction concrète et influencer ton verdict.
+Pour toute variante de formateur, human_group_facilitation doit être couvert par mairie_chelles,
+conformément à la préférence permanente du candidat.
 
 JSON attendu:
 {
@@ -291,7 +298,7 @@ JSON attendu:
   "forbidden_claims_found":["..."],
   "evidence_coverage":[
     {
-      "pillar":"pedagogy|technical_delivery|ai_practice|public_proof",
+      "pillar":"pedagogy|technical_delivery|ai_practice|public_proof|human_group_facilitation",
       "status":"covered|partial|missing|not_applicable",
       "experience_ids":["id exact"],
       "project_ids":["id exact"],
@@ -806,7 +813,13 @@ def _normalize_problems(value: Any) -> List[Dict[str, str]]:
 def _normalize_evidence_coverage(value: Any, master: Dict[str, Any]) -> List[Dict[str, Any]]:
     if not isinstance(value, list):
         return []
-    allowed_pillars = {"pedagogy", "technical_delivery", "ai_practice", "public_proof"}
+    allowed_pillars = {
+        "pedagogy",
+        "technical_delivery",
+        "ai_practice",
+        "public_proof",
+        "human_group_facilitation",
+    }
     allowed_statuses = {"covered", "partial", "missing", "not_applicable"}
     experience_ids = set(master.get("experience_catalog", {}))
     project_ids = set(master.get("project_catalog", {}))

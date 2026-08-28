@@ -7,6 +7,7 @@ from cv_generator import prepare_custom_cv
 from cv_generator.ai_agents import (
     ANALYZER_PROMPT,
     CREATOR_PROMPT,
+    REVIEWER_PROMPT,
     REVISER_PROMPT,
     AgentResult,
     CVLLMClient,
@@ -173,6 +174,7 @@ class HybridTrainerCorrectionClient:
                     {"experience_id": "qualiscope_backend", "priority": 10, "reason": "Production", "highlight_indexes": [0]},
                     {"experience_id": "pole_s", "priority": 10, "reason": "Formation et IA", "highlight_indexes": [1, 2, 5]},
                     {"experience_id": "konexio_formateur_benevole", "priority": 8, "reason": "Pédagogie web", "highlight_indexes": [0, 1]},
+                    {"experience_id": "mairie_chelles", "priority": 7, "reason": "Animation et projets pédagogiques", "highlight_indexes": [0, 1]},
                 ],
                 "skills_to_emphasize": {
                     "Programmation": ["Python", "JavaScript ES6+"],
@@ -197,6 +199,7 @@ class HybridTrainerCorrectionClient:
                     {"id": "qualiscope_backend", "bullets": [{"text": "Contribution back-end sur une plateforme SaaS d'évaluation de formations en PHP 8.4 et Symfony 7.4", "source_highlight_indexes": [0]}]},
                     {"id": "pole_s", "bullets": [{"text": "Animation de formations pour 12 apprenants adultes en reconversion", "source_highlight_indexes": [2]}, {"text": "Utilisation de ChatGPT et Claude pour créer des exercices adaptés et vulgariser les concepts", "source_highlight_indexes": [5]}]},
                     {"id": "konexio_formateur_benevole", "bullets": [{"text": "Enseignement des bases HTML, CSS et JavaScript", "source_highlight_indexes": [1]}]},
+                    {"id": "mairie_chelles", "bullets": [{"text": "Animation en centre de loisirs pour des enfants de 3 à 12 ans", "source_highlight_indexes": [0]}]},
                 ],
                 "projects": [{
                     "id": "devdoc_platform",
@@ -223,6 +226,7 @@ class HybridTrainerCorrectionClient:
                     {"id": "helene_massage_ayurveda", "bullets": [{"text": "Développement fullstack d'un site vitrine et CMS en Next.js 16 et Symfony 7.4", "source_highlight_indexes": [0]}]},
                     {"id": "pole_s", "bullets": [{"text": "Animation de formations pour 12 apprenants adultes en reconversion", "source_highlight_indexes": [2]}, {"text": "Utilisation de ChatGPT et Claude pour créer des exercices adaptés et vulgariser les concepts", "source_highlight_indexes": [5]}]},
                     {"id": "konexio_formateur_benevole", "bullets": [{"text": "Enseignement des bases HTML, CSS et JavaScript", "source_highlight_indexes": [1]}]},
+                    {"id": "mairie_chelles", "bullets": [{"text": "Animation en centre de loisirs pour des enfants de 3 à 12 ans", "source_highlight_indexes": [0]}]},
                 ],
                 "projects": [{
                     "id": "devdoc_platform",
@@ -256,6 +260,7 @@ class HybridTrainerCorrectionClient:
                     {"pillar": "technical_delivery", "status": "covered", "experience_ids": ["qualiscope_backend"], "project_ids": ["devdoc_platform"], "gap": ""},
                     {"pillar": "ai_practice", "status": "covered", "experience_ids": ["pole_s"], "project_ids": [], "gap": ""},
                     {"pillar": "public_proof", "status": "missing" if missing_public_proof else "covered", "experience_ids": [] if missing_public_proof else ["helene_massage_ayurveda"], "project_ids": ["devdoc_platform"], "gap": "Ajouter une réalisation client publique." if missing_public_proof else ""},
+                    {"pillar": "human_group_facilitation", "status": "covered", "experience_ids": ["mairie_chelles"], "project_ids": [], "gap": ""},
                 ],
                 "verdict": "Ajouter une preuve publique." if missing_public_proof else "CV hybride crédible et sourcé.",
             }
@@ -386,6 +391,7 @@ def test_pipeline_adds_grounded_public_work_before_presenting_hybrid_trainer_cv(
         "helene_massage_ayurveda",
         "pole_s",
         "konexio_formateur_benevole",
+        "mairie_chelles",
     ]
     helene = next(item for item in final_cv["cv"]["experiences"] if item["id"] == "helene_massage_ayurveda")
     assert helene["links"] == ["https://massagesdhelene.com/"]
@@ -413,6 +419,7 @@ def test_pipeline_adds_grounded_public_work_before_presenting_hybrid_trainer_cv(
     assert len(pdf.pages) == 1
     pdf_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
     assert "massagesdhelene.com" in pdf_text
+    assert "ANIMATEUR PÉRISCOLAIRE" in pdf_text
     assert len(PdfReader(tmp_path / "cv" / "cv_ats.pdf").pages) == 1
 
 
@@ -527,7 +534,21 @@ def test_hybrid_trainer_prompts_balance_real_work_pedagogy_and_ai():
     assert "skills_confidence" in CREATOR_PROMPT
     assert "ordre antéchronologique" in CREATOR_PROMPT
     assert "formations en ligne ou à distance" in CREATOR_PROMPT
+    assert "mairie_chelles" in ANALYZER_PROMPT
+    assert "mairie_chelles" in CREATOR_PROMPT
+    assert "human_group_facilitation" in REVIEWER_PROMPT
     assert "écart honnête" in REVISER_PROMPT
+
+
+def test_every_trainer_variant_prefers_the_human_group_experience():
+    master = load_json("data/cv_master_profile.json")
+    preferences = master["adaptation_rules"]["standing_experience_preferences_by_variant"]
+
+    assert preferences == {
+        "formateur_developpement_web": ["mairie_chelles"],
+        "formateur_generaliste": ["mairie_chelles"],
+        "formateur_ia": ["mairie_chelles"],
+    }
 
 
 def test_truth_guard_rejects_unconfirmed_remote_training_and_unknown_languages():
