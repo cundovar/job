@@ -12,7 +12,7 @@ from cv_generator.exporters import (
 )
 from cv_generator.cv_quality_checker import review_cv
 from cv_generator.cv_creator import create_cv_draft
-from cv_generator.layout import title_requires_wrap, wrap_tracked_title
+from cv_generator.layout import sparse_main_vertical_offset, title_requires_wrap, wrap_tracked_title
 from cv_generator.job_analyzer import _experience_plan, analyze_job_for_cv
 from cv_generator.pipeline import _apply_final_review_status
 from cv_generator.utils import load_json
@@ -216,6 +216,7 @@ def test_pdf_and_html_use_the_real_portrait(tmp_path):
     assert "data:image/jpeg;base64," in html
     assert "Portrait de Facundo Varas" in html
     assert "justify-content: center" in html
+    assert 'class="main-body sparse"' in html
 
     pdf_path = tmp_path / "cv.pdf"
     cv_to_pdf(final_cv, pdf_path)
@@ -231,6 +232,13 @@ def test_identity_block_is_centered_on_portrait():
 
     assert name_y == portrait_center + 6.5
     assert target_y == portrait_center - 30.5
+
+
+def test_sparse_main_content_is_centered_without_moving_dense_content():
+    assert sparse_main_vertical_offset(240.0, 40.0, experience_count=2, has_projects=False) == 80.0
+    assert sparse_main_vertical_offset(240.0, 40.0, experience_count=3, has_projects=False) == 0.0
+    assert sparse_main_vertical_offset(240.0, 40.0, experience_count=2, has_projects=True) == 0.0
+    assert sparse_main_vertical_offset(100.0, 40.0, experience_count=1, has_projects=False) == 0.0
 
 
 def test_long_identity_title_wraps_instead_of_overflowing():

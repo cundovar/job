@@ -11,6 +11,7 @@ from .layout import (
     IDENTITY_TITLE_MAX_WIDTH,
     IDENTITY_TITLE_MIN_SIZE,
     IDENTITY_TITLE_TRACKING,
+    sparse_main_vertical_offset,
     wrap_tracked_title,
 )
 
@@ -151,13 +152,7 @@ def cv_to_html(
         for lang in cv.get("languages", []):
             sidebar.append(f"<p><strong>{escape(str(lang.get('name', '')))}</strong> — {escape(str(lang.get('level', '')))}</p>")
 
-    main = [
-        "<header>",
-        "<h1>Facundo Varas</h1>",
-        f"<div class='target-title'>{escape(cv.get('title', 'CV personnalisé'))}</div>",
-        "</header>",
-        _section("Compétences"),
-    ]
+    main = [_section("Compétences")]
     for section in cv.get("skills", []):
         main.append(
             f"<p class='skill'><strong>{escape(section.get('title', ''))}</strong>: "
@@ -207,6 +202,7 @@ def cv_to_html(
   .page {{ width: 794px; min-height: 1123px; margin: 0 auto; background: {bg}; padding: 34px 35px 30px; display: grid; grid-template-columns: 24% 6% 70%; }}
   aside {{ grid-column: 1; padding-top: 4px; color: {secondary}; }}
   main {{ grid-column: 3; }}
+  .main-body.sparse {{ padding-top: 70px; }}
   header {{ height: 128px; display: flex; flex-direction: column; justify-content: center; }}
   h1 {{ margin: 0 0 8px; font-size: 25pt; font-weight: 400; letter-spacing: .01em; line-height: 1.1; }}
   .target-title, h2 {{ text-transform: uppercase; letter-spacing: .32em; font-weight: 400; color: {primary}; }}
@@ -226,13 +222,19 @@ def cv_to_html(
   ul {{ margin: 0 0 0 9px; padding: 0; }}
   li {{ padding-left: 0; margin-bottom: 4px; }}
   .project span {{ color: {secondary}; }}
-  @media (max-width: 820px) {{ .page {{ width: 100%; min-height: auto; grid-template-columns: 1fr; padding: 24px; }} aside, main {{ grid-column: 1; }} header {{ height: auto; margin-bottom: 20px; justify-content: flex-start; }} }}
+  @media (max-width: 820px) {{ .page {{ width: 100%; min-height: auto; grid-template-columns: 1fr; padding: 24px; }} aside, main {{ grid-column: 1; }} header {{ height: auto; margin-bottom: 20px; justify-content: flex-start; }} .main-body.sparse {{ padding-top: 0; }} }}
 </style>
 </head>
 <body>
 <div class="page">
   <aside>{''.join(sidebar)}</aside>
-  <main>{''.join(main)}</main>
+  <main>
+    <header>
+      <h1>Facundo Varas</h1>
+      <div class="target-title">{escape(cv.get('title', 'CV personnalisé'))}</div>
+    </header>
+    <div class="main-body{' sparse' if len(cv.get('experiences', [])) <= 2 and not projects else ''}">{''.join(main)}</div>
+  </main>
 </div>
 </body>
 </html>
@@ -430,6 +432,12 @@ def cv_to_pdf(
     body_size, leading = 7.7 * content_scale, 11.4 * content_scale
     meta_size, meta_leading = 7.0 * content_scale, 10.0 * content_scale
     title_size, title_leading = 8.0 * content_scale, 10.4 * content_scale
+    main_vertical_offset = sparse_main_vertical_offset(
+        main_bottom(content_scale),
+        bottom,
+        len(cv.get("experiences", [])),
+        bool(cv.get("projects")),
+    )
 
     draw_portrait()
 
@@ -488,7 +496,7 @@ def cv_to_pdf(
             y_side -= 3.0
 
     # Main content.
-    y = top - 137.0
+    y = top - 137.0 - main_vertical_offset
     y = draw_section("Compétences techniques", main_x, y, content_scale)
     for skill in cv.get("skills", []):
         label = str(skill.get("title", ""))
