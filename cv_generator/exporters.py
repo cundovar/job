@@ -10,6 +10,13 @@ from typing import Any, Dict, List
 
 DEFAULT_DESIGN_SYSTEM = "config/cv_design_system.json"
 DEFAULT_PORTRAIT = Path(__file__).resolve().parent.parent / "assets" / "cv" / "facundo-varas.jpg"
+PDF_PORTRAIT_DIAMETER = 119.0
+
+
+def _identity_baselines(top: float, portrait_diameter: float = PDF_PORTRAIT_DIAMETER) -> tuple[float, float]:
+    """Return name/title baselines for a block visually centered on the portrait."""
+    portrait_center = top - portrait_diameter / 2
+    return portrait_center + 6.5, portrait_center - 30.5
 
 
 def _portrait_data_uri(path: str | Path = DEFAULT_PORTRAIT) -> str:
@@ -193,7 +200,7 @@ def cv_to_html(
   .page {{ width: 794px; min-height: 1123px; margin: 0 auto; background: {bg}; padding: 34px 35px 30px; display: grid; grid-template-columns: 24% 6% 70%; }}
   aside {{ grid-column: 1; padding-top: 4px; color: {secondary}; }}
   main {{ grid-column: 3; }}
-  header {{ height: 128px; padding-top: 10px; }}
+  header {{ height: 128px; display: flex; flex-direction: column; justify-content: center; }}
   h1 {{ margin: 0 0 8px; font-size: 25pt; font-weight: 400; letter-spacing: .01em; line-height: 1.1; }}
   .target-title, h2 {{ text-transform: uppercase; letter-spacing: .32em; font-weight: 400; color: {primary}; }}
   .target-title {{ font-size: 9pt; line-height: 1.35; }}
@@ -212,7 +219,7 @@ def cv_to_html(
   ul {{ margin: 0 0 0 9px; padding: 0; }}
   li {{ padding-left: 0; margin-bottom: 4px; }}
   .project span {{ color: {secondary}; }}
-  @media (max-width: 820px) {{ .page {{ width: 100%; min-height: auto; grid-template-columns: 1fr; padding: 24px; }} aside, main {{ grid-column: 1; }} header {{ height: auto; margin-bottom: 20px; }} }}
+  @media (max-width: 820px) {{ .page {{ width: 100%; min-height: auto; grid-template-columns: 1fr; padding: 24px; }} aside, main {{ grid-column: 1; }} header {{ height: auto; margin-bottom: 20px; justify-content: flex-start; }} }}
 </style>
 </head>
 <body>
@@ -338,7 +345,7 @@ def cv_to_pdf(
 
     def draw_portrait() -> None:
         portrait = Path(portrait_path)
-        diameter = 119.0
+        diameter = PDF_PORTRAIT_DIAMETER
         x, y = sidebar_x + 9.0, top - diameter
         c.setFillColor(muted)
         c.circle(x + diameter / 2, y + diameter / 2, diameter / 2, stroke=0, fill=1)
@@ -421,14 +428,15 @@ def cv_to_pdf(
 
     # Identity header, aligned with the reference CV.
     header_x = main_x + 40.0
+    name_y, target_y = _identity_baselines(top)
     set_font(34.0, False, primary)
-    c.drawString(header_x, top - 25.0, "Facundo Varas")
+    c.drawString(header_x, name_y, "Facundo Varas")
     target = str(cv.get("title", "CV personnalisé")).upper()
     target_size = 11.0
     target_max_w = main_w - 34.0
     while target_size > 8.0 and stringWidth(target, regular_font, target_size) + max(0, len(target) - 1) * 2.2 > target_max_w:
         target_size -= 0.5
-    draw_tracked(target, main_x + 34.0, top - 62.0, target_size, 2.2, secondary)
+    draw_tracked(target, main_x + 34.0, target_y, target_size, 2.2, secondary)
 
     # Sidebar intentionally begins lower than the portrait, as in the model.
     sidebar_scale = 1.0

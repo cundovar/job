@@ -3,7 +3,13 @@ import json
 
 from cv_generator import prepare_custom_cv
 from cv_generator.ai_agents import AgentResult, CVLLMClient
-from cv_generator.exporters import DEFAULT_PORTRAIT, cv_to_html, cv_to_pdf
+from cv_generator.exporters import (
+    DEFAULT_PORTRAIT,
+    PDF_PORTRAIT_DIAMETER,
+    _identity_baselines,
+    cv_to_html,
+    cv_to_pdf,
+)
 from cv_generator.job_analyzer import _experience_plan
 
 
@@ -155,11 +161,22 @@ def test_pdf_and_html_use_the_real_portrait(tmp_path):
     html = cv_to_html(final_cv)
     assert "data:image/jpeg;base64," in html
     assert "Portrait de Facundo Varas" in html
+    assert "justify-content: center" in html
 
     pdf_path = tmp_path / "cv.pdf"
     cv_to_pdf(final_cv, pdf_path)
     assert pdf_path.read_bytes().startswith(b"%PDF")
     assert pdf_path.stat().st_size > 10_000
+
+
+def test_identity_block_is_centered_on_portrait():
+    top = 812.0
+    portrait_center = top - PDF_PORTRAIT_DIAMETER / 2
+
+    name_y, target_y = _identity_baselines(top)
+
+    assert name_y == portrait_center + 6.5
+    assert target_y == portrait_center - 30.5
 
 
 def test_experience_plan_is_reverse_chronological_after_selection():
