@@ -360,7 +360,7 @@ def _sanitize_skill_mapping(value: Any, master: Dict[str, Any]) -> Dict[str, Lis
     result: Dict[str, List[str]] = {}
     used = 0
     max_sections = int(master.get("layout_constraints", {}).get("max_skill_sections", 4))
-    max_items = int(master.get("layout_constraints", {}).get("max_skill_items_total", 28))
+    max_items = int(master.get("layout_constraints", {}).get("max_skill_items_total", 10))
     for section, items in value.items():
         if not isinstance(items, list) or len(result) >= max_sections or used >= max_items:
             continue
@@ -482,7 +482,7 @@ def _sanitize_plan(
         "target_title": _clip(proposed.get("target_title"), 90, str(title_default)),
         "positioning": _clip(
             proposed.get("positioning"),
-            int(master.get("layout_constraints", {}).get("max_profile_chars", 420)),
+            int(master.get("layout_constraints", {}).get("max_profile_chars", 240)),
             str(profile_default),
         ),
         "priority_keywords": _as_string_list(
@@ -626,7 +626,7 @@ def _sanitize_cv_content(
     profile = _remove_forbidden(
         _clip(
             proposed.get("profile"),
-            int(constraints.get("max_profile_chars", 420)),
+            int(constraints.get("max_profile_chars", 240)),
             str(base_cv.get("profile", "")),
         ),
         forbidden,

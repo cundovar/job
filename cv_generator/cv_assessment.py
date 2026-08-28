@@ -248,7 +248,7 @@ def evaluate_human_quality(
     profile = str(cv.get("profile") or "")
     components = {
         "relevance": {"score": _ratio_score(len(experiences), len(planned))},
-        "clarity": {"score": 100 if 80 <= len(profile) <= int(constraints.get("max_profile_chars", 420)) else 70},
+        "clarity": {"score": 100 if 80 <= len(profile) <= int(constraints.get("max_profile_chars", 240)) else 70},
         "evidence": {"score": _ratio_score(len(grounding), bullet_count)},
         "concision": {"score": max(0, 100 - long_bullets * 25)},
         "layout_readiness": {

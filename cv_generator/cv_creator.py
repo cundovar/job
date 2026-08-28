@@ -26,7 +26,7 @@ def _education_for_job(job: Dict[str, Any], person: Dict[str, Any], plan: Dict[s
 def _skills_sections(plan: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str, Any]]:
     constraints = master.get("layout_constraints", {})
     max_sections = int(constraints.get("max_skill_sections", 4))
-    max_items = int(constraints.get("max_skill_items_total", 28))
+    max_items = int(constraints.get("max_skill_items_total", 10))
     raw = plan.get("skills_to_emphasize", {})
     sections = []
     used = 0
@@ -85,7 +85,7 @@ def create_cv_draft(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str,
     person = master.get("person", {})
     variant_id = plan.get("selected_base_variant", "webmaster")
     profile = plan.get("positioning") or master.get("positioning", {}).get("summary_variants", {}).get(variant_id, "")
-    max_profile = int(master.get("layout_constraints", {}).get("max_profile_chars", 420))
+    max_profile = int(master.get("layout_constraints", {}).get("max_profile_chars", 240))
     if len(profile) > max_profile:
         profile = profile[: max_profile - 1].rstrip(" ,;:") + "…"
     cv = {

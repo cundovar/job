@@ -37,8 +37,17 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
             "suggested_fix": "Ajouter les mots-clés manquants quand ils sont vrais dans le profil.",
         })
     profile = cv.get("profile", "")
-    if len(profile) > int(constraints.get("max_profile_chars", 420)):
+    if len(profile) > int(constraints.get("max_profile_chars", 240)):
         problems.append({"severity": "medium", "section": "profile", "problem": "Résumé trop long pour Canva.", "suggested_fix": "Réduire le résumé à deux phrases."})
+    skill_count = sum(len(section.get("items", [])) for section in cv.get("skills", []))
+    max_skills = int(constraints.get("max_skill_items_total", 10))
+    if skill_count > max_skills:
+        problems.append({
+            "severity": "medium",
+            "section": "skills",
+            "problem": f"Le CV présente {skill_count} compétences, au-delà de la limite de {max_skills}.",
+            "suggested_fix": "Conserver uniquement les compétences les plus utiles à l'annonce.",
+        })
     max_bullets = int(constraints.get("max_bullets_per_experience", 3))
     max_bullet_chars = int(constraints.get("max_bullet_chars", 145))
     for exp in cv.get("experiences", []):

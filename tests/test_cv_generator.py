@@ -372,6 +372,44 @@ def test_ai_plan_cannot_drop_rule_based_complementary_experience():
     assert "creative" in ids
 
 
+def test_generated_cv_keeps_profile_and_skills_quick_to_scan():
+    master = load_json("data/cv_master_profile.json")
+    job = {
+        "title": "Formateur et conseiller numérique",
+        "description": "Formation, accompagnement humain, gestion de groupe et outils numériques.",
+    }
+    plan = analyze_job_for_cv(job, master)
+    cv = create_cv_draft(job, master, plan)["cv"]
+
+    assert len(cv["profile"]) <= 240
+    assert sum(len(section["items"]) for section in cv["skills"]) <= 10
+
+
+def test_quality_checker_flags_an_overloaded_skill_block():
+    master = {
+        "layout_constraints": {
+            "max_profile_chars": 240,
+            "max_skill_items_total": 10,
+            "max_bullet_chars": 145,
+            "max_experiences": 4,
+        },
+        "forbidden_claims": [],
+    }
+    plan = {"priority_keywords": [], "experience_plan": [{"experience_id": "exp"}]}
+    draft = {
+        "cv": {
+            "title": "Formateur",
+            "profile": "Accompagnement de publics vers l'autonomie numérique.",
+            "skills": [{"title": "Compétences", "items": [f"Compétence {index}" for index in range(11)]}],
+            "experiences": [{"organization": "Test", "title": "Formateur", "bullets": ["Formation"]}],
+        }
+    }
+
+    review = review_cv({}, master, plan, draft)
+
+    assert any(problem["section"] == "skills" for problem in review["problems"])
+
+
 def test_experience_plan_is_reverse_chronological_after_selection():
     ids = ["freelance", "current", "qualiscope", "pole_s"]
     periods = {
