@@ -2,7 +2,7 @@ import io
 import json
 
 from cv_generator import prepare_custom_cv
-from cv_generator.ai_agents import AgentResult, CVLLMClient
+from cv_generator.ai_agents import AgentResult, CVLLMClient, _sanitize_plan
 from cv_generator.exporters import (
     DEFAULT_PORTRAIT,
     PDF_PORTRAIT_DIAMETER,
@@ -275,6 +275,101 @@ def test_group_management_job_selects_animation_experience():
     plan = analyze_job_for_cv(job, master)
 
     assert "mairie_chelles" in [item["experience_id"] for item in plan["experience_plan"]]
+
+
+def test_cultural_job_keeps_illustration_as_complementary_experience():
+    master = load_json("data/cv_master_profile.json")
+    job = {
+        "title": "Médiateur culturel en bibliothèque",
+        "description": "Animation autour du livre, de la lecture et de la création visuelle.",
+    }
+
+    plan = analyze_job_for_cv(job, master)
+    selected = {item["experience_id"]: item for item in plan["experience_plan"]}
+
+    assert "illustration_neva" in selected
+    assert selected["illustration_neva"]["selection_role"] == "complementary"
+
+
+def test_experience_mix_reserves_one_of_four_slots_for_relevant_journey():
+    core_ids = ["core_1", "core_2", "core_3", "core_4"]
+    catalog = {
+        exp_id: {
+            "period": {"start": str(2026 - index), "end": str(2026 - index)},
+            "tags": ["culture"],
+            "highlights": [exp_id],
+        }
+        for index, exp_id in enumerate(core_ids)
+    }
+    catalog["creative"] = {
+        "period": {"start": "2022", "end": "2022"},
+        "tags": ["culture"],
+        "highlights": ["Album jeunesse"],
+        "visibility": "only_if_creative",
+        "cv_role": "complementary",
+    }
+    master = {
+        "experience_catalog": catalog,
+        "adaptation_rules": {"experience_priority_by_variant": {"webmaster": core_ids}},
+        "layout_constraints": {"max_experiences": 4},
+    }
+    selected = {"id": "webmaster", "experience_refs": core_ids}
+
+    plan = _experience_plan({"title": "Culture", "description": ""}, selected, master)
+
+    assert len(plan) == 4
+    assert sum(item["selection_role"] == "core" for item in plan) == 3
+    assert any(item["experience_id"] == "creative" for item in plan)
+
+
+def test_ai_plan_cannot_drop_rule_based_complementary_experience():
+    catalog = {
+        exp_id: {"period": {"start": "2026", "end": "2026"}, "highlights": [exp_id]}
+        for exp_id in ["core_1", "core_2", "core_3", "core_4"]
+    }
+    catalog["creative"] = {
+        "period": {"start": "2022", "end": "2022"},
+        "highlights": ["Album jeunesse"],
+        "cv_role": "complementary",
+    }
+    master = {
+        "cv_variants": [{"id": "webmaster", "skills": {}}],
+        "experience_catalog": catalog,
+        "layout_constraints": {"max_experiences": 4},
+    }
+    rule_plan = {
+        "selected_base_variant": "webmaster",
+        "experience_plan": [
+            *[
+                {"experience_id": exp_id, "priority": 10, "selection_role": "core", "highlights": [exp_id]}
+                for exp_id in ["core_1", "core_2", "core_3"]
+            ],
+            {
+                "experience_id": "creative",
+                "priority": 5,
+                "selection_role": "complementary",
+                "highlights": ["Album jeunesse"],
+            },
+        ],
+    }
+    proposed = {
+        "selected_base_variant": "webmaster",
+        "experience_plan": [
+            {"experience_id": exp_id, "priority": 10, "highlight_indexes": [0]}
+            for exp_id in ["core_1", "core_2", "core_3", "core_4"]
+        ],
+    }
+
+    sanitized = _sanitize_plan(
+        proposed,
+        rule_plan,
+        master,
+        AgentResult(data=proposed, provider="test", model="test"),
+    )
+
+    ids = [item["experience_id"] for item in sanitized["experience_plan"]]
+    assert len(ids) == 4
+    assert "creative" in ids
 
 
 def test_experience_plan_is_reverse_chronological_after_selection():

@@ -66,6 +66,25 @@ def _priority_keywords(job: Dict[str, Any], selected: Dict[str, Any], master: Di
     return compact_items(explicit, limit=14)
 
 
+def _select_experience_mix(
+    plan: List[Dict[str, Any]],
+    catalog: Dict[str, Any],
+    max_experiences: int,
+) -> List[Dict[str, Any]]:
+    """Reserve the last of four slots for one relevant human/creative experience."""
+    if max_experiences < 4:
+        return plan[:max_experiences]
+    complementary = [
+        item
+        for item in plan
+        if catalog.get(item.get("experience_id"), {}).get("cv_role") == "complementary"
+    ]
+    if not complementary:
+        return plan[:max_experiences]
+    core = [item for item in plan if item not in complementary]
+    return core[: max_experiences - 1] + complementary[:1]
+
+
 def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str, Any]]:
     text = job_text(job)
     catalog = master.get("experience_catalog", {})
@@ -103,6 +122,7 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
             plan.append({
                 "experience_id": exp_id,
                 "priority": score,
+                "selection_role": exp.get("cv_role", "core"),
                 "reason": f"Expérience alignée avec la variante {variant_id} et les mots-clés de l'annonce.",
                 "highlights": compact_items(picked, limit=3, max_chars=145),
             })
@@ -110,7 +130,7 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
     # then always reverse chronological, as recruiters expect on a CV.
     plan.sort(key=lambda item: item["priority"], reverse=True)
     max_experiences = int(master.get("layout_constraints", {}).get("max_experiences", 4))
-    selected_plan = plan[:max_experiences]
+    selected_plan = _select_experience_mix(plan, catalog, max_experiences)
     selected_plan.sort(
         key=lambda item: _period_sort_key(catalog.get(item["experience_id"], {}).get("period")),
         reverse=True,

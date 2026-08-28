@@ -10,7 +10,7 @@ from openai import OpenAI
 
 from cv_generator.cv_creator import create_cv_draft
 from cv_generator.cv_quality_checker import review_cv as review_cv_rules
-from cv_generator.job_analyzer import analyze_job_for_cv as analyze_job_rules
+from cv_generator.job_analyzer import _select_experience_mix, analyze_job_for_cv as analyze_job_rules
 from cv_generator.utils import compact_items, flatten_skills, normalize, period_to_text
 from utils.ai_role_routing import AIRouteStep, legacy_route, load_role_route
 from utils.cli_agent_bridge import CLIAgentBridgeClient
@@ -430,6 +430,7 @@ def _sanitize_plan(
             {
                 "experience_id": exp_id,
                 "priority": int(item.get("priority") or 0),
+                "selection_role": rule_by_id.get(exp_id, {}).get("selection_role", "core"),
                 "reason": _clip(item.get("reason"), 260, "Expérience pertinente pour l'annonce."),
                 "highlight_indexes": indexes[:3],
                 "highlights": [highlights[index] for index in indexes[:3]],
@@ -444,8 +445,17 @@ def _sanitize_plan(
             highlights = catalog[exp_id].get("highlights", [])
             indexes = [highlights.index(text) for text in item.get("highlights", []) if text in highlights][:3]
             experience_plan.append({**item, "highlight_indexes": indexes})
+            seen.add(exp_id)
+    for rule_item in rule_plan.get("experience_plan", []):
+        exp_id = rule_item.get("experience_id")
+        if rule_item.get("selection_role") != "complementary" or exp_id in seen or exp_id not in catalog:
+            continue
+        highlights = catalog[exp_id].get("highlights", [])
+        indexes = [highlights.index(text) for text in rule_item.get("highlights", []) if text in highlights][:3]
+        experience_plan.append({**rule_item, "highlight_indexes": indexes})
+        seen.add(exp_id)
     max_experiences = int(master.get("layout_constraints", {}).get("max_experiences", 4))
-    experience_plan = experience_plan[:max_experiences]
+    experience_plan = _select_experience_mix(experience_plan, catalog, max_experiences)
     experience_plan.sort(
         key=lambda item: _period_key(catalog.get(item["experience_id"], {}).get("period")),
         reverse=True,

@@ -53,6 +53,7 @@ def _experiences(plan: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str,
         bullets = compact_items(item.get("highlights", exp.get("highlights", [])), max_bullets, max_chars)
         result.append({
             "id": item.get("experience_id"),
+            "selection_role": item.get("selection_role", "core"),
             "organization": exp.get("organization", ""),
             "title": exp.get("title", ""),
             "period": period_to_text(exp.get("period")),
