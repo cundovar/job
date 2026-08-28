@@ -10,6 +10,9 @@ from .cv_assessment import build_cv_assessment
 from .exporters import cv_to_html, cv_to_pdf
 from .utils import load_json, save_json
 
+MAX_AUTOMATIC_REVISION_ROUNDS = 3
+REVISION_STATUSES = {"needs_revision", "needs_minor_revision"}
+
 
 def _trace_item(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {
@@ -45,18 +48,23 @@ def prepare_custom_cv(
     plan = agents.analyze(job, master)
     draft = agents.create(job, master, plan)
     review = agents.review(job, master, plan, draft)
-    final_cv = agents.revise(job, master, plan, draft, review)
-    final_review = agents.review(job, master, plan, final_cv)
+    final_cv = draft
+    final_review = review
     trace_runs = [_trace_item(plan), _trace_item(draft), _trace_item(review)]
-    correction_retried = final_review.get("status") == "needs_revision"
-    if correction_retried:
-        trace_runs.extend([_trace_item(final_cv), _trace_item(final_review)])
+    automatic_revision_rounds = 0
+    while (
+        final_review.get("status") in REVISION_STATUSES
+        and automatic_revision_rounds < MAX_AUTOMATIC_REVISION_ROUNDS
+    ):
         final_cv = agents.revise(job, master, plan, final_cv, final_review)
         final_review = agents.review(job, master, plan, final_cv)
-    trace_runs.extend([_trace_item(final_cv), _trace_item(final_review)])
+        automatic_revision_rounds += 1
+        trace_runs.extend([_trace_item(final_cv), _trace_item(final_review)])
+
+    automatic_corrections_exhausted = final_review.get("status") in REVISION_STATUSES
 
     trace = {
-        "pipeline": "ai_cv_pipeline_v2",
+        "pipeline": "ai_cv_pipeline_v3",
         "job": {
             "title": job.get("title"),
             "company": job.get("company"),
@@ -64,7 +72,10 @@ def prepare_custom_cv(
             "description_chars": len(str(job.get("description") or "")),
         },
         "runs": trace_runs,
-        "correction_retried": correction_retried,
+        "correction_retried": automatic_revision_rounds > 0,
+        "automatic_revision_rounds": automatic_revision_rounds,
+        "automatic_corrections_exhausted": automatic_corrections_exhausted,
+        "automatic_revision_limit": MAX_AUTOMATIC_REVISION_ROUNDS,
         "python_guardrails": [
             "identifiants d'expériences limités au JSON maître",
             "intitulés, organisations, dates, diplômes et contacts recopiés depuis la source",

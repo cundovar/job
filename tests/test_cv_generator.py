@@ -112,7 +112,27 @@ class RetryCVAgentClient(FakeCVAgentClient):
         if agent_name != "cv_quality_checker":
             return result
         self.review_count += 1
-        if self.review_count != 2:
+        if self.review_count > 2:
+            return result
+        data = dict(result.data)
+        data["problems"] = [{
+            "severity": "high",
+            "section": "expériences",
+            "problem": "Une preuve centrale manque encore.",
+            "suggested_fix": "Rétablir la preuve prévue par le plan.",
+        }]
+        data["verdict"] = "Corriger puis relire"
+        return AgentResult(data=data, provider=result.provider, model=result.model)
+
+
+class AlwaysRetryCVAgentClient(FakeCVAgentClient):
+    def complete_json(self, *, agent_name, system_prompt, payload):
+        result = super().complete_json(
+            agent_name=agent_name,
+            system_prompt=system_prompt,
+            payload=payload,
+        )
+        if agent_name != "cv_quality_checker":
             return result
         data = dict(result.data)
         data["problems"] = [{
@@ -143,14 +163,12 @@ def test_prepare_custom_cv_generates_webmaster_files(tmp_path):
     )
 
     assert result["ok"] is True
-    assert result["pipeline"] == "ai_cv_pipeline_v2"
+    assert result["pipeline"] == "ai_cv_pipeline_v3"
     assert result["selected_base_variant"] == "webmaster"
     assert "Webmaster" in result["target_title"]
     assert client.calls == [
         "cv_job_analyzer",
         "cv_creator",
-        "cv_quality_checker",
-        "cv_style_reviser",
         "cv_quality_checker",
     ]
     assert (tmp_path / "cv" / "cv_final.json").exists()
@@ -167,7 +185,7 @@ def test_prepare_custom_cv_generates_webmaster_files(tmp_path):
     assert not (tmp_path / "cv" / "cv_canva_copy.md").exists()
 
 
-def test_pipeline_retries_one_correction_after_failed_final_review(tmp_path):
+def test_pipeline_automatically_applies_relevant_corrections_until_validated(tmp_path):
     job = {
         "title": "Webmaster WordPress",
         "company": "Ville Test",
@@ -185,8 +203,33 @@ def test_pipeline_retries_one_correction_after_failed_final_review(tmp_path):
 
     assert result["ok"] is True
     assert trace["correction_retried"] is True
+    assert trace["automatic_revision_rounds"] == 2
+    assert trace["automatic_corrections_exhausted"] is False
     assert client.calls.count("cv_style_reviser") == 2
     assert client.calls.count("cv_quality_checker") == 3
+
+
+def test_pipeline_stops_automatic_corrections_at_the_safety_limit(tmp_path):
+    job = {
+        "title": "Webmaster WordPress",
+        "company": "Ville Test",
+        "description": "Gestion CMS WordPress, maintenance, contenus et documentation utilisateurs.",
+    }
+    client = AlwaysRetryCVAgentClient()
+
+    result = prepare_custom_cv(
+        job,
+        application_dir=tmp_path,
+        master_path="data/cv_master_profile.json",
+        llm_client=client,
+    )
+    trace = json.loads((tmp_path / "cv" / "cv_agent_trace.json").read_text(encoding="utf-8"))
+
+    assert result["status"] == "review"
+    assert trace["automatic_revision_rounds"] == 3
+    assert trace["automatic_corrections_exhausted"] is True
+    assert client.calls.count("cv_style_reviser") == 3
+    assert client.calls.count("cv_quality_checker") == 4
 
 
 def test_pdf_and_html_use_the_real_portrait(tmp_path):
