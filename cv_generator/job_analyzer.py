@@ -91,15 +91,18 @@ def _max_experiences(master: Dict[str, Any], variant_id: str) -> int:
     return int(by_variant.get(variant_id, constraints.get("max_experiences", 4)))
 
 
-def _merge_mandatory_skills(
+def _merge_preferred_skills(
     skills: Dict[str, Any],
     master: Dict[str, Any],
     variant_id: str,
 ) -> Dict[str, List[str]]:
-    mandatory = master.get("adaptation_rules", {}).get("mandatory_skills_by_variant", {}).get(variant_id, {})
+    preferred = master.get("adaptation_rules", {}).get("preferred_skills_by_variant", {}).get(variant_id, {})
     result: Dict[str, List[str]] = {}
     seen = set()
-    for source in (mandatory, skills):
+    # A configured preference replaces the broad variant catalogue for the
+    # deterministic pre-analysis. The AI still has access to every truthful
+    # skill and may select different ones when the advert warrants it.
+    for source in ((preferred,) if preferred else (skills,)):
         for section, items in source.items():
             target = result.setdefault(str(section), [])
             for item in items if isinstance(items, list) else []:
@@ -172,7 +175,9 @@ def analyze_job_for_cv(job: Dict[str, Any], master: Dict[str, Any]) -> Dict[str,
     target_title = title_variants.get(variant_id) or selected.get("title") or "Développeur web / Webmaster"
     keywords = _priority_keywords(job, selected, master)
     experience_plan = _experience_plan(job, selected, master)
-    selected_skills = _merge_mandatory_skills(selected.get("skills", {}), master, variant_id)
+    # These are suggestions for the AI analyzer, not content that Python may
+    # force back into the final CV.
+    selected_skills = _merge_preferred_skills(selected.get("skills", {}), master, variant_id)
     text = job_text(job)
     skills_to_reduce = []
     for skill, confidence in master.get("skills_confidence", {}).items():

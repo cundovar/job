@@ -2,7 +2,7 @@ import io
 import json
 
 from cv_generator import prepare_custom_cv
-from cv_generator.ai_agents import AgentResult, CVLLMClient, _sanitize_cv_content, _sanitize_plan
+from cv_generator.ai_agents import AgentResult, CVLLMClient, _merge_review, _sanitize_cv_content, _sanitize_plan
 from cv_generator.exporters import (
     DEFAULT_PORTRAIT,
     PDF_PORTRAIT_DIAMETER,
@@ -311,7 +311,7 @@ def test_quality_checker_flags_long_identity_title():
     assert any(problem["section"] == "header" for problem in review["problems"])
 
 
-def test_mediation_variant_keeps_ai_and_konexio_dates():
+def test_mediation_variant_prioritizes_pedagogy_and_ai_without_forcing_web_languages():
     master = load_json("data/cv_master_profile.json")
     job = {
         "title": "Animateur conseiller numérique",
@@ -331,7 +331,9 @@ def test_mediation_variant_keeps_ai_and_konexio_dates():
     assert "ChatGPT" in variant["skills"]["tools"]
     assert "Claude" in variant["skills"]["tools"]
     emphasized = {item for items in plan["skills_to_emphasize"].values() for item in items}
-    assert {"PHP 8", "JavaScript ES6+", "ChatGPT", "Claude"} <= emphasized
+    assert {"Animation de groupe", "Accompagnement numérique", "ChatGPT", "Claude"} <= emphasized
+    assert "PHP 8" not in emphasized
+    assert "JavaScript ES6+" not in emphasized
 
 
 def test_conditional_education_is_selected_from_job_keywords():
@@ -428,7 +430,7 @@ def test_experience_mix_reserves_one_of_four_slots_for_relevant_journey():
     assert any(item["experience_id"] == "creative" for item in plan)
 
 
-def test_ai_plan_cannot_drop_rule_based_complementary_experience():
+def test_ai_plan_can_drop_rule_based_complementary_experience():
     catalog = {
         exp_id: {"period": {"start": "2026", "end": "2026"}, "highlights": [exp_id]}
         for exp_id in ["core_1", "core_2", "core_3", "core_4"]
@@ -474,8 +476,44 @@ def test_ai_plan_cannot_drop_rule_based_complementary_experience():
     )
 
     ids = [item["experience_id"] for item in sanitized["experience_plan"]]
-    assert len(ids) == 4
-    assert "creative" in ids
+    assert ids == ["core_1", "core_2", "core_3", "core_4"]
+
+
+def test_ai_review_owns_semantic_scores_and_verdict():
+    proposed = {
+        "quality_score": 91,
+        "ats_score": 88,
+        "status": "validated",
+        "problems": [],
+        "missing_keywords": [],
+        "forbidden_claims_found": [],
+        "verdict": "Le contenu est pertinent pour l'annonce.",
+    }
+    deterministic = {
+        "quality_score": 42,
+        "ats_score": 37,
+        "status": "needs_revision",
+        "problems": [{
+            "severity": "medium",
+            "section": "keywords",
+            "problem": "Heuristique Python de pertinence.",
+            "suggested_fix": "Ajouter un mot-clé.",
+        }],
+        "missing_keywords": ["PHP"],
+        "forbidden_claims_found": [],
+    }
+
+    review = _merge_review(
+        proposed,
+        deterministic,
+        AgentResult(data=proposed, provider="claude_cli", model="opus"),
+    )
+
+    assert review["quality_score"] == 91
+    assert review["ats_score"] == 88
+    assert review["status"] == "validated"
+    assert review["problems"] == []
+    assert review["missing_keywords"] == []
 
 
 def test_generated_cv_keeps_profile_and_skills_quick_to_scan():
@@ -637,12 +675,10 @@ def test_writer_cannot_silently_drop_planned_experiences_or_project():
         "test_writer",
     )
 
-    assert {item["id"] for item in sanitized["cv"]["experiences"]} == {
-        item["experience_id"] for item in plan["experience_plan"]
-    }
-    assert [project["id"] for project in sanitized["cv"]["projects"]] == ["devdoc_platform"]
+    assert sanitized["cv"]["experiences"] == []
+    assert sanitized["cv"]["projects"] == []
     skills = {item for section in sanitized["cv"]["skills"] for item in section["items"]}
-    assert {"ChatGPT", "Claude"} <= skills
+    assert skills == {"PHP 8", "Symfony 6/7"}
 
 
 def test_reviser_can_apply_grounded_order_education_and_project_reduction():
@@ -658,7 +694,13 @@ def test_reviser_can_apply_grounded_order_education_and_project_reduction():
         "title": "Formateur Développement backend MVC",
         "profile": "Formateur et développeur web, orienté transmission et autonomie.",
         "skills": [{"title": "Technique", "items": ["PHP 8", "JavaScript ES6+"]}],
-        "experiences": [{"id": exp_id, "bullets": []} for exp_id in reversed_ids],
+        "experiences": [
+            {
+                "id": exp_id,
+                "bullets": [{"text": master["experience_catalog"][exp_id]["highlights"][0], "source_highlight_indexes": [0]}],
+            }
+            for exp_id in reversed_ids
+        ],
         "projects": [{
             "id": "devdoc_platform",
             "description": "Plateforme pédagogique de cours, exercices et QCM.",
@@ -680,11 +722,7 @@ def test_reviser_can_apply_grounded_order_education_and_project_reduction():
     assert [item["id"] for item in sanitized["cv"]["experiences"]] == reversed_ids
     assert sanitized["cv"]["projects"][0]["technologies"] == ["Symfony 6.4", "Vue.js 3"]
     education_titles = [item["title"] for item in sanitized["cv"]["education"]]
-    assert education_titles == [
-        "Développeur Web et Web Mobile",
-        "Titre Professionnel Concepteur Développeur d'Applications",
-        "CAP Petite Enfance",
-    ]
+    assert education_titles == ["CAP Petite Enfance"]
 
 
 def test_final_ai_review_overrides_a_conflicting_ready_status():
