@@ -240,6 +240,43 @@ def test_conditional_education_is_selected_from_job_keywords():
     assert any(item["title"] == "CAP Petite Enfance" for item in draft["cv"]["education"])
 
 
+def test_human_training_job_selects_cap_and_bac_l():
+    master = load_json("data/cv_master_profile.json")
+    job = {
+        "title": "Conseiller formateur",
+        "description": "Approche humaine, accompagnement et gestion de groupe.",
+    }
+    plan = analyze_job_for_cv(job, master)
+    education = create_cv_draft(job, master, plan)["cv"]["education"]
+    titles = [item["title"] for item in education]
+
+    assert "CAP Petite Enfance" in titles
+    assert "Bac L option cinéma audiovisuel" in titles
+
+
+def test_cultural_job_selects_bac_l():
+    master = load_json("data/cv_master_profile.json")
+    job = {
+        "title": "Médiateur culturel en bibliothèque",
+        "description": "Animation autour du livre, de la lecture et du patrimoine.",
+    }
+    plan = analyze_job_for_cv(job, master)
+    education = create_cv_draft(job, master, plan)["cv"]["education"]
+
+    assert any(item["title"] == "Bac L option cinéma audiovisuel" for item in education)
+
+
+def test_group_management_job_selects_animation_experience():
+    master = load_json("data/cv_master_profile.json")
+    job = {
+        "title": "Formateur adultes",
+        "description": "Animation et gestion de groupe, accompagnement des participants.",
+    }
+    plan = analyze_job_for_cv(job, master)
+
+    assert "mairie_chelles" in [item["experience_id"] for item in plan["experience_plan"]]
+
+
 def test_experience_plan_is_reverse_chronological_after_selection():
     ids = ["freelance", "current", "qualiscope", "pole_s"]
     periods = {

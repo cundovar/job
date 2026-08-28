@@ -10,15 +10,17 @@ def _education_for_job(job: Dict[str, Any], person: Dict[str, Any], plan: Dict[s
     job_text = normalize(" ".join(str(job.get(key) or "") for key in ("title", "description")))
     priority_text = normalize(" ".join(str(item) for item in plan.get("priority_keywords", [])))
     selected: List[Dict[str, Any]] = []
-    conditional: List[Dict[str, Any]] = []
+    conditional: List[tuple[int, Dict[str, Any]]] = []
     for education in person.get("education", []):
         if education.get("visibility") != "only_if_relevant":
             selected.append(education)
             continue
         tags = [normalize(tag) for tag in education.get("tags", [])]
-        if any(tag and (tag in job_text or tag in priority_text) for tag in tags):
-            conditional.append(education)
-    return (conditional + selected)[:limit]
+        matches = sum(1 for tag in tags if tag and (tag in job_text or tag in priority_text))
+        if matches:
+            conditional.append((matches, education))
+    conditional.sort(key=lambda item: item[0], reverse=True)
+    return ([education for _, education in conditional] + selected)[:limit]
 
 
 def _skills_sections(plan: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str, Any]]:
