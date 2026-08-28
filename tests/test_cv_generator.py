@@ -10,7 +10,10 @@ from cv_generator.exporters import (
     cv_to_html,
     cv_to_pdf,
 )
-from cv_generator.job_analyzer import _experience_plan
+from cv_generator.cv_quality_checker import review_cv
+from cv_generator.layout import title_requires_wrap, wrap_tracked_title
+from cv_generator.job_analyzer import _experience_plan, analyze_job_for_cv
+from cv_generator.utils import load_json
 
 
 class FakeCVAgentClient:
@@ -177,6 +180,54 @@ def test_identity_block_is_centered_on_portrait():
 
     assert name_y == portrait_center + 6.5
     assert target_y == portrait_center - 30.5
+
+
+def test_long_identity_title_wraps_instead_of_overflowing():
+    title = "Conseiller numérique — formateur / médiateur numérique"
+
+    assert title_requires_wrap(title)
+    assert len(wrap_tracked_title(title)) == 2
+
+
+def test_quality_checker_flags_long_identity_title():
+    title = "Conseiller numérique — formateur / médiateur numérique"
+    master = {
+        "layout_constraints": {"max_profile_chars": 420, "max_bullet_chars": 145, "max_experiences": 4},
+        "forbidden_claims": [],
+    }
+    plan = {"priority_keywords": [], "experience_plan": [{"experience_id": "exp"}]}
+    draft = {
+        "cv": {
+            "title": title,
+            "profile": "Profil formateur et conseiller numérique.",
+            "experiences": [{"organization": "Test", "title": "Formateur", "bullets": ["Accompagnement numérique"]}],
+        }
+    }
+
+    review = review_cv({}, master, plan, draft)
+
+    assert any(problem["section"] == "header" for problem in review["problems"])
+
+
+def test_mediation_variant_keeps_ai_and_konexio_dates():
+    master = load_json("data/cv_master_profile.json")
+    job = {
+        "title": "Animateur conseiller numérique",
+        "description": "Accompagnement numérique, ateliers, autonomie et inclusion numérique.",
+    }
+
+    plan = analyze_job_for_cv(job, master)
+    konexio = master["experience_catalog"]["konexio_formateur_benevole"]
+
+    assert plan["selected_base_variant"] == "formateur_generaliste"
+    assert "konexio_formateur_benevole" in [item["experience_id"] for item in plan["experience_plan"]]
+    assert "IA" in plan["positioning"]
+    assert konexio["period"] == {"start": "2023-01", "end": "2023-07", "date_confidence": "confirmed_by_user"}
+    assert "ia" not in konexio["tags"]
+    assert any("HTML" in highlight and "CSS" in highlight and "JavaScript" in highlight for highlight in konexio["highlights"])
+    variant = next(item for item in master["cv_variants"] if item["id"] == "formateur_generaliste")
+    assert "ChatGPT" in variant["skills"]["tools"]
+    assert "Claude" in variant["skills"]["tools"]
 
 
 def test_experience_plan_is_reverse_chronological_after_selection():

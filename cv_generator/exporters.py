@@ -7,6 +7,13 @@ from html import escape
 from pathlib import Path
 from typing import Any, Dict, List
 
+from .layout import (
+    IDENTITY_TITLE_MAX_WIDTH,
+    IDENTITY_TITLE_MIN_SIZE,
+    IDENTITY_TITLE_TRACKING,
+    wrap_tracked_title,
+)
+
 
 DEFAULT_DESIGN_SYSTEM = "config/cv_design_system.json"
 DEFAULT_PORTRAIT = Path(__file__).resolve().parent.parent / "assets" / "cv" / "facundo-varas.jpg"
@@ -203,7 +210,7 @@ def cv_to_html(
   header {{ height: 128px; display: flex; flex-direction: column; justify-content: center; }}
   h1 {{ margin: 0 0 8px; font-size: 25pt; font-weight: 400; letter-spacing: .01em; line-height: 1.1; }}
   .target-title, h2 {{ text-transform: uppercase; letter-spacing: .32em; font-weight: 400; color: {primary}; }}
-  .target-title {{ font-size: 9pt; line-height: 1.35; }}
+  .target-title {{ font-size: 9pt; line-height: 1.35; max-width: calc(100% - 34px); overflow-wrap: anywhere; }}
   h2 {{ margin: 24px 0 0; font-size: 8.3pt; line-height: 1.2; }}
   .section-line {{ width: 31px; height: 3px; background: {accent}; margin: 8px 0 12px; }}
   p, li {{ font-size: 7.6pt; line-height: 1.48; margin: 0 0 8px; }}
@@ -433,10 +440,14 @@ def cv_to_pdf(
     c.drawString(header_x, name_y, "Facundo Varas")
     target = str(cv.get("title", "CV personnalisé")).upper()
     target_size = 11.0
-    target_max_w = main_w - 34.0
-    while target_size > 8.0 and stringWidth(target, regular_font, target_size) + max(0, len(target) - 1) * 2.2 > target_max_w:
+    target_max_w = min(main_w - 34.0, IDENTITY_TITLE_MAX_WIDTH)
+    while target_size > IDENTITY_TITLE_MIN_SIZE and stringWidth(target, regular_font, target_size) + max(0, len(target) - 1) * IDENTITY_TITLE_TRACKING > target_max_w:
         target_size -= 0.5
-    draw_tracked(target, main_x + 34.0, target_y, target_size, 2.2, secondary)
+    target_lines = wrap_tracked_title(target, max_width=target_max_w, size=target_size, tracking=IDENTITY_TITLE_TRACKING)
+    if len(target_lines) > 1:
+        target_y += 6.5 * (len(target_lines) - 1)
+    for line_index, target_line in enumerate(target_lines):
+        draw_tracked(target_line, main_x + 34.0, target_y - line_index * 13.0, target_size, IDENTITY_TITLE_TRACKING, secondary)
 
     # Sidebar intentionally begins lower than the portrait, as in the model.
     sidebar_scale = 1.0

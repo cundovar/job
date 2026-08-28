@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from .utils import normalize
+from .layout import title_requires_wrap
 
 
 def _collect_cv_text(draft: Dict[str, Any]) -> str:
@@ -56,6 +57,13 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
             "section": "truthfulness",
             "problem": "Formulation interdite ou trop survendue détectée.",
             "suggested_fix": "Supprimer ou reformuler les affirmations interdites.",
+        })
+    if title_requires_wrap(str(cv.get("title") or "")):
+        problems.append({
+            "severity": "medium",
+            "section": "header",
+            "problem": "Le sous-titre est trop large sur une ligne et risque de dépasser la colonne imprimable.",
+            "suggested_fix": "Le couper en deux lignes avant l'export.",
         })
     base_variant = draft.get("base_variant")
     if base_variant in {"webmaster", "wordpress", "formateur_developpement_web", "formateur_ia", "accessibilite"} and "full stack" in cv_text:
