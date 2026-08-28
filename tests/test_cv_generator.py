@@ -993,6 +993,43 @@ def test_writer_cannot_silently_drop_planned_experiences_or_project():
     assert skills == {"PHP 8", "Symfony 6/7"}
 
 
+def test_writer_rejects_guarding_experience_for_an_unrelated_web_job():
+    master = load_json("data/cv_master_profile.json")
+    job = {
+        "title": "Formateur développement web",
+        "description": "Former des adultes à WordPress, Next.js et JavaScript.",
+    }
+    plan = analyze_job_for_cv(job, master)
+    base = create_cv_draft(job, master, plan)
+    source = master["experience_catalog"]["bioconcept_accueil"]
+    proposed = {
+        "title": "Formateur développement web",
+        "profile": "Formateur et créateur de sites web.",
+        "skills": [],
+        "experiences": [{
+            "id": "bioconcept_accueil",
+            "bullets": [{
+                "text": source["highlights"][0],
+                "source_highlight_indexes": [0],
+            }],
+        }],
+        "projects": [],
+        "education": [],
+    }
+
+    sanitized = _sanitize_cv_content(
+        proposed,
+        job,
+        master,
+        plan,
+        base,
+        AgentResult(data=proposed, provider="test", model="test"),
+        "test_writer",
+    )
+
+    assert sanitized["cv"]["experiences"] == []
+
+
 def test_reviser_can_apply_grounded_order_education_and_project_reduction():
     master = load_json("data/cv_master_profile.json")
     job = {
