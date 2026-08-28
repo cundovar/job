@@ -80,8 +80,33 @@ def _projects(job: Dict[str, Any], plan: Dict[str, Any], master: Dict[str, Any])
         normalized and normalized in direct_job_text
         for normalized in (normalize(keyword) for keyword in variant_keywords)
     )
+    required_ids = master.get("adaptation_rules", {}).get("required_projects_by_variant", {}).get(variant, [])
+
+    def project_payload(project_id: str, project: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "id": project_id,
+            "title": project.get("title", ""),
+            "year": project.get("year"),
+            "description": project.get("description", ""),
+            "technologies": project.get("technologies", []),
+        }
+
+    selected = []
+    selected_ids = set()
+    catalog = master.get("project_catalog", {})
+    if variant_relevant:
+        for project_id in required_ids:
+            project = catalog.get(project_id)
+            if project and project_id not in selected_ids:
+                selected.append(project_payload(project_id, project))
+                selected_ids.add(project_id)
+            if len(selected) >= max_projects:
+                return selected
+
     projects = []
-    for project_id, project in master.get("project_catalog", {}).items():
+    for project_id, project in catalog.items():
+        if project_id in selected_ids:
+            continue
         keywords = [*project.get("tags", []), *project.get("technologies", [])]
         normalized_keywords = [normalize(keyword) for keyword in keywords]
         matches = sum(1 for keyword in normalized_keywords if keyword and keyword in relevance_text)
@@ -89,15 +114,10 @@ def _projects(job: Dict[str, Any], plan: Dict[str, Any], master: Dict[str, Any])
         referenced = variant_relevant and project_id in project_refs
         score = matches * 3 + (5 if preferred else 0) + (8 if referenced else 0)
         if score > 0:
-            projects.append((score, {
-                "id": project_id,
-                "title": project.get("title", ""),
-                "year": project.get("year"),
-                "description": project.get("description", ""),
-                "technologies": project.get("technologies", []),
-            }))
+            projects.append((score, project_payload(project_id, project)))
     projects.sort(key=lambda item: (item[0], item[1].get("year") or 0), reverse=True)
-    return [project for _, project in projects[:max_projects]]
+    selected.extend(project for _, project in projects[: max_projects - len(selected)])
+    return selected
 
 
 def create_cv_draft(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any]) -> Dict[str, Any]:

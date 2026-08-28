@@ -492,6 +492,32 @@ def test_wordpress_project_remains_selected_for_wordpress_role():
     assert [project["id"] for project in projects] == ["wp_site_builder"]
 
 
+def test_mediator_trainer_always_uses_devdoc_personal_project():
+    master = load_json("data/cv_master_profile.json")
+    job = {
+        "title": "Médiateur et conseiller numérique",
+        "description": "Accompagnement des publics, animation d'ateliers et formation aux usages numériques.",
+    }
+    plan = analyze_job_for_cv(job, master)
+    projects = create_cv_draft(job, master, plan)["cv"]["projects"]
+
+    assert plan["selected_base_variant"] == "formateur_generaliste"
+    assert [project["id"] for project in projects] == ["devdoc_platform"]
+
+
+def test_web_cv_always_contains_a_personal_project_without_project_keywords():
+    master = load_json("data/cv_master_profile.json")
+    job = {
+        "title": "Développeur full stack",
+        "description": "Conception d'applications PHP Symfony, API REST et backend pour une équipe produit.",
+    }
+    plan = analyze_job_for_cv(job, master)
+    projects = create_cv_draft(job, master, plan)["cv"]["projects"]
+
+    assert plan["selected_base_variant"] == "fullstack"
+    assert [project["id"] for project in projects] == ["devdoc_platform"]
+
+
 def test_unrelated_job_does_not_force_a_personal_project():
     master = load_json("data/cv_master_profile.json")
     job = {
@@ -529,7 +555,7 @@ def test_backend_trainer_plan_keeps_practice_pedagogy_and_ai_proofs():
     } <= ids
     assert "bioconcept_accueil" not in ids
     assert {"PHP 8", "Symfony 6/7", "Doctrine ORM", "ChatGPT", "Claude"} <= skills
-    assert [project["id"] for project in draft["cv"]["projects"]] == ["wp_site_builder"]
+    assert [project["id"] for project in draft["cv"]["projects"]] == ["devdoc_platform"]
 
 
 def test_writer_cannot_silently_drop_planned_experiences_or_project():
@@ -561,7 +587,7 @@ def test_writer_cannot_silently_drop_planned_experiences_or_project():
     assert {item["id"] for item in sanitized["cv"]["experiences"]} == {
         item["experience_id"] for item in plan["experience_plan"]
     }
-    assert [project["id"] for project in sanitized["cv"]["projects"]] == ["wp_site_builder"]
+    assert [project["id"] for project in sanitized["cv"]["projects"]] == ["devdoc_platform"]
     skills = {item for section in sanitized["cv"]["skills"] for item in section["items"]}
     assert {"ChatGPT", "Claude"} <= skills
 
