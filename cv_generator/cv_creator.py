@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 from .utils import compact_items, normalize, period_to_text
 
 
-def _education_for_job(job: Dict[str, Any], person: Dict[str, Any], plan: Dict[str, Any], limit: int = 2) -> List[Dict[str, Any]]:
+def _education_for_job(job: Dict[str, Any], person: Dict[str, Any], plan: Dict[str, Any], limit: int = 4) -> List[Dict[str, Any]]:
     """Keep default studies and add conditional ones when the job matches their tags."""
     job_text = normalize(" ".join(str(job.get(key) or "") for key in ("title", "description")))
     priority_text = normalize(" ".join(str(item) for item in plan.get("priority_keywords", [])))
@@ -20,7 +20,10 @@ def _education_for_job(job: Dict[str, Any], person: Dict[str, Any], plan: Dict[s
         if matches:
             conditional.append((matches, education))
     conditional.sort(key=lambda item: item[0], reverse=True)
-    return ([education for _, education in conditional] + selected)[:limit]
+    # Entries marked as default describe the core professional path and must
+    # never be displaced by conditional human/cultural education entries.
+    remaining = max(0, limit - len(selected))
+    return selected[:limit] + [education for _, education in conditional[:remaining]]
 
 
 def _skills_sections(plan: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -136,7 +139,12 @@ def create_cv_draft(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str,
         "skills": _skills_sections(plan, master),
         "experiences": _experiences(plan, master),
         "projects": _projects(job, plan, master),
-        "education": _education_for_job(job, person, plan),
+        "education": _education_for_job(
+            job,
+            person,
+            plan,
+            limit=int(master.get("layout_constraints", {}).get("max_education_items", 4)),
+        ),
         "languages": person.get("languages", []),
     }
     return {
