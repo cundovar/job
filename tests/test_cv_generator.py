@@ -1,6 +1,8 @@
 import io
 import json
 
+from pypdf import PdfReader
+
 from cv_generator import prepare_custom_cv
 from cv_generator.ai_agents import (
     ANALYZER_PROMPT,
@@ -262,6 +264,21 @@ class HybridTrainerCorrectionClient:
         return AgentResult(data=data, provider="fake", model="fake-hybrid-model")
 
 
+HYBRID_TRAINER_JOB = {
+    "title": "Formateur(trice) en ligne – Intelligence artificielle et développement web",
+    "company": "Entreprise Test",
+    "description": """
+Concevoir et animer des formations en ligne sur l’intelligence artificielle, le développement
+web et la programmation auprès d’un public adulte, en adaptant les contenus aux niveaux et
+besoins des apprenants. Concevoir des modules de formation en ligne, animer des sessions
+interactives à distance, utiliser des outils pédagogiques numériques, évaluer la progression et
+transmettre des feedbacks constructifs. Solide connaissance de Python, JavaScript, Java, C++,
+HTML/CSS et R. Connaissance pratique de React et Node.js appréciée. Expérience significative
+dans l’enseignement ou la formation en ligne auprès d’un public adulte.
+""".strip(),
+}
+
+
 def test_prepare_custom_cv_generates_webmaster_files(tmp_path):
     job = {
         "title": "Webmaster WordPress / administrateur de site",
@@ -350,15 +367,10 @@ def test_pipeline_stops_automatic_corrections_at_the_safety_limit(tmp_path):
 
 
 def test_pipeline_adds_grounded_public_work_before_presenting_hybrid_trainer_cv(tmp_path):
-    job = {
-        "title": "Formateur en ligne – Intelligence artificielle et développement web",
-        "company": "Entreprise Test",
-        "description": "Former des adultes en IA, Python, JavaScript, Java, C++, HTML/CSS, R, React et Node.js.",
-    }
     client = HybridTrainerCorrectionClient()
 
     result = prepare_custom_cv(
-        job,
+        HYBRID_TRAINER_JOB,
         application_dir=tmp_path,
         master_path="data/cv_master_profile.json",
         llm_client=client,
@@ -389,6 +401,19 @@ def test_pipeline_adds_grounded_public_work_before_presenting_hybrid_trainer_cv(
         item for item in final_review["evidence_coverage"] if item["pillar"] == "public_proof"
     )["status"] == "covered"
     assert any("evidence_coverage" in run for run in trace["runs"])
+    skills = {item for section in final_cv["cv"]["skills"] for item in section["items"]}
+    assert {"Java", "C++", "R"}.isdisjoint(skills)
+    assert "formation en ligne" not in final_cv["cv"]["profile"].lower()
+    assert "formation à distance" not in final_cv["cv"]["profile"].lower()
+    assert [item["title"] for item in final_cv["cv"]["education"]] == [
+        "Titre Professionnel Concepteur Développeur d'Applications",
+        "Développeur Web et Web Mobile",
+    ]
+    pdf = PdfReader(tmp_path / "cv" / "cv_final.pdf")
+    assert len(pdf.pages) == 1
+    pdf_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+    assert "massagesdhelene.com" in pdf_text
+    assert len(PdfReader(tmp_path / "cv" / "cv_ats.pdf").pages) == 1
 
 
 def test_pdf_and_html_use_the_real_portrait(tmp_path):

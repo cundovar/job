@@ -96,7 +96,7 @@ def _paragraphs(values: Iterable[str], style: Any) -> list[Any]:
     for value in values:
         if not value:
             continue
-        blocks.extend([Paragraph(escape(str(value)), style), Spacer(1, 4)])
+        blocks.extend([Paragraph(escape(str(value)), style), Spacer(1, 2)])
     return blocks
 
 
@@ -114,18 +114,18 @@ def cv_to_ats_pdf(
     cv = _payload(final_cv)
     contact = cv.get("contact", {})
     styles = getSampleStyleSheet()
-    title = ParagraphStyle("AtsTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=18, leading=22, alignment=TA_LEFT, spaceAfter=4)
-    target = ParagraphStyle("AtsTarget", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=11, leading=14, spaceAfter=5)
-    heading = ParagraphStyle("AtsHeading", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=12, leading=15, spaceBefore=10, spaceAfter=5)
-    body = ParagraphStyle("AtsBody", parent=styles["BodyText"], fontName="Helvetica", fontSize=9.5, leading=13, spaceAfter=3)
-    meta = ParagraphStyle("AtsMeta", parent=body, fontName="Helvetica-Oblique", fontSize=9, leading=12)
+    title = ParagraphStyle("AtsTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=17, leading=20, alignment=TA_LEFT, spaceAfter=3)
+    target = ParagraphStyle("AtsTarget", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=10.5, leading=12, spaceAfter=3)
+    heading = ParagraphStyle("AtsHeading", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=11, leading=13, spaceBefore=7, spaceAfter=3)
+    body = ParagraphStyle("AtsBody", parent=styles["BodyText"], fontName="Helvetica", fontSize=9, leading=11, spaceAfter=2)
+    meta = ParagraphStyle("AtsMeta", parent=body, fontName="Helvetica-Oblique", fontSize=8.5, leading=10)
     document = SimpleDocTemplate(
         str(output_path),
         pagesize=A4,
         rightMargin=18 * mm,
         leftMargin=18 * mm,
-        topMargin=16 * mm,
-        bottomMargin=16 * mm,
+        topMargin=13 * mm,
+        bottomMargin=13 * mm,
         title=f"CV ATS - {candidate_name}",
         author=candidate_name,
     )
@@ -150,7 +150,7 @@ def cv_to_ats_pdf(
         bullets = [ListItem(Paragraph(escape(str(item)), body)) for item in experience.get("bullets", [])]
         if bullets:
             story.append(ListFlowable(bullets, bulletType="bullet", leftIndent=14, bulletFontName="Helvetica"))
-        story.append(Spacer(1, 5))
+        story.append(Spacer(1, 3))
     if cv.get("projects"):
         story.append(Paragraph("Projets", heading))
         for project in cv.get("projects", []):
