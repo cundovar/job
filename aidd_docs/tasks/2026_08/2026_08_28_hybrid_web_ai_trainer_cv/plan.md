@@ -1,6 +1,6 @@
 ---
 objective: "Les CV ciblant une mission de formation web et IA présentent un équilibre crédible entre pédagogie, réalisations techniques vérifiables et pratique de l'IA, choisi par les agents IA sans invention ni sélection éditoriale imposée par Python."
-status: in-progress
+status: implemented
 ---
 
 # Plan: Équilibrer les CV de formateur web et IA
