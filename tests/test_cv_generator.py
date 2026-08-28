@@ -330,6 +330,8 @@ def test_mediation_variant_keeps_ai_and_konexio_dates():
     variant = next(item for item in master["cv_variants"] if item["id"] == "formateur_generaliste")
     assert "ChatGPT" in variant["skills"]["tools"]
     assert "Claude" in variant["skills"]["tools"]
+    emphasized = {item for items in plan["skills_to_emphasize"].values() for item in items}
+    assert {"PHP 8", "JavaScript ES6+", "ChatGPT", "Claude"} <= emphasized
 
 
 def test_conditional_education_is_selected_from_job_keywords():
@@ -353,6 +355,9 @@ def test_human_training_job_selects_cap_and_bac_l():
 
     assert "CAP Petite Enfance" in titles
     assert "Bac L option cinéma audiovisuel" in titles
+    assert "Développeur Web et Web Mobile" in titles
+    assert "Titre Professionnel Concepteur Développeur d'Applications" in titles
+    assert "secom_gard" not in [item["experience_id"] for item in plan["experience_plan"]]
 
 
 def test_cultural_job_selects_bac_l():
@@ -638,6 +643,48 @@ def test_writer_cannot_silently_drop_planned_experiences_or_project():
     assert [project["id"] for project in sanitized["cv"]["projects"]] == ["devdoc_platform"]
     skills = {item for section in sanitized["cv"]["skills"] for item in section["items"]}
     assert {"ChatGPT", "Claude"} <= skills
+
+
+def test_reviser_can_apply_grounded_order_education_and_project_reduction():
+    master = load_json("data/cv_master_profile.json")
+    job = {
+        "title": "Formateur Développement backend MVC",
+        "description": "Architecture MVC, PHP Symfony, JavaScript et transmission du développement web.",
+    }
+    plan = analyze_job_for_cv(job, master)
+    base = create_cv_draft(job, master, plan)
+    reversed_ids = [item["experience_id"] for item in reversed(plan["experience_plan"])]
+    proposed = {
+        "title": "Formateur Développement backend MVC",
+        "profile": "Formateur et développeur web, orienté transmission et autonomie.",
+        "skills": [{"title": "Technique", "items": ["PHP 8", "JavaScript ES6+"]}],
+        "experiences": [{"id": exp_id, "bullets": []} for exp_id in reversed_ids],
+        "projects": [{
+            "id": "devdoc_platform",
+            "description": "Plateforme pédagogique de cours, exercices et QCM.",
+            "technologies": ["Symfony 6.4", "Vue.js 3"],
+        }],
+        "education": ["CAP Petite Enfance"],
+    }
+
+    sanitized = _sanitize_cv_content(
+        proposed,
+        job,
+        master,
+        plan,
+        base,
+        AgentResult(data=proposed, provider="test", model="test"),
+        "test_reviser",
+    )
+
+    assert [item["id"] for item in sanitized["cv"]["experiences"]] == reversed_ids
+    assert sanitized["cv"]["projects"][0]["technologies"] == ["Symfony 6.4", "Vue.js 3"]
+    education_titles = [item["title"] for item in sanitized["cv"]["education"]]
+    assert education_titles == [
+        "Développeur Web et Web Mobile",
+        "Titre Professionnel Concepteur Développeur d'Applications",
+        "CAP Petite Enfance",
+    ]
 
 
 def test_final_ai_review_overrides_a_conflicting_ready_status():

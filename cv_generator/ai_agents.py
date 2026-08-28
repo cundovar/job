@@ -252,7 +252,8 @@ JSON attendu:
   "experiences":[
     {"id":"...","bullets":[{"text":"...","source_highlight_indexes":[0]}]}
   ],
-  "projects":[{"id":"...","description":"reformulation fidèle"}]
+  "projects":[{"id":"...","description":"reformulation fidèle","technologies":["sous-ensemble exact"]}],
+  "education":["intitulé exact présent dans person.education"]
 }
 """.strip()
 
@@ -282,7 +283,8 @@ Tu es l'agent réviseur final. Applique les corrections du juge sans inventer et
 les vrais intitulés d'expérience. Préserve la provenance de chaque puce avec ses indices de
 highlights. N'ajoute que des compétences dont le libellé exact existe dans la source.
 Respecte les limites Canva. Retourne le même schéma JSON que l'agent rédacteur:
-title, profile, skills, experiences avec bullets {text, source_highlight_indexes}, projects.
+title, profile, skills, experiences avec bullets {text, source_highlight_indexes}, projects
+avec un sous-ensemble de technologies exactes, et education avec les intitulés exacts à conserver.
 """.strip()
 
 
@@ -534,6 +536,46 @@ def _sanitize_skill_sections(
     return [{"title": title, "items": items} for title, items in sanitized.items()]
 
 
+def _sanitize_education(
+    value: Any,
+    base_cv: Dict[str, Any],
+    master: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    education = master.get("person", {}).get("education", [])
+    catalog = {
+        normalize(item.get("title")): item
+        for item in education
+        if isinstance(item, dict) and normalize(item.get("title"))
+    }
+    max_items = int(master.get("layout_constraints", {}).get("max_education_items", 4))
+    requested_titles: List[str] = []
+    if isinstance(value, list):
+        for item in value:
+            title = item.get("title") if isinstance(item, dict) else item
+            key = normalize(title)
+            if key in catalog and key not in requested_titles:
+                requested_titles.append(key)
+
+    if requested_titles:
+        requested = [catalog[key] for key in requested_titles]
+    else:
+        requested = [
+            item
+            for item in base_cv.get("education", [])
+            if isinstance(item, dict) and normalize(item.get("title")) in catalog
+        ]
+
+    defaults = [item for item in education if item.get("visibility") != "only_if_relevant"]
+    selected = list(defaults)
+    selected_keys = {normalize(item.get("title")) for item in defaults}
+    for item in requested:
+        key = normalize(item.get("title"))
+        if key and key not in selected_keys:
+            selected.append(item)
+            selected_keys.add(key)
+    return selected[:max_items]
+
+
 def _source_indexes(value: Any, max_index: int) -> List[int]:
     if isinstance(value, int):
         value = [value]
@@ -560,16 +602,30 @@ def _sanitize_cv_content(
     forbidden = master.get("forbidden_claims", [])
     catalog = master.get("experience_catalog", {})
     plan_by_id = {item.get("experience_id"): item for item in plan.get("experience_plan", [])}
-    proposed_experiences = {
-        item.get("id"): item
+    proposed_experience_items = [
+        item
         for item in proposed.get("experiences", [])
         if isinstance(item, dict) and item.get("id") in plan_by_id
+    ]
+    proposed_experiences = {
+        item.get("id"): item
+        for item in proposed_experience_items
     }
+    ordered_plan_items = []
+    ordered_ids = set()
+    for item in proposed_experience_items:
+        exp_id = item["id"]
+        if exp_id not in ordered_ids:
+            ordered_plan_items.append(plan_by_id[exp_id])
+            ordered_ids.add(exp_id)
+    ordered_plan_items.extend(
+        item for item in plan.get("experience_plan", []) if item.get("experience_id") not in ordered_ids
+    )
     experiences: List[Dict[str, Any]] = []
     grounding: List[Dict[str, Any]] = []
     max_bullets = int(constraints.get("max_bullets_per_experience", 3))
     max_chars = int(constraints.get("max_bullet_chars", 145))
-    for plan_item in plan.get("experience_plan", []):
+    for plan_item in ordered_plan_items:
         exp_id = plan_item.get("experience_id")
         source = catalog.get(exp_id)
         proposed_exp = proposed_experiences.get(exp_id)
@@ -650,7 +706,14 @@ def _sanitize_cv_content(
                     _clip(item.get("description"), 300, str(source.get("description", ""))),
                     forbidden,
                 ),
-                "technologies": source.get("technologies", []),
+                "technologies": [
+                    technology
+                    for technology in source.get("technologies", [])
+                    if normalize(technology) in {
+                        normalize(requested)
+                        for requested in item.get("technologies", [])
+                    }
+                ] or source.get("technologies", []),
                 "links": source.get("links", [])[:2],
             }
         )
@@ -688,7 +751,7 @@ def _sanitize_cv_content(
         ),
         "experiences": experiences,
         "projects": projects,
-        "education": base_cv.get("education", []),
+        "education": _sanitize_education(proposed.get("education"), base_cv, master),
         "languages": base_cv.get("languages", []),
     }
     return {

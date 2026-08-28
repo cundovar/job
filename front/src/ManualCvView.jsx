@@ -223,6 +223,18 @@ export default function ManualCvView({ onOpenCandidatures }) {
     }
   }
 
+  const handleNewCv = () => {
+    controllerRef.current?.abort()
+    controllerRef.current = null
+    setResult(null)
+    setStage('idle')
+    setError('')
+    setForm(initialForm)
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(LAST_RESULT_STORAGE_KEY)
+    }
+  }
+
   return (
     <div className="manual-cv-view">
       <header className="manual-cv-header">
@@ -339,6 +351,9 @@ export default function ManualCvView({ onOpenCandidatures }) {
             <h2>{result.candidature?.poste || form.title || 'CV personnalisé'}</h2>
             <p>{result.candidature?.entreprise || form.company || 'Annonce personnalisée'}</p>
           </div>
+          <button type="button" className="copy-btn" onClick={handleNewCv} disabled={isBusy}>
+            <Sparkles /> Créer un nouveau CV
+          </button>
           <CvAssessment assessment={result.status?.assessment} finalReview={result.status?.review} />
           <div className="cv-actions">
             <button

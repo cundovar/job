@@ -40,5 +40,7 @@ def test_cv_page_exposes_ai_review_and_regeneration():
 
     assert "Régénérer avec les corrections" in manual_view
     assert "job-search:last-manual-cv-result" in manual_view
+    assert "Créer un nouveau CV" in manual_view
+    assert "localStorage.removeItem(LAST_RESULT_STORAGE_KEY)" in manual_view
     assert "Jugement détaillé des agents IA" in assessment
     assert "Pourquoi le CV doit être corrigé" in assessment

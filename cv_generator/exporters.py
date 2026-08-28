@@ -203,7 +203,7 @@ def cv_to_html(
             )
     if cv.get("education"):
         main.append(_section("Formation"))
-        for edu in cv.get("education", [])[:2]:
+        for edu in cv.get("education", []):
             details = " — ".join(
                 str(x)
                 for x in [edu.get("year"), edu.get("title"), edu.get("level"), edu.get("status") or edu.get("school")]
@@ -441,7 +441,7 @@ def cv_to_pdf(
                 y -= 2.0 * scale + text_height(_display_url(project["links"][0]), main_w, body_size, leading)
         if cv.get("education"):
             y -= 22.0 * scale + 36.0 * scale
-            for edu in cv.get("education", [])[:2]:
+            for edu in cv.get("education", []):
                 details = " - ".join(
                     str(value)
                     for value in [edu.get("year"), edu.get("title"), edu.get("level"), edu.get("status") or edu.get("school")]
@@ -565,7 +565,7 @@ def cv_to_pdf(
     if cv.get("education"):
         y -= 22.0 * content_scale
         y = draw_section("Formation", main_x, y, content_scale)
-        for edu in cv.get("education", [])[:2]:
+        for edu in cv.get("education", []):
             details = " - ".join(
                 str(value)
                 for value in [edu.get("year"), edu.get("title"), edu.get("level"), edu.get("status") or edu.get("school")]
