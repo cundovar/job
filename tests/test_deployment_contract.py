@@ -32,3 +32,12 @@ def test_runtime_installs_pdf_parser_and_assessment_config():
     assert "pypdf==" in requirements
     assert "COPY config/ ./config/" in dockerfile
     assert config.exists()
+
+
+def test_cv_page_exposes_ai_review_and_regeneration():
+    manual_view = (PROJECT_ROOT / "front" / "src" / "ManualCvView.jsx").read_text(encoding="utf-8")
+    assessment = (PROJECT_ROOT / "front" / "src" / "CvAssessment.jsx").read_text(encoding="utf-8")
+
+    assert "Régénérer avec les corrections" in manual_view
+    assert "Jugement détaillé des agents IA" in assessment
+    assert "Pourquoi le CV doit être corrigé" in assessment

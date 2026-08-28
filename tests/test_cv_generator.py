@@ -14,6 +14,7 @@ from cv_generator.cv_quality_checker import review_cv
 from cv_generator.cv_creator import create_cv_draft
 from cv_generator.layout import title_requires_wrap, wrap_tracked_title
 from cv_generator.job_analyzer import _experience_plan, analyze_job_for_cv
+from cv_generator.pipeline import _apply_final_review_status
 from cv_generator.utils import load_json
 
 
@@ -97,6 +98,33 @@ class FakeCVAgentClient:
         return AgentResult(data=data, provider="fake", model="fake-cv-model")
 
 
+class RetryCVAgentClient(FakeCVAgentClient):
+    def __init__(self):
+        super().__init__()
+        self.review_count = 0
+
+    def complete_json(self, *, agent_name, system_prompt, payload):
+        result = super().complete_json(
+            agent_name=agent_name,
+            system_prompt=system_prompt,
+            payload=payload,
+        )
+        if agent_name != "cv_quality_checker":
+            return result
+        self.review_count += 1
+        if self.review_count != 2:
+            return result
+        data = dict(result.data)
+        data["problems"] = [{
+            "severity": "high",
+            "section": "expériences",
+            "problem": "Une preuve centrale manque encore.",
+            "suggested_fix": "Rétablir la preuve prévue par le plan.",
+        }]
+        data["verdict"] = "Corriger puis relire"
+        return AgentResult(data=data, provider=result.provider, model=result.model)
+
+
 def test_prepare_custom_cv_generates_webmaster_files(tmp_path):
     job = {
         "title": "Webmaster WordPress / administrateur de site",
@@ -137,6 +165,28 @@ def test_prepare_custom_cv_generates_webmaster_files(tmp_path):
     assert not (tmp_path / "cv" / "cv_draft.md").exists()
     assert not (tmp_path / "cv" / "cv_final.md").exists()
     assert not (tmp_path / "cv" / "cv_canva_copy.md").exists()
+
+
+def test_pipeline_retries_one_correction_after_failed_final_review(tmp_path):
+    job = {
+        "title": "Webmaster WordPress",
+        "company": "Ville Test",
+        "description": "Gestion CMS WordPress, maintenance, contenus et documentation utilisateurs.",
+    }
+    client = RetryCVAgentClient()
+
+    result = prepare_custom_cv(
+        job,
+        application_dir=tmp_path,
+        master_path="data/cv_master_profile.json",
+        llm_client=client,
+    )
+    trace = json.loads((tmp_path / "cv" / "cv_agent_trace.json").read_text(encoding="utf-8"))
+
+    assert result["ok"] is True
+    assert trace["correction_retried"] is True
+    assert client.calls.count("cv_style_reviser") == 2
+    assert client.calls.count("cv_quality_checker") == 3
 
 
 def test_pdf_and_html_use_the_real_portrait(tmp_path):
@@ -506,6 +556,21 @@ def test_writer_cannot_silently_drop_planned_experiences_or_project():
     assert [project["id"] for project in sanitized["cv"]["projects"]] == ["wp_site_builder"]
     skills = {item for section in sanitized["cv"]["skills"] for item in section["items"]}
     assert {"ChatGPT", "Claude"} <= skills
+
+
+def test_final_ai_review_overrides_a_conflicting_ready_status():
+    assessment = {"overall_status": "ready", "match": {"score": 73}, "human_quality": {"score": 90}}
+    review = {
+        "status": "needs_revision",
+        "quality_score": 87,
+        "ats_score": 73,
+        "verdict": "Corriger puis relire",
+    }
+
+    result = _apply_final_review_status(assessment, review)
+
+    assert result["overall_status"] == "review"
+    assert result["final_ai_review"]["status"] == "needs_revision"
 
 
 def test_experience_plan_is_reverse_chronological_after_selection():

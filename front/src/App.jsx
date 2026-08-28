@@ -375,7 +375,7 @@ function CandidaturesView() {
               )}
             </div>
           )}
-          {cvReady && <CvAssessment assessment={cvStatus?.assessment} legacyReview={cvReview} />}
+          {cvReady && <CvAssessment assessment={cvStatus?.assessment} finalReview={cvReview} />}
         </section>
       </div>
     )

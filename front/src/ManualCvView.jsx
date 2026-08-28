@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { FileDown, Globe, LoaderCircle, Sparkles, TriangleAlert } from 'lucide-react'
+import { FileDown, Globe, LoaderCircle, RotateCw, Sparkles, TriangleAlert } from 'lucide-react'
 import CvAssessment from './CvAssessment'
 
 const POLL_INTERVAL_MS = 2500
@@ -55,6 +55,7 @@ export default function ManualCvView({ onOpenCandidatures }) {
   const [result, setResult] = useState(null)
   const controllerRef = useRef(null)
   const isBusy = ['preparing', 'queued', 'running'].includes(stage)
+  const needsRevision = result?.status?.review?.status === 'needs_revision'
 
   useEffect(() => () => controllerRef.current?.abort(), [])
 
@@ -177,6 +178,35 @@ export default function ManualCvView({ onOpenCandidatures }) {
     }
   }
 
+  const handleRegenerate = async () => {
+    if (!result?.id || isBusy) return
+    controllerRef.current?.abort()
+    const controller = new AbortController()
+    controllerRef.current = controller
+    setError('')
+    setStage('queued')
+    try {
+      const response = await fetch(
+        `/api/applications/${encodeURIComponent(result.id)}/cv/prepare`,
+        { method: 'POST', signal: controller.signal }
+      )
+      const generation = await readJson(response)
+      const finalStatus = await waitForGeneration(result.id, controller.signal, generation.status)
+      setResult(previous => ({ ...previous, status: finalStatus }))
+      setStage('completed')
+    } catch (regenerationError) {
+      if (regenerationError.name === 'AbortError') return
+      setStage('failed')
+      setError(
+        regenerationError instanceof TypeError
+          ? 'Impossible de joindre le serveur. Vérifiez le déploiement puis réessayez.'
+          : regenerationError.message || 'Impossible de régénérer le CV.'
+      )
+    } finally {
+      if (controllerRef.current === controller) controllerRef.current = null
+    }
+  }
+
   return (
     <div className="manual-cv-view">
       <header className="manual-cv-header">
@@ -265,7 +295,11 @@ export default function ManualCvView({ onOpenCandidatures }) {
 
       {(isBusy || stage === 'completed') && (
         <section className="manual-cv-progress" aria-live="polite">
-          <h2>{generationLabel(stage)}</h2>
+          <h2>
+            {stage === 'completed' && needsRevision
+              ? 'CV généré, mais le juge demande encore des corrections.'
+              : generationLabel(stage)}
+          </h2>
           <ol>
             <li className={stage !== 'idle' ? 'done' : ''}>
               <strong>1</strong><span>Dossier et données de l’annonce</span>
@@ -285,14 +319,24 @@ export default function ManualCvView({ onOpenCandidatures }) {
       {result && (
         <section className="manual-cv-result">
           <div>
-            <span className="manual-cv-kicker">CV prêt</span>
+            <span className="manual-cv-kicker">{needsRevision ? 'CV à corriger' : 'CV prêt'}</span>
             <h2>{result.candidature?.poste || form.title || 'CV personnalisé'}</h2>
             <p>{result.candidature?.entreprise || form.company || 'Annonce personnalisée'}</p>
           </div>
-          <CvAssessment assessment={result.status?.assessment} legacyReview={result.status?.review} />
+          <CvAssessment assessment={result.status?.assessment} finalReview={result.status?.review} />
           <div className="cv-actions">
+            <button
+              type="button"
+              className="prepare-btn"
+              onClick={handleRegenerate}
+              disabled={isBusy}
+            >
+              {isBusy
+                ? <><LoaderCircle className="spin" /> Régénération…</>
+                : <><RotateCw /> Régénérer avec les corrections</>}
+            </button>
             <a className="download-btn primary" href={downloadUrl(result.id, 'cv_final.pdf')} download>
-              <FileDown /> PDF design
+              <FileDown /> {needsRevision ? 'PDF à relire' : 'PDF design'}
             </a>
             <a className="download-btn" href={downloadUrl(result.id, 'cv_ats.pdf')} download>
               <FileDown /> PDF ATS
