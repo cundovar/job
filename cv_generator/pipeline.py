@@ -15,10 +15,13 @@ REVISION_STATUSES = {"needs_revision", "needs_minor_revision"}
 
 
 def _trace_item(payload: Dict[str, Any]) -> Dict[str, Any]:
-    return {
+    item = {
         "agent": payload.get("agent"),
         **(payload.get("agent_run") or {}),
     }
+    if "evidence_coverage" in payload:
+        item["evidence_coverage"] = payload.get("evidence_coverage")
+    return item
 
 
 def _apply_final_review_status(assessment: Dict[str, Any], final_review: Dict[str, Any]) -> Dict[str, Any]:
@@ -27,6 +30,7 @@ def _apply_final_review_status(assessment: Dict[str, Any], final_review: Dict[st
         "quality_score": final_review.get("quality_score"),
         "ats_score": final_review.get("ats_score"),
         "verdict": final_review.get("verdict"),
+        "evidence_coverage": final_review.get("evidence_coverage", []),
     }
     if final_review.get("status") == "needs_revision":
         assessment["overall_status"] = "review"

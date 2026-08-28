@@ -219,6 +219,13 @@ La préanalyse Python est une suggestion de départ: tu peux retirer, ajouter ou
 N'inclus une expérience que si elle apporte une preuve explicite à un critère de l'annonce.
 Il est préférable de retenir moins d'expériences plutôt que de remplir les emplacements avec
 des expériences faibles ou hors sujet. Respecte la visibilité conditionnelle de la source.
+Quand l'annonce combine formation, développement web et IA, couvre trois piliers avec des
+preuves distinctes: pédagogie auprès du public visé, réalisation technique réelle et pratique
+de l'IA. Recherche aussi une réalisation publique pertinente quand la source fournit un lien.
+Choisis librement les meilleures preuves: aucun identifiant d'expérience n'est obligatoire.
+Préférence permanente du candidat: pour toute variante de formateur, conserve l'expérience
+mairie_chelles comme preuve humaine complémentaire d'animation, de projets pédagogiques et de
+travail avec des groupes. Cette préférence vient du candidat, pas d'une décision Python.
 
 JSON attendu:
 {
@@ -243,6 +250,13 @@ ajouter de mission, résultat, chiffre, outil, niveau, date ou diplôme absent d
 Tu décides du contenu final: le brouillon Python n'est pas obligatoire. Sélectionne, omets et
 réordonne librement les expériences, compétences, projets et formations selon l'annonce,
 à condition que chaque élément existe dans la source de vérité.
+Présente les expériences retenues dans un ordre antéchronologique cohérent. Utilise
+skills_confidence pour ne jamais présenter des bases ou notions comme une maîtrise solide.
+Pour une annonce large de développement web, conserve une stack projet représentative de
+plusieurs couches pertinentes plutôt qu'une technologie isolée. Ne prétends jamais avoir animé
+des formations en ligne ou à distance sans preuve explicite dans la source de vérité.
+Pour tout CV de formateur, respecte la préférence permanente d'inclure mairie_chelles en fin de
+parcours comme preuve humaine complémentaire, sans lui faire remplacer une preuve métier centrale.
 Les intitulés d'expériences ne sont jamais réécrits. Chaque puce doit citer les indices des
 highlights qui la prouvent. Les compétences doivent reprendre exactement un libellé autorisé.
 Respecte strictement les limites Canva fournies.
@@ -269,6 +283,11 @@ l'annonce absente du profil est un écart, pas une compétence à ajouter. Signa
 chaque problème et propose une correction fondée sur la source. Tu es responsable du verdict,
 du score qualité et du score ATS. Le contrôle Python joint sert uniquement à signaler les
 erreurs factuelles ou techniques; il ne décide pas de la pertinence éditoriale.
+Pour une annonce hybride de formation web et IA, renseigne les cinq piliers de couverture.
+Chaque preuve doit citer uniquement un identifiant d'expérience ou de projet existant dans la
+source. Un pilier manquant doit produire une correction concrète et influencer ton verdict.
+Pour toute variante de formateur, human_group_facilitation doit être couvert par mairie_chelles,
+conformément à la préférence permanente du candidat.
 
 JSON attendu:
 {
@@ -277,6 +296,15 @@ JSON attendu:
   "missing_keywords":["..."],
   "overrepresented_keywords":["..."],
   "forbidden_claims_found":["..."],
+  "evidence_coverage":[
+    {
+      "pillar":"pedagogy|technical_delivery|ai_practice|public_proof|human_group_facilitation",
+      "status":"covered|partial|missing|not_applicable",
+      "experience_ids":["id exact"],
+      "project_ids":["id exact"],
+      "gap":"preuve manquante ou vide"
+    }
+  ],
   "quality_score": 0,
   "ats_score": 0,
   "status":"validated|needs_minor_revision|needs_revision",
@@ -291,6 +319,10 @@ les vrais intitulés d'expérience. Préserve la provenance de chaque puce avec 
 highlights. N'ajoute que des compétences dont le libellé exact existe dans la source.
 Tu peux ajouter, retirer ou réordonner tout élément sourcé; aucune sélection Python n'est
 obligatoire. Le jugement IA décide de la pertinence, Python ne contrôle que la vérité et le format.
+Respecte les niveaux de skills_confidence et l'ordre antéchronologique. Une exigence de l'annonce
+absente de la source reste un écart honnête; elle ne doit jamais être transformée en compétence.
+Utilise evidence_coverage du jugement pour combler chaque pilier partiel ou manquant avec les
+meilleures preuves disponibles, sans forcer un identifiant particulier.
 Respecte les limites Canva. Retourne le même schéma JSON que l'agent rédacteur:
 title, profile, skills, experiences avec bullets {text, source_highlight_indexes}, projects
 avec un sous-ensemble de technologies exactes, et education avec les intitulés exacts à conserver.
@@ -778,10 +810,56 @@ def _normalize_problems(value: Any) -> List[Dict[str, str]]:
     return result[:20]
 
 
+def _normalize_evidence_coverage(value: Any, master: Dict[str, Any]) -> List[Dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    allowed_pillars = {
+        "pedagogy",
+        "technical_delivery",
+        "ai_practice",
+        "public_proof",
+        "human_group_facilitation",
+    }
+    allowed_statuses = {"covered", "partial", "missing", "not_applicable"}
+    experience_ids = set(master.get("experience_catalog", {}))
+    project_ids = set(master.get("project_catalog", {}))
+    result: List[Dict[str, Any]] = []
+    seen = set()
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        pillar = str(item.get("pillar") or "").strip().lower()
+        if pillar not in allowed_pillars or pillar in seen:
+            continue
+        status = str(item.get("status") or "missing").strip().lower()
+        if status not in allowed_statuses:
+            status = "missing"
+        result.append(
+            {
+                "pillar": pillar,
+                "status": status,
+                "experience_ids": [
+                    exp_id
+                    for exp_id in _as_string_list(item.get("experience_ids"), 8)
+                    if exp_id in experience_ids
+                ],
+                "project_ids": [
+                    project_id
+                    for project_id in _as_string_list(item.get("project_ids"), 8)
+                    if project_id in project_ids
+                ],
+                "gap": _clip(item.get("gap"), 300),
+            }
+        )
+        seen.add(pillar)
+    return result
+
+
 def _merge_review(
     proposed: Dict[str, Any],
     deterministic: Dict[str, Any],
     run: AgentResult,
+    master: Dict[str, Any],
 ) -> Dict[str, Any]:
     problems = _normalize_problems(proposed.get("problems"))
     known = {(item["section"], item["problem"]) for item in problems}
@@ -826,6 +904,10 @@ def _merge_review(
         "missing_keywords": missing,
         "overrepresented_keywords": _as_string_list(proposed.get("overrepresented_keywords"), 20),
         "forbidden_claims_found": forbidden,
+        "evidence_coverage": _normalize_evidence_coverage(
+            proposed.get("evidence_coverage"),
+            master,
+        ),
         "verdict": _clip(
             proposed.get("verdict"),
             500,
@@ -901,7 +983,7 @@ class AICVPipeline:
                 "controle_python": deterministic,
             },
         )
-        return _merge_review(result.data, deterministic, result)
+        return _merge_review(result.data, deterministic, result, master)
 
     def revise(
         self,
