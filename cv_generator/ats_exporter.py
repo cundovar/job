@@ -3,6 +3,7 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 from typing import Any, Dict, Iterable
+from urllib.parse import urlparse
 
 
 def _payload(final_cv: Dict[str, Any]) -> Dict[str, Any]:
@@ -21,6 +22,13 @@ def _education_text(education: Dict[str, Any]) -> str:
         )
         if value
     )
+
+
+def _display_url(value: Any) -> str:
+    raw = str(value or "").strip()
+    parsed = urlparse(raw)
+    label = f"{parsed.netloc}{parsed.path}" if parsed.netloc else raw
+    return label.removeprefix("www.").rstrip("/")
 
 
 def cv_to_ats_html(final_cv: Dict[str, Any], candidate_name: str = "Facundo Varas") -> str:
@@ -57,6 +65,8 @@ def cv_to_ats_html(final_cv: Dict[str, Any], candidate_name: str = "Facundo Vara
                 "</ul>",
             ]
         )
+        for link in experience.get("links", [])[:1]:
+            parts.append(f"<p><a href='{escape(str(link), quote=True)}'>{escape(_display_url(link))}</a></p>")
     if cv.get("projects"):
         parts.append("<h2>Projets</h2>")
         for project in cv.get("projects", []):
@@ -64,6 +74,8 @@ def cv_to_ats_html(final_cv: Dict[str, Any], candidate_name: str = "Facundo Vara
                 f"<p><strong>{escape(str(project.get('title') or ''))}</strong> — "
                 f"{escape(str(project.get('description') or ''))}</p>"
             )
+            for link in project.get("links", [])[:1]:
+                parts.append(f"<p><a href='{escape(str(link), quote=True)}'>{escape(_display_url(link))}</a></p>")
     if cv.get("education"):
         parts.append("<h2>Formation</h2>")
         parts.extend(f"<p>{escape(_education_text(item))}</p>" for item in cv.get("education", []))
@@ -134,6 +146,7 @@ def cv_to_ats_pdf(
             )
         )
         story.append(Paragraph(escape(str(experience.get("period") or "")), meta))
+        story.extend(_paragraphs((_display_url(link) for link in experience.get("links", [])[:1]), meta))
         bullets = [ListItem(Paragraph(escape(str(item)), body)) for item in experience.get("bullets", [])]
         if bullets:
             story.append(ListFlowable(bullets, bulletType="bullet", leftIndent=14, bulletFontName="Helvetica"))
@@ -147,6 +160,7 @@ def cv_to_ats_pdf(
                     body,
                 )
             )
+            story.extend(_paragraphs((_display_url(link) for link in project.get("links", [])[:1]), meta))
     if cv.get("education"):
         story.append(Paragraph("Formation", heading))
         story.extend(_paragraphs((_education_text(item) for item in cv.get("education", [])), body))

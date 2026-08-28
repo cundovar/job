@@ -6,6 +6,7 @@ import mimetypes
 from html import escape
 from pathlib import Path
 from typing import Any, Dict, List
+from urllib.parse import urlparse
 
 from .layout import (
     IDENTITY_TITLE_MAX_WIDTH,
@@ -19,6 +20,13 @@ from .layout import (
 DEFAULT_DESIGN_SYSTEM = "config/cv_design_system.json"
 DEFAULT_PORTRAIT = Path(__file__).resolve().parent.parent / "assets" / "cv" / "facundo-varas.jpg"
 PDF_PORTRAIT_DIAMETER = 119.0
+
+
+def _display_url(value: Any) -> str:
+    raw = str(value or "").strip()
+    parsed = urlparse(raw)
+    label = f"{parsed.netloc}{parsed.path}" if parsed.netloc else raw
+    return label.removeprefix("www.").rstrip("/")
 
 
 def _identity_baselines(top: float, portrait_diameter: float = PDF_PORTRAIT_DIAMETER) -> tuple[float, float]:
@@ -77,6 +85,8 @@ def cv_to_markdown(final_cv: Dict[str, Any], canva: bool = False) -> str:
         lines.append(f"### {org} — {title}".strip(" —"))
         if period:
             lines.append(period)
+        for link in exp.get("links", [])[:1]:
+            lines.append(str(link))
         lines.append("")
         for bullet in exp.get("bullets", []):
             lines.append(f"- {bullet}")
@@ -91,6 +101,8 @@ def cv_to_markdown(final_cv: Dict[str, Any], canva: bool = False) -> str:
             lines.append(project.get("description", ""))
             if tech:
                 lines.append(f"Technologies : {tech}")
+            for link in project.get("links", [])[:1]:
+                lines.append(str(link))
             lines.append("")
     lines.append("## Formation")
     lines.append("")
@@ -161,9 +173,14 @@ def cv_to_html(
     main.append(_section("Expériences"))
     for exp in cv.get("experiences", []):
         bullets = "".join(f"<li>{escape(str(b))}</li>" for b in exp.get("bullets", [])[:4])
+        exp_link = next(iter(exp.get("links", [])[:1]), "")
+        exp_link_html = (
+            f"<br><a class='record-link' href='{escape(str(exp_link), quote=True)}'>{escape(_display_url(exp_link))}</a>"
+            if exp_link else ""
+        )
         main.append(
             "<article class='experience'>"
-            f"<div class='meta'><strong>{escape(str(exp.get('period', '')))}</strong><br>{escape(str(exp.get('organization', '')))}</div>"
+            f"<div class='meta'><strong>{escape(str(exp.get('period', '')))}</strong><br>{escape(str(exp.get('organization', '')))}{exp_link_html}</div>"
             "<div class='desc'>"
             f"<h3>{escape(str(exp.get('title', '')))}</h3>"
             f"<ul>{bullets}</ul>"
@@ -174,10 +191,15 @@ def cv_to_html(
         main.append(_section("Projets personnels"))
         for project in projects[:2]:
             tech = ", ".join(project.get("technologies", []))
+            project_link = next(iter(project.get("links", [])[:1]), "")
+            project_link_html = (
+                f" <a class='record-link' href='{escape(str(project_link), quote=True)}'>{escape(_display_url(project_link))}</a>"
+                if project_link else ""
+            )
             main.append(
                 f"<p class='project'><strong>{escape(str(project.get('title', '')))}</strong> — "
                 f"{escape(str(project.get('description', '')))}"
-                f" <span>{escape(tech)}</span></p>"
+                f" <span>{escape(tech)}</span>{project_link_html}</p>"
             )
     if cv.get("education"):
         main.append(_section("Formation"))
@@ -222,6 +244,7 @@ def cv_to_html(
   ul {{ margin: 0 0 0 9px; padding: 0; }}
   li {{ padding-left: 0; margin-bottom: 4px; }}
   .project span {{ color: {secondary}; }}
+  .record-link {{ color: {accent}; overflow-wrap: anywhere; }}
   @media (max-width: 820px) {{ .page {{ width: 100%; min-height: auto; grid-template-columns: 1fr; padding: 24px; }} aside, main {{ grid-column: 1; }} header {{ height: auto; margin-bottom: 20px; justify-content: flex-start; }} .main-body.sparse {{ padding-top: 0; }} }}
 </style>
 </head>
@@ -400,6 +423,8 @@ def cv_to_pdf(
         for exp in cv.get("experiences", []):
             meta_h = text_height(exp.get("period", ""), meta_w, meta_size, meta_leading, True)
             meta_h += 3.0 * scale + text_height(exp.get("organization", ""), meta_w, meta_size, meta_leading)
+            if exp.get("links"):
+                meta_h += 2.0 * scale + text_height(_display_url(exp["links"][0]), meta_w, meta_size, meta_leading)
             desc_h = text_height(str(exp.get("title", "")).upper(), desc_w, title_size, title_leading, True)
             desc_h += 4.0 * scale
             for bullet in exp.get("bullets", [])[:3]:
@@ -412,6 +437,8 @@ def cv_to_pdf(
             y -= text_height(project.get("title", ""), main_w, title_size, title_leading, True)
             project_text = f"{project.get('description', '')} - {', '.join(project.get('technologies', []))}"
             y -= 4.0 * scale + text_height(project_text, main_w, body_size, leading)
+            if project.get("links"):
+                y -= 2.0 * scale + text_height(_display_url(project["links"][0]), main_w, body_size, leading)
         if cv.get("education"):
             y -= 22.0 * scale + 36.0 * scale
             for edu in cv.get("education", [])[:2]:
@@ -510,6 +537,9 @@ def cv_to_pdf(
         meta_y = draw_wrapped(str(exp.get("period", "")), main_x, item_top, meta_w, meta_size, meta_leading, bold=True, color=primary)
         meta_y -= 3.0 * content_scale
         meta_y = draw_wrapped(str(exp.get("organization", "")), main_x, meta_y, meta_w, meta_size, meta_leading, color=secondary)
+        if exp.get("links"):
+            meta_y -= 2.0 * content_scale
+            meta_y = draw_wrapped(_display_url(exp["links"][0]), main_x, meta_y, meta_w, meta_size, meta_leading, color=accent)
 
         desc_y = draw_wrapped(
             str(exp.get("title", "")).upper(), desc_x, item_top, desc_w, title_size, title_leading, bold=True, color=primary
@@ -528,6 +558,9 @@ def cv_to_pdf(
         y -= 4.0 * content_scale
         project_text = f"{project.get('description', '')} - {', '.join(project.get('technologies', []))}"
         y = draw_wrapped(project_text, main_x, y, main_w, body_size, leading, color=secondary)
+        if project.get("links"):
+            y -= 2.0 * content_scale
+            y = draw_wrapped(_display_url(project["links"][0]), main_x, y, main_w, body_size, leading, color=accent)
 
     if cv.get("education"):
         y -= 22.0 * content_scale

@@ -39,5 +39,6 @@ def test_cv_page_exposes_ai_review_and_regeneration():
     assessment = (PROJECT_ROOT / "front" / "src" / "CvAssessment.jsx").read_text(encoding="utf-8")
 
     assert "Régénérer avec les corrections" in manual_view
+    assert "job-search:last-manual-cv-result" in manual_view
     assert "Jugement détaillé des agents IA" in assessment
     assert "Pourquoi le CV doit être corrigé" in assessment

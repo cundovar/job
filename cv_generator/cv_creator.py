@@ -89,6 +89,7 @@ def _projects(job: Dict[str, Any], plan: Dict[str, Any], master: Dict[str, Any])
             "year": project.get("year"),
             "description": project.get("description", ""),
             "technologies": project.get("technologies", []),
+            "links": project.get("links", [])[:2],
         }
 
     selected = []

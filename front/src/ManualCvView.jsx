@@ -4,6 +4,7 @@ import CvAssessment from './CvAssessment'
 
 const POLL_INTERVAL_MS = 2500
 const GENERATION_TIMEOUT_MS = 15 * 60 * 1000
+const LAST_RESULT_STORAGE_KEY = 'job-search:last-manual-cv-result'
 
 const initialForm = {
   title: '',
@@ -48,16 +49,31 @@ function generationLabel(stage) {
   return ''
 }
 
+function loadLastResult() {
+  if (typeof window === 'undefined') return null
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(LAST_RESULT_STORAGE_KEY) || 'null')
+    return stored?.id && stored?.status ? stored : null
+  } catch {
+    return null
+  }
+}
+
 export default function ManualCvView({ onOpenCandidatures }) {
   const [form, setForm] = useState(initialForm)
   const [stage, setStage] = useState('idle')
   const [error, setError] = useState('')
-  const [result, setResult] = useState(null)
+  const [result, setResult] = useState(loadLastResult)
   const controllerRef = useRef(null)
   const isBusy = ['preparing', 'queued', 'running'].includes(stage)
   const needsRevision = result?.status?.review?.status === 'needs_revision'
 
   useEffect(() => () => controllerRef.current?.abort(), [])
+
+  useEffect(() => {
+    if (!result?.id || !result?.status || typeof window === 'undefined') return
+    window.localStorage.setItem(LAST_RESULT_STORAGE_KEY, JSON.stringify(result))
+  }, [result])
 
   const updateField = event => {
     const { name, value } = event.target

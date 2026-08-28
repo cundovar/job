@@ -651,6 +651,7 @@ def _sanitize_cv_content(
                     forbidden,
                 ),
                 "technologies": source.get("technologies", []),
+                "links": source.get("links", [])[:2],
             }
         )
         if len(projects) >= int(constraints.get("max_projects", 1)):

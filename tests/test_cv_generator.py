@@ -487,9 +487,12 @@ def test_wordpress_project_remains_selected_for_wordpress_role():
         "description": "Administration WordPress, Gutenberg et maintenance de sites.",
     }
     plan = analyze_job_for_cv(job, master)
-    projects = create_cv_draft(job, master, plan)["cv"]["projects"]
+    draft = create_cv_draft(job, master, plan)
+    projects = draft["cv"]["projects"]
+    la_magicieuse = next(item for item in draft["cv"]["experiences"] if item["id"] == "la_magicieuse")
 
     assert [project["id"] for project in projects] == ["wp_site_builder"]
+    assert la_magicieuse["links"] == ["https://www.la-magicieuse.org/"]
 
 
 def test_mediator_trainer_always_uses_devdoc_personal_project():
@@ -503,6 +506,7 @@ def test_mediator_trainer_always_uses_devdoc_personal_project():
 
     assert plan["selected_base_variant"] == "formateur_generaliste"
     assert [project["id"] for project in projects] == ["devdoc_platform"]
+    assert projects[0]["links"] == ["https://devdoc.varascundo.com/"]
 
 
 def test_web_cv_always_contains_a_personal_project_without_project_keywords():
@@ -556,6 +560,7 @@ def test_backend_trainer_plan_keeps_practice_pedagogy_and_ai_proofs():
     assert "bioconcept_accueil" not in ids
     assert {"PHP 8", "Symfony 6/7", "Doctrine ORM", "ChatGPT", "Claude"} <= skills
     assert [project["id"] for project in draft["cv"]["projects"]] == ["devdoc_platform"]
+    assert draft["cv"]["projects"][0]["links"] == ["https://devdoc.varascundo.com/"]
 
 
 def test_writer_cannot_silently_drop_planned_experiences_or_project():
