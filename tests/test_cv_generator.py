@@ -23,7 +23,7 @@ from cv_generator.cv_quality_checker import review_cv
 from cv_generator.cv_creator import create_cv_draft
 from cv_generator.layout import sparse_main_vertical_offset, title_requires_wrap, wrap_tracked_title
 from cv_generator.job_analyzer import _experience_plan, analyze_job_for_cv
-from cv_generator.pipeline import _apply_final_review_status
+from cv_generator.pipeline import _apply_final_review_status, _trace_item
 from cv_generator.utils import load_json
 
 
@@ -154,6 +154,114 @@ class AlwaysRetryCVAgentClient(FakeCVAgentClient):
         return AgentResult(data=data, provider=result.provider, model=result.model)
 
 
+class HybridTrainerCorrectionClient:
+    def __init__(self):
+        self.calls = []
+        self.review_count = 0
+
+    def complete_json(self, *, agent_name, system_prompt, payload):
+        self.calls.append(agent_name)
+        if agent_name == "cv_job_analyzer":
+            data = {
+                "selected_base_variant": "formateur_developpement_web",
+                "target_title": "Formateur développement web & IA générative",
+                "positioning": "Formateur et développeur web auprès d'apprenants adultes, avec une pratique de l'IA générative.",
+                "priority_keywords": ["JavaScript", "HTML", "CSS", "React", "IA", "adultes"],
+                "experience_plan": [
+                    {"experience_id": "qualiscope_backend", "priority": 10, "reason": "Production", "highlight_indexes": [0]},
+                    {"experience_id": "pole_s", "priority": 10, "reason": "Formation et IA", "highlight_indexes": [1, 2, 5]},
+                    {"experience_id": "konexio_formateur_benevole", "priority": 8, "reason": "Pédagogie web", "highlight_indexes": [0, 1]},
+                ],
+                "skills_to_emphasize": {
+                    "Programmation": ["Python", "JavaScript ES6+"],
+                    "Développement web": ["HTML5", "CSS3", "React"],
+                    "Pédagogie": ["Conception de parcours", "Animation de groupe"],
+                    "IA": ["ChatGPT", "Claude"],
+                },
+                "skills_to_reduce": [],
+                "warnings": ["Ne pas inventer Java, C++ ou R."],
+            }
+        elif agent_name == "cv_creator":
+            data = {
+                "title": "Formateur développement web & IA générative",
+                "profile": "Formateur et développeur web auprès d'apprenants adultes, avec une pratique de ChatGPT et Claude.",
+                "skills": [
+                    {"title": "Programmation", "items": ["Python", "JavaScript ES6+"]},
+                    {"title": "Web", "items": ["HTML5", "CSS3", "React"]},
+                    {"title": "Pédagogie", "items": ["Conception de parcours", "Animation de groupe"]},
+                    {"title": "IA", "items": ["ChatGPT", "Claude"]},
+                ],
+                "experiences": [
+                    {"id": "qualiscope_backend", "bullets": [{"text": "Contribution back-end sur une plateforme SaaS d'évaluation de formations en PHP 8.4 et Symfony 7.4", "source_highlight_indexes": [0]}]},
+                    {"id": "pole_s", "bullets": [{"text": "Animation de formations pour 12 apprenants adultes en reconversion", "source_highlight_indexes": [2]}, {"text": "Utilisation de ChatGPT et Claude pour créer des exercices adaptés et vulgariser les concepts", "source_highlight_indexes": [5]}]},
+                    {"id": "konexio_formateur_benevole", "bullets": [{"text": "Enseignement des bases HTML, CSS et JavaScript", "source_highlight_indexes": [1]}]},
+                ],
+                "projects": [{
+                    "id": "devdoc_platform",
+                    "description": "Plateforme pédagogique de cours, exercices et QCM.",
+                    "technologies": ["Vue.js 3"],
+                }],
+                "education": [
+                    "Titre Professionnel Concepteur Développeur d'Applications",
+                    "Développeur Web et Web Mobile",
+                ],
+            }
+        elif agent_name == "cv_style_reviser":
+            data = {
+                "title": "Formateur développement web & IA générative",
+                "profile": "Formateur et développeur web auprès d'apprenants adultes, avec des réalisations full-stack et une pratique de ChatGPT et Claude.",
+                "skills": [
+                    {"title": "Programmation", "items": ["Python", "JavaScript ES6+"]},
+                    {"title": "Web", "items": ["HTML5", "CSS3", "React"]},
+                    {"title": "Pédagogie", "items": ["Conception de parcours", "Animation de groupe"]},
+                    {"title": "IA", "items": ["ChatGPT", "Claude"]},
+                ],
+                "experiences": [
+                    {"id": "qualiscope_backend", "bullets": [{"text": "Contribution back-end sur une plateforme SaaS d'évaluation de formations en PHP 8.4 et Symfony 7.4", "source_highlight_indexes": [0]}]},
+                    {"id": "helene_massage_ayurveda", "bullets": [{"text": "Développement fullstack d'un site vitrine et CMS en Next.js 16 et Symfony 7.4", "source_highlight_indexes": [0]}]},
+                    {"id": "pole_s", "bullets": [{"text": "Animation de formations pour 12 apprenants adultes en reconversion", "source_highlight_indexes": [2]}, {"text": "Utilisation de ChatGPT et Claude pour créer des exercices adaptés et vulgariser les concepts", "source_highlight_indexes": [5]}]},
+                    {"id": "konexio_formateur_benevole", "bullets": [{"text": "Enseignement des bases HTML, CSS et JavaScript", "source_highlight_indexes": [1]}]},
+                ],
+                "projects": [{
+                    "id": "devdoc_platform",
+                    "description": "Plateforme pédagogique de cours, exercices et QCM.",
+                    "technologies": ["Symfony 6.4", "API Platform", "Doctrine ORM", "Vue.js 3", "Docker"],
+                }],
+                "education": [
+                    "Titre Professionnel Concepteur Développeur d'Applications",
+                    "Développeur Web et Web Mobile",
+                ],
+            }
+        elif agent_name == "cv_quality_checker":
+            self.review_count += 1
+            missing_public_proof = self.review_count == 1
+            data = {
+                "quality_score": 76 if missing_public_proof else 94,
+                "ats_score": 84,
+                "status": "needs_revision" if missing_public_proof else "validated",
+                "strengths": ["Pédagogie, développement web et IA sont sourcés."],
+                "problems": ([{
+                    "severity": "medium",
+                    "section": "evidence",
+                    "problem": "Aucune réalisation client publique n'est visible.",
+                    "suggested_fix": "Ajouter une réalisation sourcée avec son lien public.",
+                }] if missing_public_proof else []),
+                "missing_keywords": [],
+                "overrepresented_keywords": [],
+                "forbidden_claims_found": [],
+                "evidence_coverage": [
+                    {"pillar": "pedagogy", "status": "covered", "experience_ids": ["pole_s", "konexio_formateur_benevole"], "project_ids": [], "gap": ""},
+                    {"pillar": "technical_delivery", "status": "covered", "experience_ids": ["qualiscope_backend"], "project_ids": ["devdoc_platform"], "gap": ""},
+                    {"pillar": "ai_practice", "status": "covered", "experience_ids": ["pole_s"], "project_ids": [], "gap": ""},
+                    {"pillar": "public_proof", "status": "missing" if missing_public_proof else "covered", "experience_ids": [] if missing_public_proof else ["helene_massage_ayurveda"], "project_ids": ["devdoc_platform"], "gap": "Ajouter une réalisation client publique." if missing_public_proof else ""},
+                ],
+                "verdict": "Ajouter une preuve publique." if missing_public_proof else "CV hybride crédible et sourcé.",
+            }
+        else:
+            raise AssertionError(f"Unexpected agent: {agent_name}")
+        return AgentResult(data=data, provider="fake", model="fake-hybrid-model")
+
+
 def test_prepare_custom_cv_generates_webmaster_files(tmp_path):
     job = {
         "title": "Webmaster WordPress / administrateur de site",
@@ -239,6 +347,48 @@ def test_pipeline_stops_automatic_corrections_at_the_safety_limit(tmp_path):
     assert trace["automatic_corrections_exhausted"] is True
     assert client.calls.count("cv_style_reviser") == 3
     assert client.calls.count("cv_quality_checker") == 4
+
+
+def test_pipeline_adds_grounded_public_work_before_presenting_hybrid_trainer_cv(tmp_path):
+    job = {
+        "title": "Formateur en ligne – Intelligence artificielle et développement web",
+        "company": "Entreprise Test",
+        "description": "Former des adultes en IA, Python, JavaScript, Java, C++, HTML/CSS, R, React et Node.js.",
+    }
+    client = HybridTrainerCorrectionClient()
+
+    result = prepare_custom_cv(
+        job,
+        application_dir=tmp_path,
+        master_path="data/cv_master_profile.json",
+        llm_client=client,
+    )
+    final_cv = json.loads((tmp_path / "cv" / "cv_final.json").read_text(encoding="utf-8"))
+    final_review = json.loads((tmp_path / "cv" / "cv_final_review.json").read_text(encoding="utf-8"))
+    trace = json.loads((tmp_path / "cv" / "cv_agent_trace.json").read_text(encoding="utf-8"))
+
+    assert result["ok"] is True
+    assert trace["automatic_revision_rounds"] == 1
+    assert [item["id"] for item in final_cv["cv"]["experiences"]] == [
+        "qualiscope_backend",
+        "helene_massage_ayurveda",
+        "pole_s",
+        "konexio_formateur_benevole",
+    ]
+    helene = next(item for item in final_cv["cv"]["experiences"] if item["id"] == "helene_massage_ayurveda")
+    assert helene["links"] == ["https://massagesdhelene.com/"]
+    assert final_cv["cv"]["projects"][0]["technologies"] == [
+        "Symfony 6.4",
+        "API Platform",
+        "Doctrine ORM",
+        "Vue.js 3",
+        "Docker",
+    ]
+    assert final_review["status"] == "validated"
+    assert next(
+        item for item in final_review["evidence_coverage"] if item["pillar"] == "public_proof"
+    )["status"] == "covered"
+    assert any("evidence_coverage" in run for run in trace["runs"])
 
 
 def test_pdf_and_html_use_the_real_portrait(tmp_path):
@@ -569,6 +719,7 @@ def test_ai_review_owns_semantic_scores_and_verdict():
         proposed,
         deterministic,
         AgentResult(data=proposed, provider="claude_cli", model="opus"),
+        load_json("data/cv_master_profile.json"),
     )
 
     assert review["quality_score"] == 91
@@ -576,6 +727,59 @@ def test_ai_review_owns_semantic_scores_and_verdict():
     assert review["status"] == "validated"
     assert review["problems"] == []
     assert review["missing_keywords"] == []
+
+
+def test_ai_evidence_coverage_keeps_only_grounded_ids():
+    master = load_json("data/cv_master_profile.json")
+    proposed = {
+        "quality_score": 86,
+        "ats_score": 80,
+        "status": "needs_minor_revision",
+        "problems": [],
+        "missing_keywords": [],
+        "forbidden_claims_found": [],
+        "evidence_coverage": [
+            {
+                "pillar": "pedagogy",
+                "status": "covered",
+                "experience_ids": ["pole_s", "invented_training"],
+                "project_ids": [],
+                "gap": "",
+            },
+            {
+                "pillar": "public_proof",
+                "status": "partial",
+                "experience_ids": ["helene_massage_ayurveda", "fake_client"],
+                "project_ids": ["devdoc_platform", "fake_project"],
+                "gap": "Afficher une réalisation publique pertinente.",
+            },
+        ],
+    }
+
+    review = _merge_review(
+        proposed,
+        {"problems": [], "forbidden_claims_found": []},
+        AgentResult(data=proposed, provider="claude_cli", model="opus"),
+        master,
+    )
+
+    assert review["evidence_coverage"] == [
+        {
+            "pillar": "pedagogy",
+            "status": "covered",
+            "experience_ids": ["pole_s"],
+            "project_ids": [],
+            "gap": "",
+        },
+        {
+            "pillar": "public_proof",
+            "status": "partial",
+            "experience_ids": ["helene_massage_ayurveda"],
+            "project_ids": ["devdoc_platform"],
+            "gap": "Afficher une réalisation publique pertinente.",
+        },
+    ]
+    assert _trace_item(review)["evidence_coverage"] == review["evidence_coverage"]
 
 
 def test_generated_cv_keeps_profile_and_skills_quick_to_scan():
