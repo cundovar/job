@@ -42,5 +42,11 @@ def test_cv_page_exposes_ai_review_and_regeneration():
     assert "job-search:last-manual-cv-result" in manual_view
     assert "Créer un nouveau CV" in manual_view
     assert "localStorage.removeItem(LAST_RESULT_STORAGE_KEY)" in manual_view
+    assert "Consignes personnelles pour ce CV" in manual_view
+    assert 'name="candidate_instructions"' in manual_view
+    assert "candidate_instructions: form.candidate_instructions.trim()" in manual_view
+    assert "manual-cv-instructions textarea::placeholder" in (
+        PROJECT_ROOT / "front" / "src" / "App.css"
+    ).read_text(encoding="utf-8")
     assert "Jugement détaillé des agents IA" in assessment
     assert "Pourquoi le CV doit être corrigé" in assessment

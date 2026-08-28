@@ -1069,6 +1069,23 @@ h3 > .lucide {
 .manual-cv-description {
   margin-top: var(--sp-4);
 }
+.manual-cv-instructions {
+  margin-top: var(--sp-4);
+}
+.manual-cv-instructions textarea {
+  min-height: 108px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.manual-cv-instructions textarea::placeholder {
+  color: var(--accent);
+  opacity: 0.9;
+}
+.manual-cv-instructions small {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+}
 .manual-cv-description strong {
   color: var(--accent-hover);
   font-size: var(--fs-xs);

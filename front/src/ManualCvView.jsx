@@ -11,6 +11,7 @@ const initialForm = {
   company: '',
   location: '',
   url: '',
+  candidate_instructions: '',
   description: '',
 }
 
@@ -150,6 +151,7 @@ export default function ManualCvView({ onOpenCandidatures }) {
       url: form.url.trim(),
       source: 'annonce_manuelle',
       contract_type: '',
+      candidate_instructions: form.candidate_instructions.trim(),
       description,
     }
 
@@ -294,6 +296,22 @@ export default function ManualCvView({ onOpenCandidatures }) {
             />
           </label>
         </div>
+
+        <label className="manual-cv-instructions">
+          Consignes personnelles pour ce CV <span>facultatif</span>
+          <textarea
+            name="candidate_instructions"
+            value={form.candidate_instructions}
+            onChange={updateField}
+            placeholder="Ex. Insister sur DevDoc et le CI/CD, conserver mon expérience d’animateur, ne pas afficher une expérience précise…"
+            maxLength={2000}
+            rows={4}
+            disabled={isBusy}
+          />
+          <small>
+            Préférences éditoriales uniquement : elles ne permettent pas d’inventer une expérience.
+          </small>
+        </label>
 
         <label className="manual-cv-description">
           Texte complet de l’annonce <strong>obligatoire</strong>
