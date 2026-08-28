@@ -14,7 +14,13 @@ from cv_generator.job_analyzer import (
     _max_experiences,
     analyze_job_for_cv as analyze_job_rules,
 )
-from cv_generator.utils import compact_items, flatten_skills, normalize, period_to_text
+from cv_generator.utils import (
+    compact_items,
+    experience_visible_for_job,
+    flatten_skills,
+    normalize,
+    period_to_text,
+)
 from utils.ai_role_routing import AIRouteStep, legacy_route, load_role_route
 from utils.cli_agent_bridge import CLIAgentBridgeClient
 
@@ -219,6 +225,9 @@ La préanalyse Python est une suggestion de départ: tu peux retirer, ajouter ou
 N'inclus une expérience que si elle apporte une preuve explicite à un critère de l'annonce.
 Il est préférable de retenir moins d'expériences plutôt que de remplir les emplacements avec
 des expériences faibles ou hors sujet. Respecte la visibilité conditionnelle de la source.
+Une expérience de gardiennage, sécurité ou accueil est interdite hors annonce explicitement
+consacrée à ce métier. Pour compléter un CV web ou formateur, privilégie une réalisation web
+réelle et sourcée (WordPress, Next.js ou autre technologie pertinente) ou un projet personnel.
 Quand l'annonce combine formation, développement web et IA, couvre trois piliers avec des
 preuves distinctes: pédagogie auprès du public visé, réalisation technique réelle et pratique
 de l'IA. Recherche aussi une réalisation publique pertinente quand la source fournit un lien.
@@ -250,6 +259,9 @@ ajouter de mission, résultat, chiffre, outil, niveau, date ou diplôme absent d
 Tu décides du contenu final: le brouillon Python n'est pas obligatoire. Sélectionne, omets et
 réordonne librement les expériences, compétences, projets et formations selon l'annonce,
 à condition que chaque élément existe dans la source de vérité.
+Respecte toujours la visibilité conditionnelle des expériences. N'utilise jamais une expérience
+de gardiennage, sécurité ou accueil pour remplir un CV sans rapport avec ces métiers; préfère
+une réalisation web WordPress, Next.js ou un projet technique pertinent et sourcé.
 Présente les expériences retenues dans un ordre antéchronologique cohérent. Utilise
 skills_confidence pour ne jamais présenter des bases ou notions comme une maîtrise solide.
 Pour une annonce large de développement web, conserve une stack projet représentative de
@@ -431,6 +443,7 @@ def _sanitize_plan(
     rule_plan: Dict[str, Any],
     master: Dict[str, Any],
     run: AgentResult,
+    job: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     variants = {item.get("id"): item for item in master.get("cv_variants", []) if item.get("id")}
     variant_id = str(proposed.get("selected_base_variant") or "")
@@ -450,6 +463,8 @@ def _sanitize_plan(
             continue
         exp_id = item.get("experience_id")
         if exp_id not in catalog or exp_id in seen:
+            continue
+        if job is not None and not experience_visible_for_job(catalog[exp_id], job):
             continue
         highlights = catalog[exp_id].get("highlights", [])
         indexes = []
@@ -644,6 +659,8 @@ def _sanitize_cv_content(
         source = catalog.get(exp_id)
         proposed_exp = proposed_experiences.get(exp_id)
         if not source:
+            continue
+        if not experience_visible_for_job(source, job):
             continue
         highlights = source.get("highlights", [])
         # The plan is editorial guidance, not a whitelist. Provenance is safe
@@ -933,7 +950,7 @@ class AICVPipeline:
                 "preanalyse_python": rule_plan,
             },
         )
-        return _sanitize_plan(result.data, rule_plan, master, result)
+        return _sanitize_plan(result.data, rule_plan, master, result, job)
 
     def create(
         self,

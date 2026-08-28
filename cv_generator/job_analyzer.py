@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
-from .utils import compact_items, contains_any, flatten_skills, job_text, normalize
+from .utils import compact_items, contains_any, experience_visible_for_job, flatten_skills, job_text, normalize
 
 
 def _period_sort_key(period: Dict[str, Any] | None) -> Tuple[str, str]:
@@ -127,10 +127,13 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
     for exp_id in ordered_ids:
         exp = catalog[exp_id]
         matched_tags = [tag for tag in exp.get("tags", []) if normalize(tag) in text]
-        trigger_tags = exp.get("selection_triggers", exp.get("tags", []))
+        trigger_tags = exp.get(
+            "explicit_job_triggers",
+            exp.get("selection_triggers", exp.get("tags", [])),
+        )
         matched_triggers = [tag for tag in trigger_tags if normalize(tag) in text]
         visibility = str(exp.get("visibility") or "default")
-        if visibility.startswith("only_") and not matched_triggers:
+        if not experience_visible_for_job(exp, job):
             continue
         score = 0
         if exp_id in preferred:

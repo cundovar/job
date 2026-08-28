@@ -50,6 +50,17 @@ def contains_any(text: str, keywords: Iterable[str]) -> bool:
     return any(keyword and keyword in text for keyword in norm_keywords)
 
 
+def experience_visible_for_job(experience: Dict[str, Any], job: Dict[str, Any]) -> bool:
+    """Enforce catalogue visibility before an experience reaches the CV."""
+    visibility = str(experience.get("visibility") or "default")
+    if not visibility.startswith("only_"):
+        return True
+    triggers = experience.get("explicit_job_triggers")
+    if not isinstance(triggers, list):
+        triggers = experience.get("selection_triggers", experience.get("tags", []))
+    return contains_any(job_text(job), triggers if isinstance(triggers, list) else [])
+
+
 def compact_items(items: Iterable[str], limit: int, max_chars: int | None = None) -> List[str]:
     result: List[str] = []
     seen = set()

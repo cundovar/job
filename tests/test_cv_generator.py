@@ -1030,6 +1030,47 @@ def test_writer_rejects_guarding_experience_for_an_unrelated_web_job():
     assert sanitized["cv"]["experiences"] == []
 
 
+def test_ai_plan_keeps_reception_experience_only_for_an_explicit_reception_job():
+    master = load_json("data/cv_master_profile.json")
+    source = master["experience_catalog"]["bioconcept_accueil"]
+    proposed = {
+        "selected_base_variant": "webmaster",
+        "experience_plan": [{
+            "experience_id": "bioconcept_accueil",
+            "priority": 10,
+            "reason": "Expérience d'accueil directement pertinente.",
+            "highlight_indexes": [0],
+        }],
+    }
+
+    unrelated_job = {
+        "title": "Formateur développement web",
+        "description": "Formation WordPress et Next.js.",
+    }
+    unrelated_plan = _sanitize_plan(
+        proposed,
+        analyze_job_for_cv(unrelated_job, master),
+        master,
+        AgentResult(data=proposed, provider="test", model="test"),
+        unrelated_job,
+    )
+    assert unrelated_plan["experience_plan"] == []
+
+    reception_job = {
+        "title": "Gardien / Hôte d'accueil",
+        "description": "Accueil des visiteurs et gestion du site.",
+    }
+    reception_plan = _sanitize_plan(
+        proposed,
+        analyze_job_for_cv(reception_job, master),
+        master,
+        AgentResult(data=proposed, provider="test", model="test"),
+        reception_job,
+    )
+    assert [item["experience_id"] for item in reception_plan["experience_plan"]] == ["bioconcept_accueil"]
+    assert reception_plan["experience_plan"][0]["highlights"] == [source["highlights"][0]]
+
+
 def test_reviser_can_apply_grounded_order_education_and_project_reduction():
     master = load_json("data/cv_master_profile.json")
     job = {
