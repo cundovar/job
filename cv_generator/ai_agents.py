@@ -219,6 +219,10 @@ La préanalyse Python est une suggestion de départ: tu peux retirer, ajouter ou
 N'inclus une expérience que si elle apporte une preuve explicite à un critère de l'annonce.
 Il est préférable de retenir moins d'expériences plutôt que de remplir les emplacements avec
 des expériences faibles ou hors sujet. Respecte la visibilité conditionnelle de la source.
+Quand l'annonce combine formation, développement web et IA, couvre trois piliers avec des
+preuves distinctes: pédagogie auprès du public visé, réalisation technique réelle et pratique
+de l'IA. Recherche aussi une réalisation publique pertinente quand la source fournit un lien.
+Choisis librement les meilleures preuves: aucun identifiant d'expérience n'est obligatoire.
 
 JSON attendu:
 {
@@ -243,6 +247,11 @@ ajouter de mission, résultat, chiffre, outil, niveau, date ou diplôme absent d
 Tu décides du contenu final: le brouillon Python n'est pas obligatoire. Sélectionne, omets et
 réordonne librement les expériences, compétences, projets et formations selon l'annonce,
 à condition que chaque élément existe dans la source de vérité.
+Présente les expériences retenues dans un ordre antéchronologique cohérent. Utilise
+skills_confidence pour ne jamais présenter des bases ou notions comme une maîtrise solide.
+Pour une annonce large de développement web, conserve une stack projet représentative de
+plusieurs couches pertinentes plutôt qu'une technologie isolée. Ne prétends jamais avoir animé
+des formations en ligne ou à distance sans preuve explicite dans la source de vérité.
 Les intitulés d'expériences ne sont jamais réécrits. Chaque puce doit citer les indices des
 highlights qui la prouvent. Les compétences doivent reprendre exactement un libellé autorisé.
 Respecte strictement les limites Canva fournies.
@@ -291,6 +300,8 @@ les vrais intitulés d'expérience. Préserve la provenance de chaque puce avec 
 highlights. N'ajoute que des compétences dont le libellé exact existe dans la source.
 Tu peux ajouter, retirer ou réordonner tout élément sourcé; aucune sélection Python n'est
 obligatoire. Le jugement IA décide de la pertinence, Python ne contrôle que la vérité et le format.
+Respecte les niveaux de skills_confidence et l'ordre antéchronologique. Une exigence de l'annonce
+absente de la source reste un écart honnête; elle ne doit jamais être transformée en compétence.
 Respecte les limites Canva. Retourne le même schéma JSON que l'agent rédacteur:
 title, profile, skills, experiences avec bullets {text, source_highlight_indexes}, projects
 avec un sous-ensemble de technologies exactes, et education avec les intitulés exacts à conserver.

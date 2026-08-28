@@ -2,7 +2,16 @@ import io
 import json
 
 from cv_generator import prepare_custom_cv
-from cv_generator.ai_agents import AgentResult, CVLLMClient, _merge_review, _sanitize_cv_content, _sanitize_plan
+from cv_generator.ai_agents import (
+    ANALYZER_PROMPT,
+    CREATOR_PROMPT,
+    REVISER_PROMPT,
+    AgentResult,
+    CVLLMClient,
+    _merge_review,
+    _sanitize_cv_content,
+    _sanitize_plan,
+)
 from cv_generator.exporters import (
     DEFAULT_PORTRAIT,
     PDF_PORTRAIT_DIAMETER,
@@ -334,6 +343,59 @@ def test_mediation_variant_prioritizes_pedagogy_and_ai_without_forcing_web_langu
     assert {"Animation de groupe", "Accompagnement numérique", "ChatGPT", "Claude"} <= emphasized
     assert "PHP 8" not in emphasized
     assert "JavaScript ES6+" not in emphasized
+
+
+def test_hybrid_trainer_prompts_balance_real_work_pedagogy_and_ai():
+    assert "trois piliers" in ANALYZER_PROMPT
+    assert "réalisation technique réelle" in ANALYZER_PROMPT
+    assert "aucun identifiant d'expérience n'est obligatoire" in ANALYZER_PROMPT
+    assert "skills_confidence" in CREATOR_PROMPT
+    assert "ordre antéchronologique" in CREATOR_PROMPT
+    assert "formations en ligne ou à distance" in CREATOR_PROMPT
+    assert "écart honnête" in REVISER_PROMPT
+
+
+def test_truth_guard_rejects_unconfirmed_remote_training_and_unknown_languages():
+    master = load_json("data/cv_master_profile.json")
+    job = {
+        "title": "Formateur en ligne IA et développement web",
+        "description": "Formation à distance en Python, JavaScript, Java, C++, HTML/CSS et R.",
+    }
+    plan = analyze_job_for_cv(job, master)
+    base = create_cv_draft(job, master, plan)
+    proposed = {
+        "title": "Formateur développement web et IA",
+        "profile": "Animation de formation en ligne pour adultes en Java, C++ et R.",
+        "skills": [{
+            "title": "Programmation",
+            "items": ["Python", "JavaScript ES6+", "Java", "C++", "R"],
+        }],
+        "experiences": [{
+            "id": "pole_s",
+            "bullets": [{
+                "text": "Animation de formations pour 12 apprenants adultes en reconversion",
+                "source_highlight_indexes": [2],
+            }],
+        }],
+        "projects": [],
+        "education": [],
+    }
+
+    sanitized = _sanitize_cv_content(
+        proposed,
+        job,
+        master,
+        plan,
+        base,
+        AgentResult(data=proposed, provider="test", model="test"),
+        "test_writer",
+    )
+
+    profile = sanitized["cv"]["profile"].lower()
+    skills = {item for section in sanitized["cv"]["skills"] for item in section["items"]}
+    assert "formation en ligne" not in profile
+    assert {"Java", "C++", "R"}.isdisjoint(skills)
+    assert {"Python", "JavaScript ES6+"} <= skills
 
 
 def test_conditional_education_is_selected_from_job_keywords():
