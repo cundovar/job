@@ -4,6 +4,7 @@ Adzuna API scraper.
 from __future__ import annotations
 
 import os
+import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
@@ -24,6 +25,10 @@ class AdzunaScraper(BaseScraper):
         self.max_jobs = int(os.getenv("MAX_JOBS_PER_SITE", "50"))
         self.results_per_page = int(os.getenv("ADZUNA_RESULTS_PER_PAGE", "20"))
         self.timeout_seconds = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
+        self.max_retries = max(1, int(os.getenv("ADZUNA_MAX_RETRIES", "3")))
+        self.retry_backoff_seconds = max(
+            0.0, float(os.getenv("ADZUNA_RETRY_BACKOFF_SECONDS", "1"))
+        )
 
     @rate_limit(delay_seconds=int(os.getenv("SCRAPING_DELAY_SECONDS", "2")))
     def _search(self, keyword: str, page: int) -> Dict:
@@ -36,9 +41,26 @@ class AdzunaScraper(BaseScraper):
             "content-type": "application/json",
         }
         url = f"{self.API_ROOT}/{self.country}/search/{page}"
-        resp = requests.get(url, params=params, timeout=self.timeout_seconds)
-        resp.raise_for_status()
-        return resp.json()
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                resp = requests.get(url, params=params, timeout=self.timeout_seconds)
+            except requests.RequestException as exc:
+                if attempt == self.max_retries:
+                    raise RuntimeError(
+                        f"Adzuna API inaccessible apres {self.max_retries} tentatives"
+                    ) from exc
+            else:
+                if resp.status_code < 400:
+                    return resp.json()
+                retryable = resp.status_code == 429 or resp.status_code >= 500
+                if not retryable or attempt == self.max_retries:
+                    # Ne pas appeler raise_for_status(): son message contient
+                    # l'URL complete et donc app_id/app_key dans les journaux.
+                    raise RuntimeError(f"Adzuna API HTTP {resp.status_code}")
+
+            time.sleep(self.retry_backoff_seconds * attempt)
+
+        raise RuntimeError("Adzuna API inaccessible")
 
     def _parse_job(self, raw: Dict) -> Dict:
         company = raw.get("company", {}) or {}

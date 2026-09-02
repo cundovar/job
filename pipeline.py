@@ -8,9 +8,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
 load_dotenv()
+
+# Un service parent peut transmettre des variables declarées mais vides. Dans ce
+# cas python-dotenv ne les remplace pas, ce qui rend une configuration pourtant
+# presente dans .env invisible aux scrapers. Completer uniquement les valeurs
+# vides preserve la priorite des vraies variables de deploiement.
+for _key, _value in dotenv_values().items():
+    if _value and not os.getenv(_key):
+        os.environ[_key] = _value
 
 import yaml
 

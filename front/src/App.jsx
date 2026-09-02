@@ -1193,7 +1193,7 @@ function App() {
           >
             <span className="search-date">{fmtSession(search)}</span>
             <span className="search-stats">
-              {search.total} nouvelles
+              {search.found_total ?? search.total} trouvées · {search.total} nouvelles
               {search.already_seen > 0 && ` · ${search.already_seen} déjà vues`}
               {' · '}<Star /> {search.postuler}
             </span>
@@ -1217,6 +1217,7 @@ function App() {
             <header className="search-header">
               <h1>Recherche du {fmtSession(currentSearch)}</h1>
               <div className="stats">
+                <span><Search /> {currentSearch.found_total ?? currentSearch.total} trouvées</span>
                 <span>{currentSearch.total} nouvelles</span>
                 {currentSearch.already_seen > 0 && (
                   <span><RotateCw /> {currentSearch.already_seen} déjà vues</span>
@@ -1387,7 +1388,9 @@ function App() {
                 onClick={() => openSearch(search.id)}
               >
                 <span className="search-date">{fmtSession(search)}</span>
-                <span className="search-stats">{search.total} offres · <Star /> {search.postuler}</span>
+                <span className="search-stats">
+                  {search.found_total ?? search.total} trouvées · {search.total} nouvelles · <Star /> {search.postuler}
+                </span>
               </button>
             )) : (
               <p className="search-stats">Aucune session pour l'instant.</p>
