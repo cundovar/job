@@ -1,4 +1,18 @@
-from scrapers import AdzunaScraper, JoobleScraper, RemoteOKScraper
+from scrapers import (
+    AdzunaScraper,
+    EmploiTerritorialRssScraper,
+    JoobleScraper,
+    RemoteOKScraper,
+)
+
+
+def test_emploi_territorial_uses_public_feed_by_default(monkeypatch):
+    monkeypatch.delenv("EMPLOI_TERRITORIAL_RSS_URLS", raising=False)
+    monkeypatch.delenv("EMPLOI_TERRITORIAL_RSS_URL", raising=False)
+
+    scraper = EmploiTerritorialRssScraper()
+
+    assert scraper.rss_urls == ["https://www.emploi-territorial.fr/rss/"]
 
 
 def test_adzuna_retries_temporary_server_error(monkeypatch):

@@ -16,6 +16,8 @@ from .base_scraper import BaseScraper
 
 
 class EmploiTerritorialRssScraper(BaseScraper):
+    DEFAULT_RSS_URL = "https://www.emploi-territorial.fr/rss/"
+
     def __init__(self) -> None:
         self.rss_urls = self._load_urls()
         self.max_jobs = int(os.getenv("MAX_JOBS_PER_SITE", "50"))
@@ -30,7 +32,7 @@ class EmploiTerritorialRssScraper(BaseScraper):
         single = os.getenv("EMPLOI_TERRITORIAL_RSS_URL", "").strip()
         if single:
             urls.append(single)
-        return urls
+        return urls or [self.DEFAULT_RSS_URL]
 
     def _load_allowed_depts(self) -> List[str]:
         raw = os.getenv("EMPLOI_TERRITORIAL_ALLOWED_DEPTS", "")
