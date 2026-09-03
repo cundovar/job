@@ -210,7 +210,11 @@ def run_job_search(
         try:
             jobs = scraper.scrape(search_keywords)
             all_jobs.extend(jobs)
-            logger.info(f"{scraper.__class__.__name__}: {len(jobs)} jobs")
+            scraper_name = scraper.__class__.__name__
+            if jobs:
+                logger.info(f"{scraper_name}: {len(jobs)} jobs")
+            else:
+                logger.warning(f"{scraper_name}: 0 jobs returned")
         except Exception as exc:
             logger.error(f"{scraper.__class__.__name__} failed: {exc}")
 

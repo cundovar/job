@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 
 import requests
 
-from .base_scraper import BaseScraper
+from .base_scraper import BaseScraper, balanced_keyword_limits
 
 
 class FranceTravailScraper(BaseScraper):
@@ -20,6 +20,7 @@ class FranceTravailScraper(BaseScraper):
         self.client_id = os.getenv("FRANCE_TRAVAIL_CLIENT_ID")
         self.client_secret = os.getenv("FRANCE_TRAVAIL_CLIENT_SECRET")
         self.max_jobs = int(os.getenv("MAX_JOBS_PER_SITE", "50"))
+        self.max_keywords = int(os.getenv("MAX_KEYWORDS_PER_SOURCE", "10"))
         self.timeout_seconds = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
         self._token: Optional[str] = None
 
@@ -117,10 +118,16 @@ class FranceTravailScraper(BaseScraper):
         if not search_keywords:
             search_keywords = ["webmaster", "formateur developpement web", "formateur intelligence artificielle"]
 
-        for keyword in search_keywords:
+        allocations = balanced_keyword_limits(
+            search_keywords,
+            self.max_jobs,
+            self.max_keywords,
+        )
+        for keyword, keyword_limit in allocations:
             try:
                 data = self._search(keyword)
                 results = data.get("resultats", [])
+                added_for_keyword = 0
 
                 for raw in results:
                     job_id = raw.get("id")
@@ -129,9 +136,10 @@ class FranceTravailScraper(BaseScraper):
                         job = self._parse_job(raw)
                         if job["title"]:
                             jobs.append(job)
+                            added_for_keyword += 1
 
-                    if len(jobs) >= self.max_jobs:
-                        return jobs
+                    if len(jobs) >= self.max_jobs or added_for_keyword >= keyword_limit:
+                        break
             except Exception as e:
                 print(f"  Erreur recherche '{keyword}': {e}")
                 continue

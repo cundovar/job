@@ -12,7 +12,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from utils.rate_limiter import rate_limit
-from .base_scraper import BaseScraper
+from .base_scraper import BaseScraper, balanced_keyword_limits
 
 
 class LesJeudisScraper(BaseScraper):
@@ -20,6 +20,7 @@ class LesJeudisScraper(BaseScraper):
 
     def __init__(self) -> None:
         self.max_jobs = int(os.getenv("MAX_JOBS_PER_SITE", "50"))
+        self.max_keywords = int(os.getenv("MAX_KEYWORDS_PER_SOURCE", "10"))
         self.timeout_seconds = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
         self.session = requests.Session()
         self.session.headers.update({
@@ -80,8 +81,14 @@ class LesJeudisScraper(BaseScraper):
 
     def scrape(self, keywords: List[str]) -> List[Dict]:
         jobs: List[Dict] = []
+        seen_urls = set()
 
-        for keyword in keywords:
+        allocations = balanced_keyword_limits(
+            keywords,
+            self.max_jobs,
+            self.max_keywords,
+        )
+        for keyword, keyword_limit in allocations:
             if len(jobs) >= self.max_jobs:
                 break
 
@@ -103,17 +110,19 @@ class LesJeudisScraper(BaseScraper):
                 if len(container.find_all("a", href=lambda h: h and "/fr/job/" in h)) >= 3:
                     break
 
+            added_for_keyword = 0
             for child in container.find_all(recursive=False):
-                if len(jobs) >= self.max_jobs:
-                    return jobs
-
                 link = child.find("a", href=lambda h: h and "/fr/job/" in h)
                 if not link:
                     continue
 
                 text = child.get_text(" ", strip=True)
                 job = self._parse_card(text, link.get_text(strip=True), link.get("href", ""))
-                if job["title"]:
+                if job["title"] and job["url"] not in seen_urls:
+                    seen_urls.add(job["url"])
                     jobs.append(job)
+                    added_for_keyword += 1
+                if len(jobs) >= self.max_jobs or added_for_keyword >= keyword_limit:
+                    break
 
         return jobs

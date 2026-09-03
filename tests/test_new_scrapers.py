@@ -3,7 +3,9 @@ from scrapers import (
     AdzunaScraper,
     EmploiESSScraper,
     EmploiTerritorialRssScraper,
+    FranceTravailScraper,
     JoobleScraper,
+    LesJeudisScraper,
     RemoteOKScraper,
 )
 from scrapers.base_scraper import balanced_keyword_limits
@@ -102,6 +104,83 @@ def test_emploi_ess_uses_current_query_and_markup(monkeypatch):
     assert jobs[0]["contract_type"] == "CDI"
     assert jobs[0]["published_at"] == "2026-09-03"
     assert jobs[0]["url"] == "https://www.emploi-ess.fr/jobs/3572898/270"
+
+
+def test_france_travail_shares_its_limit_between_keywords(monkeypatch):
+    monkeypatch.setenv("FRANCE_TRAVAIL_CLIENT_ID", "id")
+    monkeypatch.setenv("FRANCE_TRAVAIL_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("MAX_JOBS_PER_SITE", "4")
+    monkeypatch.setenv("MAX_KEYWORDS_PER_SOURCE", "2")
+    scraper = FranceTravailScraper()
+
+    def fake_search(keyword):
+        return {
+            "resultats": [
+                {
+                    "id": f"{keyword}-{index}",
+                    "intitule": f"{keyword} offre {index}",
+                }
+                for index in range(4)
+            ]
+        }
+
+    monkeypatch.setattr(scraper, "_search", fake_search)
+
+    jobs = scraper.scrape(["symfony", "react"])
+
+    assert len(jobs) == 4
+    assert sum("symfony" in job["title"] for job in jobs) == 2
+    assert sum("react" in job["title"] for job in jobs) == 2
+
+
+def test_adzuna_shares_its_limit_between_keywords(monkeypatch):
+    monkeypatch.setenv("ADZUNA_APP_ID", "id")
+    monkeypatch.setenv("ADZUNA_APP_KEY", "secret")
+    monkeypatch.setenv("MAX_JOBS_PER_SITE", "4")
+    monkeypatch.setenv("MAX_KEYWORDS_PER_SOURCE", "2")
+    scraper = AdzunaScraper()
+
+    def fake_search(keyword, page):
+        if page > 1:
+            return {"results": []}
+        return {
+            "results": [
+                {
+                    "title": f"{keyword} offre {index}",
+                    "redirect_url": f"https://jobs.test/{keyword}/{index}",
+                }
+                for index in range(4)
+            ]
+        }
+
+    monkeypatch.setattr(scraper, "_search", fake_search)
+
+    jobs = scraper.scrape(["symfony", "react"])
+
+    assert len(jobs) == 4
+    assert sum("symfony" in job["title"] for job in jobs) == 2
+    assert sum("react" in job["title"] for job in jobs) == 2
+
+
+def test_lesjeudis_shares_its_limit_between_keywords(monkeypatch):
+    monkeypatch.setenv("MAX_JOBS_PER_SITE", "4")
+    monkeypatch.setenv("MAX_KEYWORDS_PER_SOURCE", "2")
+    scraper = LesJeudisScraper()
+
+    def fake_search(keyword):
+        cards = "".join(
+            f'<div><a href="/fr/job/{keyword}-{index}">{keyword} offre {index}</a></div>'
+            for index in range(4)
+        )
+        return f'<div id="jobs">{cards}</div>'
+
+    monkeypatch.setattr(scraper, "_search", fake_search)
+
+    jobs = scraper.scrape(["symfony", "react"])
+
+    assert len(jobs) == 4
+    assert sum("symfony" in job["title"] for job in jobs) == 2
+    assert sum("react" in job["title"] for job in jobs) == 2
 
 
 def test_emploi_territorial_uses_public_feed_by_default(monkeypatch):

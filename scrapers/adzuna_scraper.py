@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 import requests
 
 from utils.rate_limiter import rate_limit
-from .base_scraper import BaseScraper
+from .base_scraper import BaseScraper, balanced_keyword_limits
 
 
 class AdzunaScraper(BaseScraper):
@@ -23,6 +23,7 @@ class AdzunaScraper(BaseScraper):
         self.country = os.getenv("ADZUNA_COUNTRY", "fr")
         self.location = os.getenv("ADZUNA_LOCATION", "Île-de-France")
         self.max_jobs = int(os.getenv("MAX_JOBS_PER_SITE", "50"))
+        self.max_keywords = int(os.getenv("MAX_KEYWORDS_PER_SOURCE", "10"))
         self.results_per_page = int(os.getenv("ADZUNA_RESULTS_PER_PAGE", "20"))
         self.timeout_seconds = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
         self.max_retries = max(1, int(os.getenv("ADZUNA_MAX_RETRIES", "3")))
@@ -95,9 +96,15 @@ class AdzunaScraper(BaseScraper):
         jobs: List[Dict] = []
         seen_urls = set()
 
-        for keyword in keywords:
+        allocations = balanced_keyword_limits(
+            keywords,
+            self.max_jobs,
+            self.max_keywords,
+        )
+        for keyword, keyword_limit in allocations:
             page = 1
-            while len(jobs) < self.max_jobs:
+            added_for_keyword = 0
+            while len(jobs) < self.max_jobs and added_for_keyword < keyword_limit:
                 data = self._search(keyword, page)
                 results = data.get("results", [])
                 if not results:
@@ -112,7 +119,8 @@ class AdzunaScraper(BaseScraper):
                     job = self._parse_job(raw)
                     if job["title"]:
                         jobs.append(job)
-                    if len(jobs) >= self.max_jobs:
+                        added_for_keyword += 1
+                    if len(jobs) >= self.max_jobs or added_for_keyword >= keyword_limit:
                         break
 
                 page += 1

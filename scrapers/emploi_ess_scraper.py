@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime, timezone
 from typing import Dict, List
 
@@ -9,7 +10,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from utils.rate_limiter import rate_limit
-from .base_scraper import BaseScraper
+from .base_scraper import BaseScraper, balanced_keyword_limits
 
 
 class EmploiESSScraper(BaseScraper):
@@ -17,6 +18,7 @@ class EmploiESSScraper(BaseScraper):
 
     def __init__(self) -> None:
         self.max_jobs = int(os.getenv("MAX_JOBS_PER_SITE", "50"))
+        self.max_keywords = int(os.getenv("MAX_KEYWORDS_PER_SOURCE", "10"))
         self.timeout_seconds = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
         self.session = requests.Session()
         self.session.headers.update({
@@ -28,7 +30,7 @@ class EmploiESSScraper(BaseScraper):
     def _search(self, keyword: str) -> str:
         resp = self.session.get(
             self.BASE_URL,
-            params={"search": keyword},
+            params={"m": keyword},
             timeout=self.timeout_seconds,
         )
         resp.raise_for_status()
@@ -38,19 +40,28 @@ class EmploiESSScraper(BaseScraper):
         jobs: List[Dict] = []
         seen = set()
 
-        for keyword in keywords:
+        allocations = balanced_keyword_limits(
+            keywords,
+            self.max_jobs,
+            self.max_keywords,
+        )
+        request_errors = []
+        successful_requests = 0
+        for keyword, keyword_limit in allocations:
             if len(jobs) >= self.max_jobs:
                 break
             try:
                 html = self._search(keyword)
-            except Exception:
+                successful_requests += 1
+            except Exception as exc:
+                request_errors.append(exc)
                 continue
 
             soup = BeautifulSoup(html, "lxml")
+            added_for_keyword = 0
 
-            # Chercher les offres — structure variable
-            for card in soup.select("article, .offer, .job, .offre, .row")[:self.max_jobs]:
-                title_el = card.select_one("h2, h3, .title, a")
+            for card in soup.select(".bloc-offre"):
+                title_el = card.select_one(".offre-titre a")
                 if not title_el:
                     continue
 
@@ -58,50 +69,59 @@ class EmploiESSScraper(BaseScraper):
                 if not title or len(title) < 5:
                     continue
 
-                link = card.select_one("a") if title_el.name != "a" else title_el
+                link = title_el
                 url = link.get("href", "") if link else ""
                 if url and not url.startswith("http"):
-                    url = f"https://www.emploi-ess.fr{url}" if url.startswith("/") else url
+                    url = f"https://www.emploi-ess.fr/{url.lstrip('/')}"
 
-                # Déduplication
-                dedup_key = title[:60]
+                dedup_key = url or title[:60]
                 if dedup_key in seen:
                     continue
                 seen.add(dedup_key)
 
-                # Extraire infos
-                company = ""
-                location = ""
-                contract = ""
-                for el in card.select("span, p, div"):
-                    txt = el.get_text(strip=True)
-                    if not txt:
-                        continue
-                    if not company and any(k in txt.lower() for k in ["association", "fondation", "coopérative", "mutuelle"]):
-                        company = txt[:80]
-                    if not location and any(k in txt.lower() for k in ["paris", "lyon", "marseille", "75", "69", "île-de-france"]):
-                        location = txt[:50]
-                    if not contract and any(k in txt.lower() for k in ["cdi", "cdd", "freelance"]):
-                        contract = txt[:30]
-
-                if not company:
-                    # Extraire depuis le texte global du container
-                    full_text = card.get_text(" ", strip=True)
-                    for line in full_text.split("  "):
-                        line = line.strip()
-                        if not company and any(k in line.lower() for k in ["association", "fondation", "coopérative", "mutuelle", "scop", "scic"]):
-                            company = line[:80]
+                location_el = card.select_one(".offre-localisation span")
+                location = location_el.get_text(" ", strip=True) if location_el else ""
+                description_el = card.select_one(".offre-descriptif")
+                description = (
+                    description_el.get_text(" ", strip=True)
+                    if description_el
+                    else card.get_text(" ", strip=True)
+                )
+                contract_match = re.search(
+                    r"\b(CDI|CDD|freelance|stage|alternance)\b",
+                    description,
+                    flags=re.IGNORECASE,
+                )
+                date_el = card.select_one(".offre-date")
+                published_at = ""
+                if date_el:
+                    try:
+                        published_at = datetime.strptime(
+                            date_el.get_text(strip=True),
+                            "%d/%m/%Y",
+                        ).date().isoformat()
+                    except ValueError:
+                        published_at = ""
 
                 jobs.append({
                     "title": title,
-                    "company": company or "ESS",
+                    "company": "ESS",
                     "location": location or "Île-de-France",
-                    "contract_type": contract or None,
+                    "contract_type": contract_match.group(1).upper() if contract_match else None,
                     "salary": None,
-                    "description": card.get_text(" ", strip=True)[:800],
+                    "description": description[:800],
                     "url": url,
                     "source": "emploi_ess",
+                    "published_at": published_at,
                     "scraped_at": datetime.now(timezone.utc).isoformat(),
                 })
+                added_for_keyword += 1
+                if len(jobs) >= self.max_jobs or added_for_keyword >= keyword_limit:
+                    break
+
+        if allocations and successful_requests == 0 and request_errors:
+            raise RuntimeError(
+                f"Emploi-ESS inaccessible pour {len(request_errors)} requêtes"
+            ) from request_errors[-1]
 
         return jobs
