@@ -1,9 +1,107 @@
 from scrapers import (
+    APECScraper,
     AdzunaScraper,
+    EmploiESSScraper,
     EmploiTerritorialRssScraper,
     JoobleScraper,
     RemoteOKScraper,
 )
+from scrapers.base_scraper import balanced_keyword_limits
+
+
+def test_balanced_keyword_limits_distributes_capacity_across_keywords():
+    assert balanced_keyword_limits(
+        ["symfony", "react", "wordpress", "n8n"],
+        max_jobs=10,
+        max_keywords=3,
+    ) == [("symfony", 4), ("react", 3), ("wordpress", 3)]
+
+
+def test_apec_uses_current_api_contract_and_result_fields(monkeypatch):
+    captured = {}
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "resultats": [
+                    {
+                        "intitule": "Chef de projet numérique",
+                        "nomCommercial": "Association Exemple",
+                        "lieuTexte": "Paris 01 - 75",
+                        "typeContrat": "CDI",
+                        "salaireTexte": "40 k€",
+                        "texteOffre": "Pilotage, formation et assistance utilisateurs",
+                        "numeroOffre": "123456",
+                        "datePublication": "2026-09-03T08:00:00Z",
+                    }
+                ]
+            }
+
+    def fake_post(url, **kwargs):
+        captured.update(kwargs)
+        return Response()
+
+    monkeypatch.delenv("APEC_LOCATION_IDS", raising=False)
+    scraper = APECScraper()
+    monkeypatch.setattr(scraper.session, "post", fake_post)
+
+    raw = scraper._search("chef de projet numérique")[0]
+    job = scraper._parse_job(raw)
+
+    assert captured["json"]["lieux"] == [711]
+    assert captured["json"]["sorts"] == [
+        {"type": "DATE", "direction": "DESCENDING"}
+    ]
+    assert "sortsAndFilters" not in captured["json"]
+    assert job["company"] == "Association Exemple"
+    assert job["location"] == "Paris 01 - 75"
+    assert job["salary"] == "40 k€"
+    assert job["description"].startswith("Pilotage")
+    assert job["published_at"] == "2026-09-03T08:00:00Z"
+
+
+def test_emploi_ess_uses_current_query_and_markup(monkeypatch):
+    captured = {}
+    html = """
+    <div class="bloc-offre fondoffre">
+      <div class="offre-localisation">localisation :
+        <span class="text-bleu-light">Île-de-France</span>
+      </div>
+      <div class="offre-date">03/09/2026</div>
+      <div class="offre-titre">
+        <a href="https://www.emploi-ess.fr/jobs/3572898/270">
+          Chef de projet numérique Objectif Terres F/H
+        </a>
+      </div>
+      <div class="offre-descriptif">Type de contrat : CDI. Pilotage digital et formation.</div>
+    </div>
+    """
+
+    class Response:
+        text = html
+
+        def raise_for_status(self):
+            return None
+
+    def fake_get(url, **kwargs):
+        captured.update(kwargs)
+        return Response()
+
+    scraper = EmploiESSScraper()
+    monkeypatch.setattr(scraper.session, "get", fake_get)
+
+    jobs = scraper.scrape(["numérique"])
+
+    assert captured["params"] == {"m": "numérique"}
+    assert len(jobs) == 1
+    assert jobs[0]["title"] == "Chef de projet numérique Objectif Terres F/H"
+    assert jobs[0]["location"] == "Île-de-France"
+    assert jobs[0]["contract_type"] == "CDI"
+    assert jobs[0]["published_at"] == "2026-09-03"
+    assert jobs[0]["url"] == "https://www.emploi-ess.fr/jobs/3572898/270"
 
 
 def test_emploi_territorial_uses_public_feed_by_default(monkeypatch):
