@@ -9,8 +9,10 @@ from datetime import datetime, timezone
 from typing import Dict, Tuple
 
 
-def _normalize(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", text.lower())
+def _normalize(text: object) -> str:
+    """Normalise n'importe quelle valeur : certaines sources (APEC) renvoient des
+    codes numeriques la ou on attend une chaine."""
+    normalized = unicodedata.normalize("NFKD", str(text if text is not None else "").lower())
     return "".join(ch for ch in normalized if not unicodedata.combining(ch))
 
 

@@ -50,12 +50,27 @@ class APECScraper(BaseScraper):
         resp.raise_for_status()
         return resp.json().get("resultats", [])
 
+    # Codes releves sur 206 offres APEC (5 mots-cles, 03/09/2026).
+    CONTRACT_TYPES = {
+        101888: "CDI",
+        101887: "CDD",
+        597137: "Alternance",
+    }
+
+    def _contract_label(self, raw: Dict) -> str:
+        """L'API APEC renvoie typeContrat comme code numerique, pas comme libelle."""
+        value = raw.get("typeContrat") or raw.get("contract") or ""
+        try:
+            return self.CONTRACT_TYPES.get(int(value), str(value))
+        except (TypeError, ValueError):
+            return str(value)
+
     def _parse_job(self, raw: Dict) -> Dict:
         return {
             "title": raw.get("intitule", "") or raw.get("title", ""),
             "company": raw.get("nomCommercial", "") or raw.get("nomCompagnie", "") or raw.get("company", "") or raw.get("entreprise", ""),
             "location": raw.get("lieuTexte", "") or raw.get("lieuTravail", "") or raw.get("location", "") or raw.get("localisation", ""),
-            "contract_type": raw.get("typeContrat", "") or raw.get("contract", ""),
+            "contract_type": self._contract_label(raw),
             "salary": raw.get("salaireTexte", "") or raw.get("salaire", "") or raw.get("salary", ""),
             "description": raw.get("texteOffre", "") or raw.get("texteHtml", "") or raw.get("description", "") or raw.get("texte", ""),
             "url": f"https://www.apec.fr/candidat/recherche-emploi.html/emploi/detail-offre/{raw.get('numeroOffre', '')}"
