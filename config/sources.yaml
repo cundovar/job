@@ -9,6 +9,7 @@ enabled_sources:
   emploi_asso: false
   emploi_ess: true
   lesjeudis: true
+  mail_alerts: true
   jooble: false
   remoteok: false
 

@@ -41,6 +41,7 @@ from scrapers import (
     IndeedScraper,
     JoobleScraper,
     LesJeudisScraper,
+    MailAlertScraper,
     RemoteOKScraper,
     WTTJScraper,
 )
@@ -94,6 +95,8 @@ def build_scrapers(sources: Dict[str, Any] | None = None) -> List[Any]:
         scrapers.append(EmploiESSScraper())
     if enabled.get("lesjeudis", True):
         scrapers.append(LesJeudisScraper())
+    if enabled.get("mail_alerts", False):
+        scrapers.append(MailAlertScraper())
     if enabled.get("jooble", False):
         jooble_cfg = sources.get("jooble", {})
         scrapers.append(
