@@ -75,6 +75,9 @@ class APECScraper(BaseScraper):
             "description": raw.get("texteOffre", "") or raw.get("texteHtml", "") or raw.get("description", "") or raw.get("texte", ""),
             "url": f"https://www.apec.fr/candidat/recherche-emploi.html/emploi/detail-offre/{raw.get('numeroOffre', '')}"
                    if raw.get("numeroOffre") else raw.get("url", ""),
+            # L'endpoint de recherche renvoie un teaser tronque (~283 car.) et
+            # l'endpoint detail est protege par DataDome : pas d'enrichissement possible.
+            "description_truncated": True,
             "source": "apec",
             "published_at": raw.get("datePublication", ""),
             "scraped_at": datetime.now(timezone.utc).isoformat(),

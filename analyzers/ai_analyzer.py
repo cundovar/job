@@ -14,6 +14,19 @@ from utils.ai_role_routing import AIRouteStep, legacy_route, load_role_route
 from utils.cli_agent_bridge import CLIAgentBridgeClient
 
 
+def _truncation_notice(job: Dict) -> str:
+    """Previent le juge quand la source ne fournit qu'un extrait de l'annonce."""
+    if not job.get("description_truncated"):
+        return ""
+    return (
+        "ATTENTION : la source ne fournit qu'un extrait tronque de l'annonce, "
+        "pas le texte complet. Juge sur le titre et cet extrait. Ne pénalise pas "
+        "l'offre pour des informations absentes (stack, salaire, télétravail, "
+        "niveau d'expérience) : leur absence vient de la troncature, pas de l'annonce. "
+        "En cas de doute, préfère PEUT-ÊTRE à PASSER.\n\n"
+    )
+
+
 def _load_system_prompt() -> str:
     """Load the judge system prompt from the project config file."""
     prompt_path = Path(__file__).resolve().parent.parent / "config" / "agent_juge_offres.md"
@@ -216,6 +229,7 @@ class AIAnalyzer:
             f"Salaire : {job.get('salary', 'Non précisé')}\n"
             f"Score règles (scraper) : {job.get('score', 0)}\n\n"
             f"Description :\n{job.get('description', '')[:2500]}\n\n"
+            f"{_truncation_notice(job)}"
             "Réponds UNIQUEMENT en JSON, pas de markdown autour."
         )
 
