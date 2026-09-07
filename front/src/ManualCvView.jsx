@@ -4,6 +4,7 @@ import CvAssessment from './CvAssessment'
 
 const POLL_INTERVAL_MS = 2500
 const GENERATION_TIMEOUT_MS = 15 * 60 * 1000
+const PREPARATION_TIMEOUT_MS = 10 * 60 * 1000
 const LAST_RESULT_STORAGE_KEY = 'job-search:last-manual-cv-result'
 
 const initialForm = {
@@ -79,6 +80,52 @@ export default function ManualCvView({ onOpenCandidatures }) {
   const updateField = event => {
     const { name, value } = event.target
     setForm(previous => ({ ...previous, [name]: value }))
+  }
+
+  // Le backend met la préparation en file et répond 202 : on suit la tâche par
+  // polling au lieu de maintenir une requête ouverte 20-40 s, ce qui cassait en
+  // 4G dès que le téléphone mettait l'onglet en veille.
+  const waitForPreparation = async (taskId, signal, initialStatus) => {
+    let status = initialStatus
+    const deadline = Date.now() + PREPARATION_TIMEOUT_MS
+    let networkErrors = 0
+
+    while (Date.now() < deadline) {
+      if (status?.state === 'completed') {
+        if (!status.result?.id) {
+          throw new Error("L'identifiant de la candidature est absent.")
+        }
+        return status.result
+      }
+      if (status?.state === 'failed') {
+        throw new Error(status.error || 'La préparation de la candidature a échoué.')
+      }
+
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
+
+      try {
+        const response = await fetch(
+          `/api/applications/prepare/status/${encodeURIComponent(taskId)}`,
+          { cache: 'no-store', signal }
+        )
+        status = await readJson(response)
+        networkErrors = 0
+      } catch (pollError) {
+        if (pollError.name === 'AbortError') throw pollError
+        const isNetworkError = pollError instanceof TypeError ||
+          /failed to fetch|networkerror|injoignable/i.test(pollError.message || '')
+        if (!isNetworkError) throw pollError
+        networkErrors += 1
+        if (networkErrors >= 5) {
+          throw new Error(
+            'Le serveur est momentanément injoignable pendant la préparation.',
+            { cause: pollError }
+          )
+        }
+      }
+    }
+
+    throw new Error('La préparation dépasse 10 minutes. Réessayez plus tard.')
   }
 
   const waitForGeneration = async (id, signal, initialStatus) => {
@@ -162,7 +209,11 @@ export default function ManualCvView({ onOpenCandidatures }) {
         body: JSON.stringify({ job }),
         signal: controller.signal,
       })
-      const prepared = await readJson(prepareResponse)
+      const prepareTask = await readJson(prepareResponse)
+      // Compat : un ancien backend répondait 201 avec la candidature directement.
+      const prepared = prepareTask.id
+        ? prepareTask
+        : await waitForPreparation(prepareTask.task_id, controller.signal, prepareTask.status)
       if (!prepared.id) throw new Error("L'identifiant de la candidature est absent.")
 
       setStage('queued')

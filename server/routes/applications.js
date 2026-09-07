@@ -20,6 +20,7 @@ const CV_TASK_TIMEOUT_MS = Number.parseInt(
 );
 const CV_TASK_KILL_GRACE_MS = 5000;
 const CV_TASK_RETENTION_MS = 60 * 60 * 1000;
+const PREPARE_TASK_RETENTION_MS = 60 * 60 * 1000;
 const REQUIRED_FRESH_CV_FILES = [
   'cv_final.pdf',
   'cv_ats.pdf',
@@ -255,6 +256,64 @@ export default function createApplicationsRouter(repo) {
     return task;
   }
 
+  // ── File de préparation des candidatures ──────────────────────────
+  // Le script Python tourne 20-40 s. Garder la requête HTTP ouverte pendant ce
+  // temps cassait sur mobile (4G, mise en veille, QUIC) : le dossier était bien
+  // créé mais la réponse n'arrivait jamais et le front abandonnait. On répond
+  // donc 202 immédiatement et le client suit l'avancement par polling.
+  const prepareTasks = new Map();
+  let prepareSequence = 0;
+  let prepareChain = Promise.resolve();
+
+  function publicPrepareTask(task) {
+    if (!task) return null;
+    return {
+      task_id: task.task_id,
+      state: task.state,
+      queued_at: task.queued_at,
+      started_at: task.started_at,
+      completed_at: task.completed_at,
+      error: task.error,
+      result: task.result,
+    };
+  }
+
+  function enqueuePrepareTask(job) {
+    prepareSequence += 1;
+    const task = {
+      task_id: `prep_${Date.now().toString(36)}_${prepareSequence}`,
+      state: 'queued',
+      queued_at: new Date().toISOString(),
+      started_at: null,
+      completed_at: null,
+      error: null,
+      result: null,
+    };
+    prepareTasks.set(task.task_id, task);
+
+    // Chaîne séquentielle : un seul script Python de préparation à la fois.
+    prepareChain = prepareChain.then(async () => {
+      task.state = 'running';
+      task.started_at = new Date().toISOString();
+      try {
+        task.result = await repo.prepareFromJob(job);
+        task.state = 'completed';
+      } catch (err) {
+        task.state = 'failed';
+        task.error = String(err?.message || err || 'Erreur inconnue').trim().slice(-4000);
+        console.error(`[prepare task ${task.task_id}]`, task.error);
+      } finally {
+        task.completed_at = new Date().toISOString();
+        const cleanup = setTimeout(() => {
+          prepareTasks.delete(task.task_id);
+        }, PREPARE_TASK_RETENTION_MS);
+        cleanup.unref();
+      }
+    });
+
+    return task;
+  }
+
   // GET /api/health — Vérifie que le serveur tourne
   router.get('/health', (_req, res) => {
     res.json({ ok: true });
@@ -271,15 +330,30 @@ export default function createApplicationsRouter(repo) {
     }
   });
 
-  // POST /api/applications/prepare — Génère une candidature depuis une offre de recherche
-  router.post('/applications/prepare', async (req, res) => {
-    try {
-      const result = await repo.prepareFromJob(req.body?.job);
-      res.status(201).json(result);
-    } catch (err) {
-      console.error('[POST /applications/prepare]', err.message);
-      res.status(500).json({ error: err.message });
+  // POST /api/applications/prepare — Met la génération de candidature en file
+  router.post('/applications/prepare', (req, res) => {
+    const job = req.body?.job;
+    if (!job || typeof job !== 'object') {
+      return res.status(400).json({ error: 'Offre invalide' });
     }
+    if (!job.title && !job.url) {
+      return res.status(400).json({ error: 'Offre invalide : titre ou URL requis' });
+    }
+    const task = enqueuePrepareTask(job);
+    res.status(202).json({
+      accepted: true,
+      task_id: task.task_id,
+      status: publicPrepareTask(task),
+    });
+  });
+
+  // GET /api/applications/prepare/status/:taskId — Suivi de la préparation
+  router.get('/applications/prepare/status/:taskId', (req, res) => {
+    const task = prepareTasks.get(req.params.taskId);
+    if (!task) {
+      return res.status(404).json({ error: 'Tâche de préparation introuvable ou expirée' });
+    }
+    res.json(publicPrepareTask(task));
   });
 
   // GET /api/applications/:id/cv/status — Vérifie si un CV personnalisé existe

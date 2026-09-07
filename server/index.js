@@ -60,6 +60,7 @@ app.listen(PORT, () => {
   console.log(`   GET  /api/health`);
   console.log(`   GET  /api/applications`);
   console.log(`   POST /api/applications/prepare`);
+  console.log(`   GET  /api/applications/prepare/status/:taskId`);
   console.log(`   POST /api/applications/:id/cv/prepare`);
   console.log(`   GET  /api/applications/:id/cv/status`);
   console.log(`   GET  /api/applications/:id/cv/download/:file`);
