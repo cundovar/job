@@ -8,9 +8,93 @@
 
 import fs from 'fs';
 import path from 'path';
-import { spawnSync } from 'child_process';
+import { spawn } from 'child_process';
 import ApplicationsRepository from './applicationsRepository.js';
 import { CANDIDATURES_PATH, TRACKER_PATH, PROJECT_ROOT } from '../config.js';
+
+const PREPARE_PYTHON_BIN = process.env.CV_PYTHON_BIN || 'python3';
+const PREPARE_MAX_OUTPUT = 10 * 1024 * 1024;
+const PREPARE_KILL_GRACE_MS = 5000;
+const PREPARE_TIMEOUT_MS = Number.parseInt(
+  process.env.PREPARE_TASK_TIMEOUT_MS || String(10 * 60 * 1000),
+  10
+);
+
+/**
+ * Lance le script Python de preparation SANS bloquer la boucle d'evenements.
+ *
+ * spawnSync gelait tout le process Node pendant les 20-40 s du script : aucune
+ * autre requete n'etait servie (health, polling CV...) et les clients mobiles
+ * perdaient la connexion avant la reponse. On passe donc en spawn asynchrone.
+ */
+function runPreparePython(job) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      PREPARE_PYTHON_BIN,
+      ['-m', 'hermes_commands.job_prepare_payload'],
+      { cwd: PROJECT_ROOT, stdio: ['pipe', 'pipe', 'pipe'] }
+    );
+
+    let stdout = '';
+    let stderr = '';
+    let outputBytes = 0;
+    let outputExceeded = false;
+    let timedOut = false;
+    let forceKillTimer = null;
+
+    const collect = (target, chunk) => {
+      outputBytes += chunk.length;
+      if (outputBytes > PREPARE_MAX_OUTPUT) {
+        outputExceeded = true;
+        child.kill('SIGTERM');
+        return target;
+      }
+      return target + chunk.toString('utf-8');
+    };
+
+    child.stdout.on('data', chunk => { stdout = collect(stdout, chunk); });
+    child.stderr.on('data', chunk => { stderr = collect(stderr, chunk); });
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+      forceKillTimer = setTimeout(() => child.kill('SIGKILL'), PREPARE_KILL_GRACE_MS);
+      forceKillTimer.unref();
+    }, PREPARE_TIMEOUT_MS);
+    timer.unref();
+
+    const clearTimers = () => {
+      clearTimeout(timer);
+      if (forceKillTimer) clearTimeout(forceKillTimer);
+    };
+
+    child.on('error', err => {
+      clearTimers();
+      reject(new Error(`Preparation impossible : ${err.message}`));
+    });
+
+    child.on('close', code => {
+      clearTimers();
+      if (timedOut) {
+        reject(new Error('La preparation de la candidature a depasse le delai maximal.'));
+        return;
+      }
+      if (outputExceeded) {
+        reject(new Error('La sortie du script de preparation depasse la limite autorisee.'));
+        return;
+      }
+      if (code !== 0) {
+        const details = (stderr || stdout || `code ${code}`).trim();
+        reject(new Error(`Preparation impossible : ${details}`));
+        return;
+      }
+      resolve(stdout);
+    });
+
+    child.stdin.on('error', () => {});
+    child.stdin.end(JSON.stringify({ job }));
+  });
+}
 
 export default class JsonApplicationsRepository extends ApplicationsRepository {
   // ─── Lecture / écriture du tracker JSON ───────────────────────────────────
@@ -91,27 +175,13 @@ export default class JsonApplicationsRepository extends ApplicationsRepository {
       throw new Error('Offre invalide : titre ou URL requis');
     }
 
-    const result = spawnSync(
-      'python3',
-      ['-m', 'hermes_commands.job_prepare_payload'],
-      {
-        cwd: PROJECT_ROOT,
-        input: JSON.stringify({ job }),
-        encoding: 'utf-8',
-        maxBuffer: 10 * 1024 * 1024,
-      }
-    );
-
-    if (result.status !== 0) {
-      const details = (result.stderr || result.stdout || 'Erreur inconnue').trim();
-      throw new Error(`Préparation impossible : ${details}`);
-    }
+    const stdout = await runPreparePython(job);
 
     let prepared;
     try {
-      prepared = JSON.parse(result.stdout);
+      prepared = JSON.parse(stdout);
     } catch {
-      throw new Error(`Réponse préparation invalide : ${result.stdout}`);
+      throw new Error(`Réponse préparation invalide : ${stdout}`);
     }
 
     const candidature = await this.getById(prepared.id);

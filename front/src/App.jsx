@@ -61,6 +61,48 @@ function cvFileUrl(id, file, status) {
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 
+// Suivi de la file de préparation côté backend (réponse 202 + polling) : une
+// requête ouverte pendant les 20-40 s du script Python ne survivait pas au mobile.
+async function waitForPreparation(taskId, initialStatus) {
+  let status = initialStatus
+  const deadline = Date.now() + 10 * 60 * 1000
+  let networkErrors = 0
+
+  while (Date.now() < deadline) {
+    if (status?.state === 'completed') {
+      if (!status.result?.id) throw new Error("L'identifiant de la candidature est absent.")
+      return status.result
+    }
+    if (status?.state === 'failed') {
+      throw new Error(status.error || 'La préparation de la candidature a échoué.')
+    }
+
+    await wait(2500)
+
+    try {
+      const res = await fetch(
+        `/api/applications/prepare/status/${encodeURIComponent(taskId)}`,
+        { cache: 'no-store' }
+      )
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
+      status = payload
+      networkErrors = 0
+    } catch (err) {
+      if (!(err instanceof TypeError)) throw err
+      networkErrors += 1
+      if (networkErrors >= 5) {
+        throw new Error(
+          'Le serveur est momentanément injoignable pendant la préparation.',
+          { cause: err }
+        )
+      }
+    }
+  }
+
+  throw new Error('La préparation dépasse 10 minutes. Réessayez plus tard.')
+}
+
 function CandidaturesView() {
   const [candidatures, setCandidatures] = useState([])
   const [statuts, setStatuts] = useState({})       // { [id]: { status, applied_at, follow_up_at } }
@@ -1115,7 +1157,9 @@ function App() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-      setPrepareMessage({ type: 'success', text: `Lettre de motivation prête : ${data.id}` })
+      // Compat : un ancien backend répondait 201 avec la candidature directement.
+      const prepared = data.id ? data : await waitForPreparation(data.task_id, data.status)
+      setPrepareMessage({ type: 'success', text: `Lettre de motivation prête : ${prepared.id}` })
       setActiveMode('candidatures')
     } catch (err) {
       setPrepareMessage({
