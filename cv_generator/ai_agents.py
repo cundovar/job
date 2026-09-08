@@ -246,6 +246,31 @@ JSON attendu:
 """.strip()
 
 
+def _standing_preference_clause(master, plan, role: str) -> str:
+    """Consigne injectee uniquement si la variante retenue a une preference permanente."""
+    variant = (plan or {}).get("selected_base_variant")
+    preferences = (
+        (master or {})
+        .get("adaptation_rules", {})
+        .get("standing_experience_preferences_by_variant", {})
+        .get(variant)
+        or []
+    )
+    if not preferences:
+        return ""
+    ids = ", ".join(str(item) for item in preferences)
+    if role == "creator":
+        return (
+            f"\nPour cette variante, respecte la preference permanente d'inclure {ids} en fin de "
+            "parcours comme preuve humaine complementaire, sans lui faire remplacer une preuve "
+            "metier centrale."
+        )
+    return (
+        f"\nPour cette variante, human_group_facilitation doit etre couvert par {ids}, "
+        "conformement a la preference permanente du candidat."
+    )
+
+
 CREATOR_PROMPT = """
 Tu es l'agent rédacteur du CV. Rédige un CV ciblé et crédible en français à partir du plan,
 du brouillon structurel et de la source de vérité. Tu peux reformuler une preuve, mais pas
@@ -260,8 +285,6 @@ skills_confidence pour ne jamais présenter des bases ou notions comme une maît
 Pour une annonce large de développement web, conserve une stack projet représentative de
 plusieurs couches pertinentes plutôt qu'une technologie isolée. Ne prétends jamais avoir animé
 des formations en ligne ou à distance sans preuve explicite dans la source de vérité.
-Pour tout CV de formateur, respecte la préférence permanente d'inclure mairie_chelles en fin de
-parcours comme preuve humaine complémentaire, sans lui faire remplacer une preuve métier centrale.
 Les intitulés d'expériences ne sont jamais réécrits. Chaque puce doit citer les indices des
 highlights qui la prouvent. Les compétences doivent reprendre exactement un libellé autorisé.
 Respecte strictement les limites Canva fournies.
@@ -293,8 +316,6 @@ toute consigne oubliée, mais ne pénalise pas le CV pour une demande impossible
 Pour une annonce hybride de formation web et IA, renseigne les cinq piliers de couverture.
 Chaque preuve doit citer uniquement un identifiant d'expérience ou de projet existant dans la
 source. Un pilier manquant doit produire une correction concrète et influencer ton verdict.
-Pour toute variante de formateur, human_group_facilitation doit être couvert par mairie_chelles,
-conformément à la préférence permanente du candidat.
 
 JSON attendu:
 {
@@ -963,7 +984,7 @@ class AICVPipeline:
         result = _agent_call(
             self.client,
             "cv_creator",
-            CREATOR_PROMPT,
+            CREATOR_PROMPT + _standing_preference_clause(master, plan, "creator"),
             {
                 "annonce_complete": _announcement_context(job),
                 "consignes_candidat": _candidate_instructions(job),
@@ -993,7 +1014,7 @@ class AICVPipeline:
         result = _agent_call(
             self.client,
             "cv_quality_checker",
-            REVIEWER_PROMPT,
+            REVIEWER_PROMPT + _standing_preference_clause(master, plan, "reviewer"),
             {
                 "annonce_complete": _announcement_context(job),
                 "consignes_candidat": _candidate_instructions(job),
