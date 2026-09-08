@@ -11,6 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { PROJECT_ROOT } from '../config.js';
+import { downloadFilename } from '../services/cvDownloads.js';
 
 const MAX_CV_PROCESS_OUTPUT = 10 * 1024 * 1024;
 const CV_PYTHON_BIN = process.env.CV_PYTHON_BIN || 'python3';
@@ -76,6 +77,49 @@ function cvStatus(id) {
     }
   }
   return { exists: fs.existsSync(cvDir), files, review, assessment };
+}
+
+function readApplicationMetadata(id) {
+  const metadataPath = path.join(applicationDir(id), 'metadata.json');
+  try {
+    const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
+    return metadata && typeof metadata === 'object' ? metadata : {};
+  } catch {
+    return {};
+  }
+}
+
+function cvCatalogEntry(id, application = {}) {
+  const metadata = readApplicationMetadata(id);
+  const status = cvStatus(id);
+  const files = status.files;
+  const hasAnyFile = Object.values(files).some(Boolean);
+  if (!hasAnyFile) return null;
+
+  const hasDesignPdf = files['cv_final.pdf'];
+  const hasAtsPdf = files['cv_ats.pdf'];
+  const generatedAt = [
+    'cv_final.pdf',
+    'cv_ats.pdf',
+    'cv_final.html',
+    'cv_final.json',
+  ].map(file => {
+    try {
+      return fs.statSync(path.join(applicationDir(id), 'cv', file)).mtimeMs;
+    } catch {
+      return 0;
+    }
+  }).reduce((latest, value) => Math.max(latest, value), 0);
+
+  return {
+    id,
+    entreprise: application.entreprise || metadata.company || '',
+    poste: application.poste || metadata.job_title || '',
+    date: application.date || String(metadata.created_at || id).slice(0, 10),
+    status: hasDesignPdf && hasAtsPdf ? 'ready' : 'partial',
+    files,
+    generated_at: generatedAt ? new Date(generatedAt).toISOString() : null,
+  };
 }
 
 function hasFreshCvOutputs(id, startedAtMs) {
@@ -330,6 +374,25 @@ export default function createApplicationsRouter(repo) {
     }
   });
 
+  // GET /api/applications/cvs — Catalogue des CV réellement générés
+  router.get('/applications/cvs', async (_req, res) => {
+    try {
+      const applications = await repo.getAll();
+      const byId = new Map(applications.map(application => [application.id, application]));
+      const base = path.resolve(PROJECT_ROOT, 'output/applications');
+      if (!fs.existsSync(base)) return res.json([]);
+      const entries = fs.readdirSync(base, { withFileTypes: true })
+        .filter(entry => entry.isDirectory())
+        .map(entry => cvCatalogEntry(entry.name, byId.get(entry.name)))
+        .filter(Boolean)
+        .sort((a, b) => (b.generated_at || '').localeCompare(a.generated_at || ''));
+      res.json(entries);
+    } catch (err) {
+      console.error('[GET /applications/cvs]', err.message);
+      res.status(500).json({ error: 'Erreur lors de la récupération des CV générés' });
+    }
+  });
+
   // POST /api/applications/prepare — Met la génération de candidature en file
   router.post('/applications/prepare', (req, res) => {
     const job = req.body?.job;
@@ -396,7 +459,12 @@ export default function createApplicationsRouter(repo) {
       if (!CV_FILES.has(file)) return res.status(400).json({ error: 'Fichier CV non autorisé' });
       const filePath = path.join(applicationDir(req.params.id), 'cv', file);
       if (!fs.existsSync(filePath)) return res.status(404).json({ error: `Fichier introuvable : ${file}` });
-      res.download(filePath, file);
+      const application = await repo.getById(req.params.id);
+      const metadata = readApplicationMetadata(req.params.id);
+      res.download(filePath, downloadFilename(application || {
+        entreprise: metadata.company,
+        poste: metadata.job_title,
+      }, file));
     } catch (err) {
       console.error('[GET /applications/:id/cv/download/:file]', err.message);
       res.status(400).json({ error: err.message });

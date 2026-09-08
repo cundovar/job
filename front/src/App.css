@@ -309,6 +309,48 @@ h3 > .lucide {
   font-weight: 700;
   white-space: nowrap;
 }
+
+.cv-library-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-5);
+}
+.cv-library-header h1 {
+  margin-bottom: var(--sp-1);
+}
+.cv-library-header p {
+  margin: 0;
+  color: var(--text-muted);
+}
+.cv-library-list {
+  display: grid;
+  gap: var(--sp-3);
+}
+.cv-library-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-5);
+  padding: var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.cv-library-card h2 {
+  margin: var(--sp-2) 0 var(--sp-1);
+  font-size: var(--fs-lg);
+}
+.cv-library-card .job-meta {
+  margin: var(--sp-3) 0 0;
+}
+.cv-library-downloads {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
 .prepare-message {
   margin-top: var(--sp-3);
 }
@@ -1017,6 +1059,13 @@ h3 > .lucide {
 @media (max-width: 680px) {
   .cv-assessment-grid { align-items: stretch; flex-direction: column; }
   .cv-assessment-heading { align-items: flex-start; }
+  .cv-library-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .cv-library-downloads {
+    justify-content: flex-start;
+  }
 }
 
 /* ============================================================

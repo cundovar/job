@@ -59,6 +59,72 @@ function cvFileUrl(id, file, status) {
   return `/api/applications/${id}/cv/download/${file}`
 }
 
+function CvDownloads({ cv }) {
+  const status = { files: cv.files }
+  return (
+    <div className="cv-library-downloads" aria-label={`Fichiers du CV ${cv.poste || cv.id}`}>
+      {cv.files?.['cv_final.pdf'] && <a className="download-btn primary" href={cvFileUrl(cv.id, 'cv_final.pdf', status)} download><FileDown /> PDF design</a>}
+      {cv.files?.['cv_ats.pdf'] && <a className="download-btn" href={cvFileUrl(cv.id, 'cv_ats.pdf', status)} download><FileDown /> PDF ATS</a>}
+      {cv.files?.['cv_final.html'] && <a className="download-btn" href={cvFileUrl(cv.id, 'cv_final.html', status)} download><Globe /> HTML</a>}
+      {cv.files?.['cv_final.json'] && <a className="download-btn" href={cvFileUrl(cv.id, 'cv_final.json', status)} download>JSON</a>}
+    </div>
+  )
+}
+
+function MesCvView() {
+  const [cvs, setCvs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    fetch('/api/applications/cvs', { cache: 'no-store' })
+      .then(async response => {
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`)
+        return payload
+      })
+      .then(items => { if (active) setCvs(Array.isArray(items) ? items : []) })
+      .catch(() => { if (active) setError('Impossible de charger les CV générés. Vérifie que le serveur est disponible.') })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [])
+
+  return (
+    <section className="candidatures-list cv-library">
+      <header className="cv-library-header">
+        <div>
+          <h1><FileText /> Mes CV</h1>
+          <p>Les CV générés pour tes candidatures, prêts à télécharger.</p>
+        </div>
+        {!loading && <span className="badge">{cvs.length}</span>}
+      </header>
+      {loading && <div className="loading">Chargement des CV…</div>}
+      {error && <div className="backend-warning"><TriangleAlert /> {error}</div>}
+      {!loading && !error && cvs.length === 0 && (
+        <div className="empty-state"><p>Aucun CV généré pour le moment. Génère un CV depuis une candidature préparée.</p></div>
+      )}
+      <div className="cv-library-list">
+        {cvs.map(cv => (
+          <article className="cv-library-card" key={cv.id}>
+            <div>
+              <div className="card-top">
+                <span className={cv.status === 'ready' ? 'badge-postuler' : 'badge-peut-etre'}>
+                  {cv.status === 'ready' ? 'CV prêt' : 'Incomplet'}
+                </span>
+              </div>
+              <h2>{cv.poste || 'Poste non renseigné'}</h2>
+              <p className="job-company">{cv.entreprise || 'Entreprise non renseignée'}</p>
+              <p className="job-meta"><span><Calendar /> {fmtDate(cv.date)}</span></p>
+            </div>
+            <CvDownloads cv={cv} />
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 // Suivi de la file de préparation côté backend (réponse 202 + polling) : une
@@ -1063,6 +1129,7 @@ const NAV_ITEMS = [
   { id: 'recherche', Icon: Search, label: 'Recherches', hint: 'Offres analysées', primary: true },
   { id: 'manual-cv', Icon: Sparkles, label: 'CV', hint: 'Depuis une annonce', primary: true },
   { id: 'candidatures', Icon: PenLine, label: 'Lettres', hint: 'Lettres prêtes', primary: true },
+  { id: 'cvs', Icon: FileText, label: 'Mes CV', hint: 'CV générés', primary: false },
   { id: 'postulees', Icon: CircleCheck, label: 'Postulées', hint: 'Suivi des envois', primary: true },
   { id: 'agencies', Icon: Building2, label: 'Agences', hint: 'Prospection hors annonces' },
   { id: 'weather', Icon: CloudSun, label: 'Météo', hint: 'Direct sans backend' },
@@ -1072,7 +1139,7 @@ function App() {
   const [index, setIndex] = useState(null)
   const [activeSearch, setActiveSearch] = useState(null)
   const [activeCategory, setActiveCategory] = useState('backend')
-  const [activeMode, setActiveMode] = useState('recherche')  // recherche | manual-cv | agencies | candidatures | postulees | weather
+  const [activeMode, setActiveMode] = useState('recherche')  // recherche | manual-cv | cvs | agencies | candidatures | postulees | weather
   const [nbPostulees, setNbPostulees] = useState(0)          // compteur sidebar dynamique
   const [moreOpen, setMoreOpen] = useState(false)            // feuille « Plus » (mobile)
   const [jobs, setJobs] = useState([])
@@ -1250,6 +1317,8 @@ function App() {
           <ManualCvView onOpenCandidatures={() => setActiveMode('candidatures')} />
         ) : activeMode === 'candidatures' ? (
           <CandidaturesView />
+        ) : activeMode === 'cvs' ? (
+          <MesCvView />
         ) : activeMode === 'postulees' ? (
           <PostuleesView />
         ) : activeMode === 'weather' ? (
