@@ -377,11 +377,15 @@ def _agent_call(
     raise CVAgentError(f"Réponse invalide de l'agent {agent_name}")
 
 
-def _truth_context(master: Dict[str, Any]) -> Dict[str, Any]:
+def _truth_context(master: Dict[str, Any], role: str) -> Dict[str, Any]:
+    """Return only the source-of-truth fields useful to a given AI role.
+
+    The full master profile is intentionally not sent to every agent: repeated
+    irrelevant sections increase prompt size and latency without improving the
+    grounded Python guardrails that still validate the result afterwards.
+    """
     person = master.get("person", {})
-    return {
-        "usage": master.get("usage", {}),
-        "agent_contracts": master.get("agent_contracts", {}),
+    common = {
         "person": {
             "display_name": person.get("display_name"),
             "location": person.get("location"),
@@ -389,16 +393,29 @@ def _truth_context(master: Dict[str, Any]) -> Dict[str, Any]:
             "education": person.get("education", []),
             "eligibility": person.get("eligibility", {}),
         },
-        "positioning": master.get("positioning", {}),
-        "cv_variants": master.get("cv_variants", []),
         "skills_confidence": master.get("skills_confidence", {}),
         "experience_catalog": master.get("experience_catalog", {}),
         "project_catalog": master.get("project_catalog", {}),
-        "approved_phrases": master.get("approved_phrases", {}),
-        "forbidden_claims": master.get("forbidden_claims", []),
         "layout_constraints": master.get("layout_constraints", {}),
-        "adaptation_rules": master.get("adaptation_rules", {}),
     }
+
+    if role == "analyzer":
+        common.update({
+            "positioning": master.get("positioning", {}),
+            "cv_variants": master.get("cv_variants", []),
+            "adaptation_rules": master.get("adaptation_rules", {}),
+        })
+    elif role in {"creator", "reviser"}:
+        common.update({
+            "forbidden_claims": master.get("forbidden_claims", []),
+            "adaptation_rules": master.get("adaptation_rules", {}),
+        })
+    elif role == "reviewer":
+        common.update({
+            "forbidden_claims": master.get("forbidden_claims", []),
+            "adaptation_rules": master.get("adaptation_rules", {}),
+        })
+    return common
 
 
 def _agent_run(result: AgentResult) -> Dict[str, str]:
@@ -968,7 +985,7 @@ class AICVPipeline:
             {
                 "annonce_complete": _announcement_context(job),
                 "consignes_candidat": _candidate_instructions(job),
-                "source_verite": _truth_context(master),
+                "source_verite": _truth_context(master, "analyzer"),
                 "preanalyse_python": rule_plan,
             },
         )
@@ -988,7 +1005,7 @@ class AICVPipeline:
             {
                 "annonce_complete": _announcement_context(job),
                 "consignes_candidat": _candidate_instructions(job),
-                "source_verite": _truth_context(master),
+                "source_verite": _truth_context(master, "creator"),
                 "plan_adaptation": plan,
                 "brouillon_structurel_python": base,
             },
@@ -1018,7 +1035,7 @@ class AICVPipeline:
             {
                 "annonce_complete": _announcement_context(job),
                 "consignes_candidat": _candidate_instructions(job),
-                "source_verite": _truth_context(master),
+                "source_verite": _truth_context(master, "reviewer"),
                 "plan_adaptation": plan,
                 "cv_a_juger": draft,
                 "controle_python": deterministic,
@@ -1041,7 +1058,7 @@ class AICVPipeline:
             {
                 "annonce_complete": _announcement_context(job),
                 "consignes_candidat": _candidate_instructions(job),
-                "source_verite": _truth_context(master),
+                "source_verite": _truth_context(master, "reviser"),
                 "plan_adaptation": plan,
                 "brouillon": draft,
                 "jugement": review,

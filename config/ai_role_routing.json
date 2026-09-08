@@ -41,11 +41,29 @@
     }
   },
   "roles": {
-    "job_offer_analyzer": ["deepseek_job", "codex_low", "claude_sonnet"],
-    "cv_job_analyzer": ["claude_sonnet", "codex_medium", "deepseek_cv"],
-    "cv_creator": ["codex_medium", "claude_sonnet", "deepseek_cv"],
-    "cv_quality_checker": ["claude_opus_5", "codex_high", "deepseek_cv"],
-    "cv_style_reviser": ["codex_medium", "claude_sonnet", "deepseek_cv"],
-    "agent_redacteur_lettres": ["claude_opus_5", "codex_medium", "deepseek_cv"]
+    "job_offer_analyzer": [
+      "deepseek_job",
+      "codex_low"
+    ],
+    "cv_job_analyzer": [
+      "deepseek_cv",
+      "codex_low"
+    ],
+    "cv_creator": [
+      "codex_medium",
+      "deepseek_cv"
+    ],
+    "cv_quality_checker": [
+      "deepseek_cv",
+      "codex_medium"
+    ],
+    "cv_style_reviser": [
+      "codex_medium",
+      "deepseek_cv"
+    ],
+    "agent_redacteur_lettres": [
+      "codex_medium",
+      "deepseek_cv"
+    ]
   }
 }
