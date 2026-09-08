@@ -8,7 +8,7 @@ enabled_sources:
   wttj: false
   emploi_asso: false
   emploi_ess: true
-  lesjeudis: false
+  lesjeudis: true
   mail_alerts: true
   jooble: false
   remoteok: false
