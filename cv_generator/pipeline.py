@@ -10,7 +10,7 @@ from .cv_assessment import build_cv_assessment
 from .exporters import cv_to_html, cv_to_pdf
 from .utils import load_json, save_json
 
-MAX_AUTOMATIC_REVISION_ROUNDS = 3
+MAX_AUTOMATIC_REVISION_ROUNDS = 1
 REVISION_STATUSES = {"needs_revision", "needs_minor_revision"}
 
 
