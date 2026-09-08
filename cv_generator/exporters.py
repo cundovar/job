@@ -22,6 +22,14 @@ DEFAULT_PORTRAIT = Path(__file__).resolve().parent.parent / "assets" / "cv" / "f
 PDF_PORTRAIT_DIAMETER = 119.0
 
 
+def _project_text(project) -> str:
+    description = str(project.get("description", "")).strip()
+    tech = ", ".join(project.get("technologies", []))
+    if description and tech:
+        return f"{description} \u00b7 {tech}"
+    return description or tech
+
+
 def _display_url(value: Any) -> str:
     raw = str(value or "").strip()
     parsed = urlparse(raw)
@@ -433,12 +441,12 @@ def cv_to_pdf(
             y -= max(meta_h, desc_h) + 17.0 * scale
         if cv.get("projects"):
             y -= 36.0 * scale
-            project = cv["projects"][0]
-            y -= text_height(project.get("title", ""), main_w, title_size, title_leading, True)
-            project_text = f"{project.get('description', '')} - {', '.join(project.get('technologies', []))}"
-            y -= 4.0 * scale + text_height(project_text, main_w, body_size, leading)
-            if project.get("links"):
-                y -= 2.0 * scale + text_height(_display_url(project["links"][0]), main_w, body_size, leading)
+            for project in cv["projects"][:2]:
+                y -= text_height(project.get("title", ""), main_w, title_size, title_leading, True)
+                y -= 4.0 * scale + text_height(_project_text(project), main_w, body_size, leading)
+                if project.get("links"):
+                    y -= 2.0 * scale + text_height(_display_url(project["links"][0]), main_w, body_size, leading)
+                y -= 10.0 * scale
         if cv.get("education"):
             y -= 22.0 * scale + 36.0 * scale
             for edu in cv.get("education", []):
@@ -552,15 +560,16 @@ def cv_to_pdf(
 
     projects = cv.get("projects", [])
     if projects:
-        y = draw_section("Projet personnel", main_x, y, content_scale)
-        project = projects[0]
-        y = draw_wrapped(str(project.get("title", "")), main_x, y, main_w, title_size, title_leading, bold=True, color=primary)
-        y -= 4.0 * content_scale
-        project_text = f"{project.get('description', '')} - {', '.join(project.get('technologies', []))}"
-        y = draw_wrapped(project_text, main_x, y, main_w, body_size, leading, color=secondary)
-        if project.get("links"):
-            y -= 2.0 * content_scale
-            y = draw_wrapped(_display_url(project["links"][0]), main_x, y, main_w, body_size, leading, color=accent)
+        section_title = "Projets personnels" if len(projects[:2]) > 1 else "Projet personnel"
+        y = draw_section(section_title, main_x, y, content_scale)
+        for project in projects[:2]:
+            y = draw_wrapped(str(project.get("title", "")), main_x, y, main_w, title_size, title_leading, bold=True, color=primary)
+            y -= 4.0 * content_scale
+            y = draw_wrapped(_project_text(project), main_x, y, main_w, body_size, leading, color=secondary)
+            if project.get("links"):
+                y -= 2.0 * content_scale
+                y = draw_wrapped(_display_url(project["links"][0]), main_x, y, main_w, body_size, leading, color=accent)
+            y -= 10.0 * content_scale
 
     if cv.get("education"):
         y -= 22.0 * content_scale
