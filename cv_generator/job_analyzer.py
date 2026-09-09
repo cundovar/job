@@ -126,6 +126,11 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
     catalog = master.get("experience_catalog", {})
     variant_id = selected.get("id", "")
     preferred = master.get("adaptation_rules", {}).get("experience_priority_by_variant", {}).get(variant_id, [])
+    excluded = set(
+        master.get("adaptation_rules", {})
+        .get("excluded_experiences_by_variant", {})
+        .get(variant_id, [])
+    )
     refs = selected.get("experience_refs", [])
     ordered_ids = []
     for exp_id in preferred + refs + list(catalog.keys()):
@@ -133,6 +138,8 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
             ordered_ids.append(exp_id)
     plan = []
     for exp_id in ordered_ids:
+        if exp_id in excluded:
+            continue
         exp = catalog[exp_id]
         matched_tags = [tag for tag in exp.get("tags", []) if normalize(tag) in text]
         trigger_tags = exp.get("selection_triggers", exp.get("tags", []))
