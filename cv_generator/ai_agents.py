@@ -474,10 +474,22 @@ def _allowed_skills(master: Dict[str, Any]) -> Dict[str, str]:
     return {normalize(skill): str(skill) for skill in skills if normalize(skill)}
 
 
-def _sanitize_skill_mapping(value: Any, master: Dict[str, Any]) -> Dict[str, List[str]]:
+def _sanitize_skill_mapping(
+    value: Any,
+    master: Dict[str, Any],
+    variant_id: str = "",
+) -> Dict[str, List[str]]:
     if not isinstance(value, dict):
         return {}
     allowed = _allowed_skills(master)
+    excluded = {
+        normalize(skill)
+        for skill in (
+            master.get("adaptation_rules", {})
+            .get("excluded_skills_by_variant", {})
+            .get(variant_id, [])
+        )
+    }
     result: Dict[str, List[str]] = {}
     used = 0
     max_sections = int(master.get("layout_constraints", {}).get("max_skill_sections", 4))
@@ -488,7 +500,7 @@ def _sanitize_skill_mapping(value: Any, master: Dict[str, Any]) -> Dict[str, Lis
         picked: List[str] = []
         for item in items:
             canonical = allowed.get(normalize(item))
-            if canonical and canonical not in picked:
+            if canonical and normalize(canonical) not in excluded and canonical not in picked:
                 picked.append(canonical)
             if len(picked) >= min(8, max_items - used):
                 break
@@ -601,9 +613,9 @@ def _sanitize_plan(
 
     raw_skills = proposed.get("skills_to_emphasize")
     if isinstance(raw_skills, dict):
-        skills = _sanitize_skill_mapping(raw_skills, master)
+        skills = _sanitize_skill_mapping(raw_skills, master, variant_id)
     else:
-        skills = _sanitize_skill_mapping(selected.get("skills", {}), master)
+        skills = _sanitize_skill_mapping(selected.get("skills", {}), master, variant_id)
     title_default = (
         master.get("positioning", {}).get("title_variants", {}).get(variant_id)
         or selected.get("title")
@@ -655,6 +667,7 @@ def _sanitize_skill_sections(
     value: Any,
     base_cv: Dict[str, Any],
     master: Dict[str, Any],
+    variant_id: str = "",
 ) -> List[Dict[str, Any]]:
     mapping: Dict[str, List[str]] = {}
     if isinstance(value, list):
@@ -662,14 +675,14 @@ def _sanitize_skill_sections(
             if isinstance(section, dict):
                 mapping[str(section.get("title") or "Compétences")] = section.get("items", [])
     if isinstance(value, list):
-        sanitized = _sanitize_skill_mapping(mapping, master)
+        sanitized = _sanitize_skill_mapping(mapping, master, variant_id)
     else:
         sanitized = {
             str(section.get("title") or "Compétences"): section.get("items", [])
             for section in base_cv.get("skills", [])
             if isinstance(section, dict)
         }
-    sanitized = _sanitize_skill_mapping(sanitized, master)
+    sanitized = _sanitize_skill_mapping(sanitized, master, variant_id)
     return [{"title": title, "items": items} for title, items in sanitized.items()]
 
 
@@ -919,6 +932,7 @@ def _sanitize_cv_content(
             proposed.get("skills"),
             base_cv,
             master,
+            str(plan.get("selected_base_variant") or ""),
         ),
         "experiences": experiences,
         "projects": projects,
