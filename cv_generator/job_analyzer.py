@@ -36,6 +36,14 @@ def _score_variant(text: str, variant: Dict[str, Any], master: Dict[str, Any]) -
 def _select_variant(job: Dict[str, Any], master: Dict[str, Any]) -> Dict[str, Any]:
     text = job_text(job)
     variants = master.get("cv_variants", [])
+
+    # A teaching role remains a teaching CV even when the subject is technical:
+    # otherwise each mention of PHP/Symfony/React wrongly routes it to fullstack.
+    teaching_terms = ["formateur", "formation", "enseignant", "apprenants", "pédagogie", "pedagogie"]
+    web_development_terms = ["developpement web", "développement web", "html", "css", "javascript", "react", "php", "symfony", "wordpress"]
+    if contains_any(text, teaching_terms) and contains_any(text, web_development_terms):
+        return next((variant for variant in variants if variant.get("id") == "formateur_developpement_web"), {})
+
     scored: List[Tuple[int, int, Dict[str, Any]]] = []
     default_priority = master.get("positioning", {}).get("default_priority", [])
     for variant in variants:
