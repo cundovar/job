@@ -8,10 +8,11 @@ from typing import Any, Dict, Iterable, List, Protocol
 
 from openai import OpenAI
 
-from cv_generator.cv_creator import create_cv_draft
+from cv_generator.cv_creator import apply_experience_presentation, create_cv_draft
 from cv_generator.cv_quality_checker import review_cv as review_cv_rules
 from cv_generator.job_analyzer import (
     _max_experiences,
+    _period_sort_key,
     analyze_job_for_cv as analyze_job_rules,
 )
 from cv_generator.utils import compact_items, flatten_skills, normalize, period_to_text
@@ -239,6 +240,11 @@ JSON attendu:
   "experience_plan": [
     {"experience_id":"...","priority":10,"reason":"...","highlight_indexes":[0,1]}
   ],
+  "critical_requirements":[{"requirement":"...","importance":"high"}],
+  "evidence_matches":[{"requirement":"...","evidence_id":"id existant","project_ids":["..."]}],
+  "presentation_strategy":{"experience_display_mode":"individual|grouped_missions","experience_group_id":"...","member_ids":["..."]},
+  "section_order":["profile","skills","projects","experiences","education"],
+  "selected_projects":["id projet existant"],
   "skills_to_emphasize": {"nom_section":["compétence exacte de la source"]},
   "skills_to_reduce": ["..."],
   "warnings": ["..."]
@@ -287,6 +293,11 @@ plusieurs couches pertinentes plutôt qu'une technologie isolée. Ne prétends j
 des formations en ligne ou à distance sans preuve explicite dans la source de vérité.
 Les intitulés d'expériences ne sont jamais réécrits. Chaque puce doit citer les indices des
 highlights qui la prouvent. Les compétences doivent reprendre exactement un libellé autorisé.
+Respecte la presentation_strategy et section_order du plan. Quand grouped_missions est demandé,
+les missions restent sourcées séparément dans ta réponse : le moteur les regroupera sans perdre
+leur provenance. Pour une annonce IA, rends visibles les projets qui prouvent Python, MCP,
+l'orchestration et les boucles de contrôle. N'écris pas « profil transférable » et n'utilise pas
+« bases en Python » dans l'accroche : montre le niveau réel par les réalisations disponibles.
 Respecte strictement les limites Canva fournies.
 
 JSON attendu:
@@ -315,12 +326,14 @@ Vérifie aussi que les consignes_candidat réalisables ont été respectées. Si
 toute consigne oubliée, mais ne pénalise pas le CV pour une demande impossible ou non sourcée.
 Pour une annonce hybride de formation web et IA, renseigne les cinq piliers de couverture.
 Chaque preuve doit citer uniquement un identifiant d'expérience ou de projet existant dans la
-source. Un pilier manquant doit produire une correction concrète et influencer ton verdict.
+source. Un pilier manquant doit produire une correction concrète et influencer ton verdict.\nPour chaque exigence critique du plan, vérifie qu'une expérience ou un projet visible apporte\nune preuve. Une technologie demandée mais absente de la source est un écart honnête non réparable :
+ne la classe pas en sévérité haute et ne déclenche pas une révision à elle seule. Utilise le code
+SKILL_WITHOUT_EVIDENCE lorsqu'une compétence importante est\naffichée ou demandée sans preuve concrète visible dans le CV.
 
 JSON attendu:
 {
   "strengths":["..."],
-  "problems":[{"severity":"high|medium|low","section":"...","problem":"...","suggested_fix":"..."}],
+  "problems":[{"code":"SKILL_WITHOUT_EVIDENCE|autre_code","severity":"high|medium|low","section":"...","problem":"...","suggested_fix":"..."}],
   "missing_keywords":["..."],
   "overrepresented_keywords":["..."],
   "forbidden_claims_found":["..."],
@@ -352,7 +365,9 @@ la source de vérité ou exige une invention, ignore seulement cette partie et r
 Respecte les niveaux de skills_confidence et l'ordre antéchronologique. Une exigence de l'annonce
 absente de la source reste un écart honnête; elle ne doit jamais être transformée en compétence.
 Utilise evidence_coverage du jugement pour combler chaque pilier partiel ou manquant avec les
-meilleures preuves disponibles, sans forcer un identifiant particulier.
+meilleures preuves disponibles, sans forcer un identifiant particulier. Priorise les corrections
+SKILL_WITHOUT_EVIDENCE : ajoute une preuve sourcée visible ou retire la compétence insuffisamment
+étayée. Préserve presentation_strategy et section_order du plan.
 Respecte les limites Canva. Retourne le même schéma JSON que l'agent rédacteur:
 title, profile, skills, experiences avec bullets {text, source_highlight_indexes}, projects
 avec un sous-ensemble de technologies exactes, et education avec les intitulés exacts à conserver.
@@ -396,6 +411,8 @@ def _truth_context(master: Dict[str, Any], role: str) -> Dict[str, Any]:
         "skills_confidence": master.get("skills_confidence", {}),
         "experience_catalog": master.get("experience_catalog", {}),
         "project_catalog": master.get("project_catalog", {}),
+        "evidence_catalog": master.get("evidence_catalog", {}),
+        "experience_groups": master.get("experience_groups", {}),
         "layout_constraints": master.get("layout_constraints", {}),
     }
 
@@ -536,8 +553,52 @@ def _sanitize_plan(
             indexes = [highlights.index(text) for text in item.get("highlights", []) if text in highlights][:3]
             experience_plan.append({**item, "highlight_indexes": indexes})
             seen.add(exp_id)
+
+    # Required experiences are a hard contract from the master profile.
+    # Re-inject them even when the AI proposes its own experience plan.
+    required_ids = master.get("adaptation_rules", {}).get("required_experiences_by_variant", {}).get(variant_id, [])
+    for exp_id in required_ids:
+        if exp_id in seen or exp_id not in catalog:
+            continue
+        rule_item = rule_by_id.get(exp_id, {})
+        highlights = catalog[exp_id].get("highlights", [])
+        indexes = [highlights.index(text) for text in rule_item.get("highlights", []) if text in highlights][:3]
+        if not indexes:
+            indexes = list(range(min(3, len(highlights))))
+        experience_plan.append({
+            "experience_id": exp_id,
+            "priority": int(rule_item.get("priority") or 100),
+            "selection_role": rule_item.get("selection_role", catalog[exp_id].get("cv_role", "core")),
+            "reason": rule_item.get("reason") or "Expérience obligatoire pour cette variante.",
+            "highlight_indexes": indexes,
+            "highlights": [highlights[index] for index in indexes],
+        })
+        seen.add(exp_id)
+
     max_experiences = _max_experiences(master, variant_id)
-    experience_plan = experience_plan[:max_experiences]
+    # Keep all mandatory experiences within the slot limit, then fill remaining
+    # slots with the AI-selected experiences. Presentation order is handled later.
+    required_set = set(required_ids)
+    mandatory = [item for item in experience_plan if item.get("experience_id") in required_set]
+    optional = [item for item in experience_plan if item.get("experience_id") not in required_set]
+    experience_plan = (mandatory + optional)[:max_experiences]
+    presentation_strategy = {"experience_display_mode": "individual"}
+    final_ids = [item.get("experience_id") for item in experience_plan]
+    for group_id, group in master.get("experience_groups", {}).items():
+        if variant_id not in group.get("allowed_variants", []):
+            continue
+        member_ids = [item for item in final_ids if item in group.get("member_ids", [])]
+        for alternatives in group.get("mutually_exclusive_sets", []):
+            present = [item for item in member_ids if item in alternatives]
+            member_ids = [item for item in member_ids if item not in alternatives] + present[:1]
+        if len(member_ids) >= int(group.get("min_selected_members", 2)):
+            presentation_strategy = {
+                "experience_display_mode": group.get("display_mode", "grouped_missions"),
+                "experience_group_id": group_id,
+                "member_ids": member_ids,
+            }
+            break
+
     raw_skills = proposed.get("skills_to_emphasize")
     if isinstance(raw_skills, dict):
         skills = _sanitize_skill_mapping(raw_skills, master)
@@ -570,6 +631,11 @@ def _sanitize_plan(
             limit=14,
         ),
         "experience_plan": experience_plan,
+        "critical_requirements": rule_plan.get("critical_requirements", []),
+        "evidence_matches": rule_plan.get("evidence_matches", []),
+        "presentation_strategy": presentation_strategy,
+        "section_order": rule_plan.get("section_order", ["profile", "skills", "experiences", "projects", "education"]),
+        "selected_projects": rule_plan.get("selected_projects", []),
         "skills_to_emphasize": skills,
         "skills_to_reduce": _as_string_list(proposed.get("skills_to_reduce"), limit=8),
         "warnings": _as_string_list(proposed.get("warnings"), limit=8),
@@ -690,6 +756,14 @@ def _sanitize_cv_content(
                 })
             )
             ordered_ids.add(exp_id)
+
+    # The final AI draft/revision may omit planned experiences. The trusted plan
+    # is authoritative, so append every planned experience that the AI dropped.
+    for plan_item in plan.get("experience_plan", []):
+        exp_id = plan_item.get("experience_id")
+        if exp_id in catalog and exp_id not in ordered_ids:
+            ordered_plan_items.append(plan_item)
+            ordered_ids.add(exp_id)
     experiences: List[Dict[str, Any]] = []
     grounding: List[Dict[str, Any]] = []
     max_bullets = int(constraints.get("max_bullets_per_experience", 3))
@@ -730,7 +804,7 @@ def _sanitize_cv_content(
             )
             if len(bullets) >= max_bullets:
                 break
-        if not isinstance(raw_bullets, list):
+        if not bullets:
             fallback_indexes = sorted(allowed_indexes)[:max_bullets]
             for index in fallback_indexes:
                 text = _remove_forbidden(_clip(highlights[index], max_chars), forbidden)
@@ -757,10 +831,40 @@ def _sanitize_cv_content(
                     "links": source.get("links", [])[:2],
                 }
             )
+
+    # The AI may return experiences in a relevance-driven order. The rendered CV
+    # must always be reverse chronological, based on the trusted master periods.
+    experiences.sort(
+        key=lambda item: _period_sort_key(catalog.get(item.get("id"), {}).get("period")),
+        reverse=True,
+    )
+    experiences = apply_experience_presentation(experiences, plan, master)
     projects: List[Dict[str, Any]] = []
     raw_projects = proposed.get("projects")
     if not isinstance(raw_projects, list):
         raw_projects = base_cv.get("projects", [])
+    else:
+        raw_projects = list(raw_projects)
+
+    # Required projects from the master survive AI drafting/revision.
+    variant_id = str(plan.get("selected_base_variant") or "")
+    required_project_ids = list(dict.fromkeys([
+        *master.get("adaptation_rules", {}).get("required_projects_by_variant", {}).get(variant_id, []),
+        *plan.get("selected_projects", []),
+    ]))
+    present_project_ids = {item.get("id") for item in raw_projects if isinstance(item, dict)}
+    required_project_items = []
+    for project_id in required_project_ids:
+        if project_id in master.get("project_catalog", {}):
+            existing = next((item for item in raw_projects if isinstance(item, dict) and item.get("id") == project_id), None)
+            required_project_items.append(existing or {"id": project_id})
+            present_project_ids.add(project_id)
+    optional_project_items = [
+        item for item in raw_projects
+        if not (isinstance(item, dict) and item.get("id") in set(required_project_ids))
+    ]
+    raw_projects = required_project_items + optional_project_items
+
     for item in raw_projects:
         if not isinstance(item, dict):
             continue
@@ -808,6 +912,7 @@ def _sanitize_cv_content(
             forbidden,
         ),
         "profile": profile,
+        "section_order": base_cv.get("section_order", plan.get("section_order", ["skills", "experiences", "projects", "education"])),
         "contact": base_cv.get("contact", {}),
         "location": base_cv.get("location", ""),
         "skills": _sanitize_skill_sections(
@@ -856,6 +961,7 @@ def _normalize_problems(value: Any) -> List[Dict[str, str]]:
             continue
         result.append(
             {
+                "code": _clip(item.get("code"), 80),
                 "severity": severity,
                 "section": _clip(item.get("section"), 80, "general"),
                 "problem": problem,
@@ -918,7 +1024,7 @@ def _merge_review(
 ) -> Dict[str, Any]:
     problems = _normalize_problems(proposed.get("problems"))
     known = {(item["section"], item["problem"]) for item in problems}
-    technical_sections = {"truthfulness", "header", "profile", "skills", "experiences"}
+    technical_sections = {"truthfulness", "header", "profile", "skills", "experiences", "evidence"}
     technical_problems = [
         item
         for item in _normalize_problems(deterministic.get("problems"))
@@ -956,6 +1062,7 @@ def _merge_review(
         "status": status,
         "strengths": _as_string_list(proposed.get("strengths"), 10),
         "problems": problems,
+        "problem_codes": sorted({item.get("code") for item in problems if item.get("code")}),
         "missing_keywords": missing,
         "overrepresented_keywords": _as_string_list(proposed.get("overrepresented_keywords"), 20),
         "forbidden_claims_found": forbidden,

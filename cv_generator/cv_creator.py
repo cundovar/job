@@ -66,6 +66,66 @@ def _experiences(plan: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str,
     return result
 
 
+
+def apply_experience_presentation(
+    experiences: List[Dict[str, Any]],
+    plan: Dict[str, Any],
+    master: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Collapse selected overlapping missions only when the analysis requests it."""
+    strategy = plan.get("presentation_strategy", {})
+    if strategy.get("experience_display_mode") != "grouped_missions":
+        return experiences
+    group_id = strategy.get("experience_group_id")
+    group = master.get("experience_groups", {}).get(group_id, {})
+    requested = set(strategy.get("member_ids", []))
+    members = [item for item in experiences if item.get("id") in requested]
+    if len(members) < int(group.get("min_selected_members", 2)):
+        return experiences
+    member_ids = {item.get("id") for item in members}
+    suppressed_ids = set(member_ids)
+    for alternatives in group.get("mutually_exclusive_sets", []):
+        if member_ids.intersection(alternatives):
+            suppressed_ids.update(alternatives)
+    bullets = []
+    links = []
+    organizations = []
+    for item in members:
+        organization = str(item.get("organization") or "").strip()
+        if organization and organization not in organizations:
+            organizations.append(organization)
+        first_bullet = next(iter(item.get("bullets", [])), "")
+        if first_bullet:
+            bullets.append(f"{organization} — {first_bullet}" if organization else first_bullet)
+        for link in item.get("links", []):
+            if link not in links:
+                links.append(link)
+    grouped = {
+        "id": group_id,
+        "source_experience_ids": [item.get("id") for item in members],
+        "selection_role": "core",
+        "organization": " · ".join(organizations),
+        "title": group.get("title", "Missions et projets professionnels"),
+        "period": period_to_text(group.get("period")),
+        "bullets": compact_items(
+            bullets,
+            limit=int(master.get("layout_constraints", {}).get("max_bullets_per_experience", 3)),
+            max_chars=int(master.get("layout_constraints", {}).get("max_bullet_chars", 145)),
+        ),
+        "links": links[:2],
+    }
+    result = []
+    inserted = False
+    for item in experiences:
+        if item.get("id") in suppressed_ids:
+            if not inserted:
+                result.append(grouped)
+                inserted = True
+            continue
+        result.append(item)
+    return result
+
+
 def _projects(job: Dict[str, Any], plan: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str, Any]]:
     variant = plan.get("selected_base_variant")
     max_projects = int(master.get("layout_constraints", {}).get("max_projects", 1))
@@ -134,10 +194,11 @@ def create_cv_draft(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str,
     cv = {
         "title": plan.get("target_title", "Développeur web / Webmaster"),
         "profile": profile,
+        "section_order": plan.get("section_order", ["skills", "experiences", "projects", "education"]),
         "contact": person.get("contact", {}),
         "location": person.get("location", "Paris / Île-de-France"),
         "skills": _skills_sections(plan, master),
-        "experiences": _experiences(plan, master),
+        "experiences": apply_experience_presentation(_experiences(plan, master), plan, master),
         "projects": _projects(job, plan, master),
         "education": _education_for_job(
             job,

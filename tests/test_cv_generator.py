@@ -1210,3 +1210,60 @@ def test_cv_llm_client_prefers_subscription_cli_bridge(monkeypatch):
     assert fake_socket.path == "/tmp/test-cv-bridge.sock"
     assert result.provider == "codex_cli"
     assert result.data == {"status": "ok"}
+
+
+def test_master_uses_user_confirmed_experience_dates():
+    master = load_json("data/cv_master_profile.json")
+    catalog = master["experience_catalog"]
+
+    assert catalog["pole_s"]["period"] == {
+        "start": "2025-01", "end": "2026-03", "date_confidence": "confirmed_by_user"
+    }
+    assert catalog["bioconcept_accueil"]["period"]["start"] == "2023-08"
+    assert catalog["illustration_neva"]["period"] == {
+        "start": "2022-03", "end": "2022-12", "date_confidence": "confirmed_by_user"
+    }
+
+
+def test_technical_overlaps_are_grouped_by_strategy():
+    master = load_json("data/cv_master_profile.json")
+    job = {
+        "title": "Développeur full stack React Symfony",
+        "description": "Développement React, Symfony, API REST et WordPress.",
+    }
+
+    plan = analyze_job_for_cv(job, master)
+    draft = create_cv_draft(job, master, plan)
+
+    assert plan["presentation_strategy"]["experience_display_mode"] == "grouped_missions"
+    grouped = next(item for item in draft["cv"]["experiences"] if item["id"] == "technical_missions_2026")
+    assert len(grouped["source_experience_ids"]) >= 2
+    assert grouped["period"] == "2026-03 – Aujourd'hui"
+
+
+def test_quality_checker_reports_skill_without_visible_evidence():
+    master = load_json("data/cv_master_profile.json")
+    plan = {
+        "selected_base_variant": "automatisation",
+        "priority_keywords": ["MCP"],
+        "evidence_matches": [{
+            "requirement": "MCP",
+            "evidence_id": "wordpress_mcp_pipeline",
+            "project_ids": ["wp_site_builder"],
+        }],
+    }
+    draft = {
+        "base_variant": "automatisation",
+        "cv": {
+            "title": "Développeur automatisation",
+            "profile": "Développement et intégrations MCP.",
+            "skills": [{"title": "IA", "items": ["MCP (Model Context Protocol)"]}],
+            "experiences": [],
+            "projects": [],
+        },
+    }
+
+    review = review_cv({"title": "Développeur MCP"}, master, plan, draft)
+
+    assert "SKILL_WITHOUT_EVIDENCE" in review["problem_codes"]
+    assert review["status"] == "needs_revision"

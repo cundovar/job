@@ -36,6 +36,30 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
             "problem": "Certains mots-clés prioritaires de l'annonce ne sont pas visibles dans le CV.",
             "suggested_fix": "Ajouter les mots-clés manquants quand ils sont vrais dans le profil.",
         })
+    visible_project_ids = {item.get("id") for item in cv.get("projects", [])}
+    visible_experience_ids = set()
+    for item in cv.get("experiences", []):
+        visible_experience_ids.add(item.get("id"))
+        visible_experience_ids.update(item.get("source_experience_ids", []))
+    evidence_by_requirement = {}
+    for match in plan.get("evidence_matches", []):
+        requirement = str(match.get("requirement") or "compétence")
+        target = evidence_by_requirement.setdefault(requirement, {"project_ids": set(), "experience_ids": set()})
+        target["project_ids"].update(match.get("project_ids", []))
+        target["experience_ids"].update(match.get("experience_ids", []))
+    for requirement, evidence in evidence_by_requirement.items():
+        project_ids = evidence["project_ids"]
+        experience_ids = evidence["experience_ids"]
+        if (project_ids or experience_ids) and not (
+            project_ids & visible_project_ids or experience_ids & visible_experience_ids
+        ):
+            problems.append({
+                "code": "SKILL_WITHOUT_EVIDENCE",
+                "severity": "high",
+                "section": "evidence",
+                "problem": f"L'exigence importante « {requirement} » ne possède aucune preuve visible dans le CV.",
+                "suggested_fix": "Ajouter un projet ou une expérience sourcée correspondant à cette exigence.",
+            })
     profile = cv.get("profile", "")
     if len(profile) > int(constraints.get("max_profile_chars", 240)):
         problems.append({"severity": "medium", "section": "profile", "problem": "Résumé trop long pour Canva.", "suggested_fix": "Réduire le résumé à deux phrases."})
@@ -84,8 +108,11 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
         })
     quality_score = max(0, 100 - len(problems) * 9 - len(missing) * 2 - len(forbidden_hits) * 12)
     ats_score = max(0, 100 - len(missing) * 6)
+    has_high_severity = any(item.get("severity") == "high" for item in problems)
     status = "validated" if quality_score >= 85 and not forbidden_hits else "needs_revision"
-    if problems and quality_score >= 85:
+    if has_high_severity:
+        status = "needs_revision"
+    elif problems and quality_score >= 85:
         status = "needs_minor_revision"
     return {
         "agent": "cv_quality_checker",
@@ -97,6 +124,7 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
             "CV généré depuis le catalogue source sans ajout libre.",
         ],
         "problems": problems,
+        "problem_codes": sorted({item.get("code") for item in problems if item.get("code")}),
         "missing_keywords": missing,
         "overrepresented_keywords": [],
         "forbidden_claims_found": forbidden_hits,

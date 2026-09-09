@@ -161,11 +161,125 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
     plan.sort(key=lambda item: item["priority"], reverse=True)
     max_experiences = _max_experiences(master, variant_id)
     selected_plan = _select_experience_mix(plan, catalog, max_experiences)
+
+    # Some variants have experiences that are essential evidence for the target role.
+    # Guarantee them after relevance selection, then sort the final mix by date.
+    required_ids = master.get("adaptation_rules", {}).get("required_experiences_by_variant", {}).get(variant_id, [])
+    selected_ids = {item.get("experience_id") for item in selected_plan}
+    plan_by_id = {item.get("experience_id"): item for item in plan}
+    for required_id in required_ids:
+        if required_id in selected_ids or required_id not in catalog:
+            continue
+        required_item = plan_by_id.get(required_id)
+        if required_item is None:
+            exp = catalog[required_id]
+            required_item = {
+                "experience_id": required_id,
+                "priority": 100,
+                "selection_role": exp.get("cv_role", "core"),
+                "reason": f"Expérience requise pour la variante {variant_id}.",
+                "highlights": compact_items(exp.get("highlights", []), limit=3, max_chars=145),
+            }
+        if len(selected_plan) >= max_experiences:
+            replace_index = next(
+                (i for i in range(len(selected_plan) - 1, -1, -1)
+                 if selected_plan[i].get("experience_id") not in required_ids),
+                None,
+            )
+            if replace_index is not None:
+                selected_plan.pop(replace_index)
+        if len(selected_plan) < max_experiences:
+            selected_plan.append(required_item)
+            selected_ids.add(required_id)
+
     selected_plan.sort(
         key=lambda item: _period_sort_key(catalog.get(item["experience_id"], {}).get("period")),
         reverse=True,
     )
     return selected_plan
+
+
+
+def _build_adaptation_strategy(
+    job: Dict[str, Any],
+    variant_id: str,
+    experience_plan: List[Dict[str, Any]],
+    priority_keywords: List[str],
+    master: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Build a deterministic, grounded brief consumed by all CV agents."""
+    text = job_text(job)
+    selected_ids = [item.get("experience_id") for item in experience_plan]
+    evidence_matches = []
+    selected_projects = []
+    for evidence_id, evidence in master.get("evidence_catalog", {}).items():
+        terms = [
+            *evidence.get("technologies", []),
+            *evidence.get("capabilities", []),
+            *evidence.get("usable_for", []),
+        ]
+        matched_terms = [term for term in terms if normalize(term) and normalize(term) in text]
+        if not matched_terms:
+            continue
+        distinctive_terms = {
+            "agents ia", "agent ia", "mcp", "n8n", "python", "scraping",
+            "wordpress", "generation controlee", "correction automatique",
+            "orchestration d agents", "orchestration multi agents",
+        }
+        has_distinctive_match = any(normalize(term) in distinctive_terms for term in matched_terms)
+        project_ids = [
+            project_id
+            for project_id in evidence.get("source_project_ids", [])
+            if project_id in master.get("project_catalog", {})
+        ]
+        experience_ids = [
+            experience_id
+            for experience_id in evidence.get("source_experience_ids", [])
+            if experience_id in master.get("experience_catalog", {})
+        ]
+        evidence_matches.append({
+            "requirement": matched_terms[0],
+            "evidence_id": evidence_id,
+            "project_ids": project_ids,
+            "experience_ids": experience_ids,
+            "matched_terms": compact_items(matched_terms, limit=6),
+        })
+        if variant_id in {"automatisation", "formateur_ia"} and has_distinctive_match:
+            for project_id in project_ids:
+                if project_id not in selected_projects:
+                    selected_projects.append(project_id)
+
+    presentation = {"experience_display_mode": "individual"}
+    for group_id, group in master.get("experience_groups", {}).items():
+        if variant_id not in group.get("allowed_variants", []):
+            continue
+        member_ids = [item for item in selected_ids if item in group.get("member_ids", [])]
+        for alternatives in group.get("mutually_exclusive_sets", []):
+            present = [item for item in member_ids if item in alternatives]
+            member_ids = [item for item in member_ids if item not in alternatives] + present[:1]
+        if len(member_ids) >= int(group.get("min_selected_members", 2)):
+            presentation = {
+                "experience_display_mode": group.get("display_mode", "grouped_missions"),
+                "experience_group_id": group_id,
+                "member_ids": member_ids,
+            }
+            break
+
+    ai_first = variant_id in {"automatisation", "formateur_ia"} or len(evidence_matches) >= 2
+    return {
+        "critical_requirements": [
+            {"requirement": keyword, "importance": "high"}
+            for keyword in priority_keywords[:6]
+        ],
+        "evidence_matches": evidence_matches,
+        "presentation_strategy": presentation,
+        "section_order": (
+            ["profile", "skills", "projects", "experiences", "education"]
+            if ai_first else
+            ["profile", "skills", "experiences", "projects", "education"]
+        ),
+        "selected_projects": selected_projects[:2],
+    }
 
 
 def analyze_job_for_cv(job: Dict[str, Any], master: Dict[str, Any]) -> Dict[str, Any]:
@@ -175,6 +289,7 @@ def analyze_job_for_cv(job: Dict[str, Any], master: Dict[str, Any]) -> Dict[str,
     target_title = title_variants.get(variant_id) or selected.get("title") or "Développeur web / Webmaster"
     keywords = _priority_keywords(job, selected, master)
     experience_plan = _experience_plan(job, selected, master)
+    strategy = _build_adaptation_strategy(job, variant_id, experience_plan, keywords, master)
     # These are suggestions for the AI analyzer, not content that Python may
     # force back into the final CV.
     selected_skills = _merge_preferred_skills(selected.get("skills", {}), master, variant_id)
@@ -195,6 +310,7 @@ def analyze_job_for_cv(job: Dict[str, Any], master: Dict[str, Any]) -> Dict[str,
         "positioning": master.get("positioning", {}).get("summary_variants", {}).get(variant_id, selected.get("profile", "")),
         "priority_keywords": keywords,
         "experience_plan": experience_plan,
+        **strategy,
         "skills_to_emphasize": selected_skills,
         "skills_to_reduce": compact_items(skills_to_reduce, limit=8),
         "warnings": warnings,

@@ -530,58 +530,74 @@ def cv_to_pdf(
             )
             y_side -= 3.0
 
-    # Main content.
+    # Main content follows the strategy chosen for this specific advert.
     y = top - 137.0 - main_vertical_offset
-    y = draw_section("Compétences techniques", main_x, y, content_scale)
-    for skill in cv.get("skills", []):
-        label = str(skill.get("title", ""))
-        text = f"{label} : {', '.join(skill.get('items', []))}"
-        y = draw_wrapped(text, main_x, y, main_w, body_size, leading, color=primary)
-        y -= 6.5 * content_scale
-    y -= 22.0 * content_scale
-    y = draw_section("Expériences", main_x, y, content_scale)
-    for exp in cv.get("experiences", []):
-        item_top = y
-        meta_y = draw_wrapped(str(exp.get("period", "")), main_x, item_top, meta_w, meta_size, meta_leading, bold=True, color=primary)
-        meta_y -= 3.0 * content_scale
-        meta_y = draw_wrapped(str(exp.get("organization", "")), main_x, meta_y, meta_w, meta_size, meta_leading, color=secondary)
-        if exp.get("links"):
-            meta_y -= 2.0 * content_scale
-            meta_y = draw_wrapped(_display_url(exp["links"][0]), main_x, meta_y, meta_w, meta_size, meta_leading, color=accent)
-
-        desc_y = draw_wrapped(
-            str(exp.get("title", "")).upper(), desc_x, item_top, desc_w, title_size, title_leading, bold=True, color=primary
-        )
-        desc_y -= 4.0 * content_scale
-        for bullet in exp.get("bullets", [])[:3]:
-            desc_y = draw_wrapped(str(bullet), desc_x, desc_y, desc_w, body_size, leading, color=secondary, bullet=True)
-            desc_y -= 2.5 * content_scale
-        y = min(meta_y, desc_y) - 17.0 * content_scale
-
     projects = cv.get("projects", [])
-    if projects:
-        section_title = "Projets personnels" if len(projects[:2]) > 1 else "Projet personnel"
-        y = draw_section(section_title, main_x, y, content_scale)
-        for project in projects[:2]:
-            y = draw_wrapped(str(project.get("title", "")), main_x, y, main_w, title_size, title_leading, bold=True, color=primary)
-            y -= 4.0 * content_scale
-            y = draw_wrapped(_project_text(project), main_x, y, main_w, body_size, leading, color=secondary)
-            if project.get("links"):
-                y -= 2.0 * content_scale
-                y = draw_wrapped(_display_url(project["links"][0]), main_x, y, main_w, body_size, leading, color=accent)
-            y -= 10.0 * content_scale
 
-    if cv.get("education"):
-        y -= 22.0 * content_scale
-        y = draw_section("Formation", main_x, y, content_scale)
+    def draw_skills_block(current_y):
+        current_y = draw_section("Compétences techniques", main_x, current_y, content_scale)
+        for skill in cv.get("skills", []):
+            label = str(skill.get("title", ""))
+            text = f"{label} : {', '.join(skill.get('items', []))}"
+            current_y = draw_wrapped(text, main_x, current_y, main_w, body_size, leading, color=primary)
+            current_y -= 6.5 * content_scale
+        return current_y - 22.0 * content_scale
+
+    def draw_experiences_block(current_y):
+        current_y = draw_section("Expériences", main_x, current_y, content_scale)
+        for exp in cv.get("experiences", []):
+            item_top = current_y
+            meta_y = draw_wrapped(str(exp.get("period", "")), main_x, item_top, meta_w, meta_size, meta_leading, bold=True, color=primary)
+            meta_y -= 3.0 * content_scale
+            meta_y = draw_wrapped(str(exp.get("organization", "")), main_x, meta_y, meta_w, meta_size, meta_leading, color=secondary)
+            if exp.get("links"):
+                meta_y -= 2.0 * content_scale
+                meta_y = draw_wrapped(_display_url(exp["links"][0]), main_x, meta_y, meta_w, meta_size, meta_leading, color=accent)
+            desc_y = draw_wrapped(str(exp.get("title", "")).upper(), desc_x, item_top, desc_w, title_size, title_leading, bold=True, color=primary)
+            desc_y -= 4.0 * content_scale
+            for bullet in exp.get("bullets", [])[:3]:
+                desc_y = draw_wrapped(str(bullet), desc_x, desc_y, desc_w, body_size, leading, color=secondary, bullet=True)
+                desc_y -= 2.5 * content_scale
+            current_y = min(meta_y, desc_y) - 17.0 * content_scale
+        return current_y
+
+    def draw_projects_block(current_y):
+        if not projects:
+            return current_y
+        section_title = "Projets IA & automatisation" if cv.get("section_order", []).index("projects") < cv.get("section_order", []).index("experiences") else ("Projets personnels" if len(projects[:2]) > 1 else "Projet personnel")
+        current_y = draw_section(section_title, main_x, current_y, content_scale)
+        for project in projects[:2]:
+            current_y = draw_wrapped(str(project.get("title", "")), main_x, current_y, main_w, title_size, title_leading, bold=True, color=primary)
+            current_y -= 4.0 * content_scale
+            current_y = draw_wrapped(_project_text(project), main_x, current_y, main_w, body_size, leading, color=secondary)
+            if project.get("links"):
+                current_y -= 2.0 * content_scale
+                current_y = draw_wrapped(_display_url(project["links"][0]), main_x, current_y, main_w, body_size, leading, color=accent)
+            current_y -= 10.0 * content_scale
+        return current_y
+
+    def draw_education_block(current_y):
+        if not cv.get("education"):
+            return current_y
+        current_y -= 22.0 * content_scale
+        current_y = draw_section("Formation", main_x, current_y, content_scale)
         for edu in cv.get("education", []):
-            details = " - ".join(
-                str(value)
-                for value in [edu.get("year"), edu.get("title"), edu.get("level"), edu.get("status") or edu.get("school")]
-                if value
-            )
-            y = draw_wrapped(details, main_x, y, main_w, body_size, leading, bold=True, color=primary)
-            y -= 6.0 * content_scale
+            details = " - ".join(str(value) for value in [edu.get("year"), edu.get("title"), edu.get("level"), edu.get("status") or edu.get("school")] if value)
+            current_y = draw_wrapped(details, main_x, current_y, main_w, body_size, leading, bold=True, color=primary)
+            current_y -= 6.0 * content_scale
+        return current_y
+
+    section_drawers = {
+        "skills": draw_skills_block,
+        "experiences": draw_experiences_block,
+        "projects": draw_projects_block,
+        "education": draw_education_block,
+    }
+    requested_order = cv.get("section_order", ["skills", "experiences", "projects", "education"])
+    order = [name for name in requested_order if name in section_drawers]
+    order.extend(name for name in section_drawers if name not in order)
+    for section_name in order:
+        y = section_drawers[section_name](y)
 
     c.showPage()
     c.save()
