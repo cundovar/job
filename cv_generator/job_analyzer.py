@@ -265,7 +265,15 @@ def _build_adaptation_strategy(
             }
             break
 
-    ai_first = variant_id in {"automatisation", "formateur_ia"} or len(evidence_matches) >= 2
+    # Projects lead only when the advert is explicitly technical/agentic.
+    # Human-facing mediation and general training must lead with experience.
+    explicit_ai_terms = [
+        "agent ia", "agents ia", "agentic", "mcp", "orchestration",
+        "automatisation", "n8n", "workflow", "harnais",
+    ]
+    ai_first = variant_id == "automatisation" or (
+        variant_id in {"fullstack", "frontend"} and contains_any(text, explicit_ai_terms)
+    )
     return {
         "critical_requirements": [
             {"requirement": keyword, "importance": "high"}
