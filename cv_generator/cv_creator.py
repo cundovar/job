@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from typing import Any, Dict, List
 
 from .utils import compact_items, normalize, period_to_text
@@ -126,6 +128,15 @@ def apply_experience_presentation(
     return result
 
 
+
+def _project_year_sort_key(value: Any) -> int:
+    """Normalize project years such as 2026 and '2025-2026' for stable sorting."""
+    if isinstance(value, (int, float)):
+        return int(value)
+    years = [int(item) for item in re.findall(r"\b\d{4}\b", str(value or ""))]
+    return max(years, default=0)
+
+
 def _projects(job: Dict[str, Any], plan: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str, Any]]:
     variant = plan.get("selected_base_variant")
     max_projects = int(master.get("layout_constraints", {}).get("max_projects", 1))
@@ -179,7 +190,7 @@ def _projects(job: Dict[str, Any], plan: Dict[str, Any], master: Dict[str, Any])
         score = matches * 3 + (5 if preferred else 0) + (8 if referenced else 0)
         if score > 0:
             projects.append((score, project_payload(project_id, project)))
-    projects.sort(key=lambda item: (item[0], item[1].get("year") or 0), reverse=True)
+    projects.sort(key=lambda item: (item[0], _project_year_sort_key(item[1].get("year"))), reverse=True)
     selected.extend(project for _, project in projects[: max_projects - len(selected)])
     return selected
 
