@@ -23,7 +23,7 @@ for _key, _value in dotenv_values().items():
 import yaml
 
 from analyzers import AIAnalyzer, calculate_score
-from front_export import export_front_data
+from front_export import _job_identity_keys, export_front_data, is_job_seen, load_seen_keys
 from filters import (
     filter_by_contract,
     filter_by_keywords,
@@ -198,6 +198,21 @@ def extract_search_keywords_by_category(criteria: Dict[str, Any]) -> Dict[str, l
     return categories
 
 
+def select_new_ai_candidates(
+    ranked_candidates: List[Dict[str, Any]],
+    seen_keys: set[str],
+) -> List[Dict[str, Any]]:
+    """Retire de l'analyse IA l'historique et les doublons du run courant."""
+    candidates: List[Dict[str, Any]] = []
+    run_seen_keys = set(seen_keys)
+    for job in ranked_candidates:
+        if is_job_seen(job, run_seen_keys):
+            continue
+        candidates.append(job)
+        run_seen_keys.update(_job_identity_keys(job))
+    return candidates
+
+
 def run_job_search(
     criteria_path: str = "config/criteria.yaml",
     send_outputs: bool | None = None,
@@ -231,12 +246,22 @@ def run_job_search(
 
     threshold = int(criteria.get("scoring", {}).get("thresholds", {}).get("basic_ai_analysis", 50))
     max_ai_jobs = int(os.getenv("MAX_AI_JOBS_PER_RUN", "12"))
-    ai_candidates = sorted(
+    history_days = int(os.getenv("CACHE_DURATION_DAYS", "30"))
+    current_day = datetime.now(timezone.utc).date().isoformat()
+    seen_keys = load_seen_keys(current_day, history_days=history_days, include_current_day=True)
+
+    ranked_candidates = sorted(
         [job for job in filtered if job.get("score", 0) >= threshold],
         key=lambda job: job.get("score", 0),
         reverse=True,
     )
-    logger.info(f"AI analysis candidates: {len(ai_candidates)}; capped at {max_ai_jobs}")
+    ai_candidates = select_new_ai_candidates(ranked_candidates, seen_keys)
+
+    logger.info(
+        f"New AI analysis candidates: {len(ai_candidates)} "
+        f"({len(ranked_candidates) - len(ai_candidates)} already seen or duplicated); "
+        f"capped at {max_ai_jobs}"
+    )
     if ai_candidates and max_ai_jobs > 0:
         try:
             ai_analyzer = AIAnalyzer()

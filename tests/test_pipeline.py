@@ -5,6 +5,7 @@ from pipeline import (
     extract_search_keywords_by_category,
     load_criteria,
     run_job_search,
+    select_new_ai_candidates,
 )
 
 
@@ -90,3 +91,47 @@ def test_search_keywords_include_ai_ops_automation_roles():
     assert "automation developer" in keywords
     assert "n8n" in keywords
     assert "ai ops automation" in categories["nouvelles_portes"]
+
+
+def test_ai_candidates_exclude_history_and_same_run_duplicates():
+    historical = {
+        "url:https://example.test/already-seen",
+        "role:poste deja vu|entreprise|paris",
+    }
+    jobs = [
+        {
+            "title": "Poste déjà vu",
+            "company": "Entreprise",
+            "location": "Paris",
+            "url": "https://example.test/already-seen",
+            "score": 100,
+        },
+        {
+            "title": "AI Automation Engineer",
+            "company": "Nouvelle entreprise",
+            "location": "Paris",
+            "url": "https://source-a.test/123",
+            "score": 95,
+        },
+        {
+            "title": "AI Automation Engineer",
+            "company": "Nouvelle entreprise",
+            "location": "Paris",
+            "url": "https://source-b.test/456",
+            "score": 90,
+        },
+        {
+            "title": "Formateur WordPress",
+            "company": "Association",
+            "location": "Paris",
+            "url": "https://example.test/new",
+            "score": 85,
+        },
+    ]
+
+    selected = select_new_ai_candidates(jobs, historical)
+
+    assert [job["url"] for job in selected] == [
+        "https://source-a.test/123",
+        "https://example.test/new",
+    ]

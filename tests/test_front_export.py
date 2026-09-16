@@ -170,3 +170,31 @@ def test_export_preserves_the_source_publication_date(tmp_path, monkeypatch):
     )["jobs"][0]
     assert exported["published_at"] == "2026-08-20T09:00:00Z"
     assert exported["scraped_at"] == "2026-08-24T12:00:00Z"
+
+
+def test_seen_history_ignores_entries_older_than_30_days(tmp_path, monkeypatch):
+    monkeypatch.setattr(front_export, "FRONT_DATA_DIR", tmp_path)
+
+    front_export.export_front_data(
+        [_job("Ancienne offre", "https://example.test/old", "POSTULER")],
+        "2026-07-01",
+    )
+
+    seen = front_export.load_seen_keys("2026-08-15", history_days=30)
+
+    assert not front_export.is_job_seen(
+        _job("Ancienne offre", "https://example.test/old", "POSTULER"),
+        seen,
+    )
+
+
+def test_seen_history_can_include_current_day_for_ai_deduplication(tmp_path, monkeypatch):
+    monkeypatch.setattr(front_export, "FRONT_DATA_DIR", tmp_path)
+    job = _job("Développeur Symfony", "https://example.test/today", "POSTULER")
+    front_export.export_front_data([job], "2026-08-26")
+
+    front_seen = front_export.load_seen_keys("2026-08-26", include_current_day=False)
+    ai_seen = front_export.load_seen_keys("2026-08-26", include_current_day=True)
+
+    assert not front_export.is_job_seen(job, front_seen)
+    assert front_export.is_job_seen(job, ai_seen)

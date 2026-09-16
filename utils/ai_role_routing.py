@@ -10,7 +10,7 @@ from typing import Iterable, List
 
 
 DEFAULT_ROUTING_PATH = Path(__file__).resolve().parent.parent / "config" / "ai_role_routing.json"
-ALLOWED_PROVIDERS = {"cli", "bridge", "codex_cli", "claude_cli", "deepseek", "claude", "anthropic"}
+ALLOWED_PROVIDERS = {"cli", "bridge", "codex_cli", "claude_cli", "deepseek", "claude", "anthropic", "glm"}
 ALLOWED_REASONING_EFFORTS = {None, "low", "medium", "high"}
 
 

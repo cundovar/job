@@ -12,6 +12,7 @@ from cv_generator.cv_creator import apply_experience_presentation, create_cv_dra
 from cv_generator.cv_quality_checker import review_cv as review_cv_rules
 from cv_generator.job_analyzer import (
     _max_experiences,
+    _min_experiences,
     _period_sort_key,
     analyze_job_for_cv as analyze_job_rules,
 )
@@ -86,6 +87,17 @@ class CVLLMClient:
             "CV_DEEPSEEK_MODEL",
             os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),
         )
+        glm_key = os.getenv("GLM_API_KEY")
+        self._glm = (
+            OpenAI(
+                api_key=glm_key,
+                base_url=os.getenv("GLM_BASE_URL", "https://api.z.ai/api/paas/v4"),
+                timeout=timeout,
+            )
+            if glm_key
+            else None
+        )
+        self._glm_model = os.getenv("CV_GLM_MODEL", os.getenv("GLM_MODEL", "glm-5.3"))
         self._claude_model = os.getenv("CV_CLAUDE_MODEL", "claude-sonnet-4-6")
         self._temperature = float(os.getenv("CV_AI_TEMPERATURE", "0.2"))
         self._max_tokens = int(os.getenv("CV_AI_MAX_TOKENS", "5000"))
@@ -134,6 +146,27 @@ class CVLLMClient:
         )
         content = response.choices[0].message.content or ""
         return AgentResult(_parse_json_response(content), "deepseek", selected_model)
+
+    def _call_glm(
+        self,
+        system_prompt: str,
+        user_message: str,
+        model: str | None = None,
+    ) -> AgentResult:
+        if self._glm is None:
+            raise CVAgentError("GLM_API_KEY absente")
+        selected_model = model or self._glm_model
+        response = self._glm.chat.completions.create(
+            model=selected_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=self._temperature,
+            max_tokens=self._max_tokens,
+        )
+        content = response.choices[0].message.content or ""
+        return AgentResult(_parse_json_response(content), "glm", selected_model)
 
     def _call_claude(
         self,
@@ -201,6 +234,8 @@ class CVLLMClient:
                     )
                 if provider == "deepseek":
                     return self._call_deepseek(system_prompt, user_message, step.model)
+                if provider == "glm":
+                    return self._call_glm(system_prompt, user_message, step.model)
                 if provider in {"claude", "anthropic"}:
                     return self._call_claude(system_prompt, user_message, step.model)
                 errors.append(f"{provider}: fournisseur inconnu")
@@ -594,6 +629,21 @@ def _sanitize_plan(
     mandatory = [item for item in experience_plan if item.get("experience_id") in required_set]
     optional = [item for item in experience_plan if item.get("experience_id") not in required_set]
     experience_plan = (mandatory + optional)[:max_experiences]
+
+    # The AI may propose a thin selection. Re-fill from the deterministic plan so
+    # the CV always shows the minimum number of experiences.
+    seen = {item.get("experience_id") for item in experience_plan}
+    for item in rule_plan.get("experience_plan", []):
+        if len(experience_plan) >= _min_experiences(master, variant_id):
+            break
+        exp_id = item.get("experience_id")
+        if exp_id in seen or exp_id not in catalog:
+            continue
+        highlights = catalog[exp_id].get("highlights", [])
+        indexes = [highlights.index(text) for text in item.get("highlights", []) if text in highlights][:3]
+        experience_plan.append({**item, "highlight_indexes": indexes})
+        seen.add(exp_id)
+
     presentation_strategy = {"experience_display_mode": "individual"}
     final_ids = [item.get("experience_id") for item in experience_plan]
     for group_id, group in master.get("experience_groups", {}).items():

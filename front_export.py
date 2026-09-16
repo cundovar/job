@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -173,16 +173,37 @@ def _session_day(name: str) -> str | None:
     return None
 
 
-def _load_seen_keys(current_day: str) -> set[str]:
+def load_seen_keys(
+    current_day: str,
+    history_days: int = 30,
+    include_current_day: bool = False,
+) -> set[str]:
+    """Charge les identites vues dans la fenetre d'historique demandee."""
     seen: set[str] = set()
     if not FRONT_DATA_DIR.exists():
         return seen
+
+    try:
+        current_date = datetime.strptime(current_day, "%Y-%m-%d").date()
+    except ValueError:
+        current_date = date.today()
+    cutoff = current_date - timedelta(days=max(history_days, 0))
+
     for session_dir in FRONT_DATA_DIR.iterdir():
         if not session_dir.is_dir():
             continue
         session_day = _session_day(session_dir.name)
-        if not session_day or session_day == current_day:
+        if not session_day:
             continue
+        try:
+            session_date = datetime.strptime(session_day, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if session_date > current_date or session_date < cutoff:
+            continue
+        if session_date == current_date and not include_current_day:
+            continue
+
         for category_path in session_dir.glob("*.json"):
             try:
                 payload = json.loads(category_path.read_text(encoding="utf-8"))
@@ -195,6 +216,10 @@ def _load_seen_keys(current_day: str) -> set[str]:
                 if isinstance(job, dict):
                     seen.update(_job_identity_keys(job))
     return seen
+
+
+def is_job_seen(job: Dict[str, Any], seen_keys: set[str]) -> bool:
+    return bool(_job_identity_keys(job) & seen_keys)
 
 
 def _load_existing_buckets(search_dir: Path) -> Dict[str, List[Dict[str, Any]]]:
@@ -226,7 +251,7 @@ def _merge_daily_jobs(
     # offre, sans supprimer les autres offres deja trouvees dans la journee.
     for job in jobs:
         front_job = _job_for_front(job)
-        already_seen = bool(_job_identity_keys(front_job) & seen_keys)
+        already_seen = is_job_seen(front_job, seen_keys)
         category = ALREADY_SEEN_CATEGORY if already_seen else _categorize(job)
         merged[_job_key(front_job)] = (category, front_job)
 
@@ -253,7 +278,7 @@ def export_front_data(jobs: List[Dict[str, Any]], search_id: str | None = None) 
     search_dir.mkdir(parents=True, exist_ok=True)
 
     current_day = _session_day(search_id) or date.today().isoformat()
-    buckets = _merge_daily_jobs(search_dir, jobs, _load_seen_keys(current_day))
+    buckets = _merge_daily_jobs(search_dir, jobs, load_seen_keys(current_day))
     for category in CATEGORY_ORDER:
         cat_jobs = buckets.get(category, [])
         (search_dir / f"{category}.json").write_text(
