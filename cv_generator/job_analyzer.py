@@ -99,6 +99,12 @@ def _max_experiences(master: Dict[str, Any], variant_id: str) -> int:
     return int(by_variant.get(variant_id, constraints.get("max_experiences", 4)))
 
 
+def _min_experiences(master: Dict[str, Any], variant_id: str) -> int:
+    """Floor of visible experiences, never above the variant ceiling."""
+    floor = int(master.get("layout_constraints", {}).get("min_experiences", 4))
+    return min(floor, _max_experiences(master, variant_id))
+
+
 def _merge_preferred_skills(
     skills: Dict[str, Any],
     master: Dict[str, Any],
@@ -137,6 +143,7 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
         if exp_id in catalog and exp_id not in ordered_ids:
             ordered_ids.append(exp_id)
     plan = []
+    fallback = []
     for exp_id in ordered_ids:
         if exp_id in excluded:
             continue
@@ -163,14 +170,20 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
                 picked.append(item)
         if not picked:
             picked = highlights[:3]
-        if score > 0:
-            plan.append({
-                "experience_id": exp_id,
-                "priority": score,
-                "selection_role": exp.get("cv_role", "core"),
-                "reason": f"Expérience alignée avec la variante {variant_id} et les mots-clés de l'annonce.",
-                "highlights": compact_items(picked, limit=3, max_chars=145),
-            })
+        entry = {
+            "experience_id": exp_id,
+            "priority": score,
+            "selection_role": exp.get("cv_role", "core"),
+            "reason": (
+                f"Expérience alignée avec la variante {variant_id} et les mots-clés de l'annonce."
+                if score > 0
+                else f"Expérience retenue pour compléter le parcours sur la variante {variant_id}."
+            ),
+            "highlights": compact_items(picked, limit=3, max_chars=145),
+        }
+        # Zero-score experiences stay aside: they are only used to reach the
+        # minimum number of experiences a CV must show.
+        (plan if score > 0 else fallback).append(entry)
     # Relevance determines which experiences are kept. Their presentation is
     # then always reverse chronological, as recruiters expect on a CV.
     plan.sort(key=lambda item: item["priority"], reverse=True)
@@ -206,6 +219,20 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
         if len(selected_plan) < max_experiences:
             selected_plan.append(required_item)
             selected_ids.add(required_id)
+
+    # A CV must show a real career path, never one or two isolated lines. Top up
+    # with the best remaining matches, then with the most recent experiences.
+    fallback.sort(
+        key=lambda item: _period_sort_key(catalog.get(item["experience_id"], {}).get("period")),
+        reverse=True,
+    )
+    for item in [*plan, *fallback]:
+        if len(selected_plan) >= _min_experiences(master, variant_id):
+            break
+        if item["experience_id"] in selected_ids:
+            continue
+        selected_plan.append(item)
+        selected_ids.add(item["experience_id"])
 
     selected_plan.sort(
         key=lambda item: _period_sort_key(catalog.get(item["experience_id"], {}).get("period")),
