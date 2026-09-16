@@ -93,7 +93,7 @@ def cv_to_markdown(final_cv: Dict[str, Any], canva: bool = False) -> str:
         lines.append(f"### {org} — {title}".strip(" —"))
         if period:
             lines.append(period)
-        for link in exp.get("links", [])[:1]:
+        for link in exp.get("links", [])[:2]:
             lines.append(str(link))
         lines.append("")
         for bullet in exp.get("bullets", []):
@@ -181,10 +181,9 @@ def cv_to_html(
     main.append(_section("Expériences"))
     for exp in cv.get("experiences", []):
         bullets = "".join(f"<li>{escape(str(b))}</li>" for b in exp.get("bullets", [])[:4])
-        exp_link = next(iter(exp.get("links", [])[:1]), "")
-        exp_link_html = (
-            f"<br><a class='record-link' href='{escape(str(exp_link), quote=True)}'>{escape(_display_url(exp_link))}</a>"
-            if exp_link else ""
+        exp_link_html = "".join(
+            f"<br><a class='record-link' href='{escape(str(link), quote=True)}'>{escape(_display_url(link))}</a>"
+            for link in exp.get("links", [])[:2]
         )
         main.append(
             "<article class='experience'>"
@@ -431,8 +430,8 @@ def cv_to_pdf(
         for exp in cv.get("experiences", []):
             meta_h = text_height(exp.get("period", ""), meta_w, meta_size, meta_leading, True)
             meta_h += 3.0 * scale + text_height(exp.get("organization", ""), meta_w, meta_size, meta_leading)
-            if exp.get("links"):
-                meta_h += 2.0 * scale + text_height(_display_url(exp["links"][0]), meta_w, meta_size, meta_leading)
+            for link in exp.get("links", [])[:2]:
+                meta_h += 2.0 * scale + text_height(_display_url(link), meta_w, meta_size, meta_leading)
             desc_h = text_height(str(exp.get("title", "")).upper(), desc_w, title_size, title_leading, True)
             desc_h += 4.0 * scale
             for bullet in exp.get("bullets", [])[:3]:
@@ -550,9 +549,9 @@ def cv_to_pdf(
             meta_y = draw_wrapped(str(exp.get("period", "")), main_x, item_top, meta_w, meta_size, meta_leading, bold=True, color=primary)
             meta_y -= 3.0 * content_scale
             meta_y = draw_wrapped(str(exp.get("organization", "")), main_x, meta_y, meta_w, meta_size, meta_leading, color=secondary)
-            if exp.get("links"):
+            for link in exp.get("links", [])[:2]:
                 meta_y -= 2.0 * content_scale
-                meta_y = draw_wrapped(_display_url(exp["links"][0]), main_x, meta_y, meta_w, meta_size, meta_leading, color=accent)
+                meta_y = draw_wrapped(_display_url(link), main_x, meta_y, meta_w, meta_size, meta_leading, color=accent)
             desc_y = draw_wrapped(str(exp.get("title", "")).upper(), desc_x, item_top, desc_w, title_size, title_leading, bold=True, color=primary)
             desc_y -= 4.0 * content_scale
             for bullet in exp.get("bullets", [])[:3]:

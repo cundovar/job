@@ -65,7 +65,7 @@ def cv_to_ats_html(final_cv: Dict[str, Any], candidate_name: str = "Facundo Vara
                 "</ul>",
             ]
         )
-        for link in experience.get("links", [])[:1]:
+        for link in experience.get("links", [])[:2]:
             parts.append(f"<p><a href='{escape(str(link), quote=True)}'>{escape(_display_url(link))}</a></p>")
     if cv.get("projects"):
         parts.append("<h2>Projets</h2>")
@@ -146,7 +146,7 @@ def cv_to_ats_pdf(
             )
         )
         story.append(Paragraph(escape(str(experience.get("period") or "")), meta))
-        story.extend(_paragraphs((_display_url(link) for link in experience.get("links", [])[:1]), meta))
+        story.extend(_paragraphs((_display_url(link) for link in experience.get("links", [])[:2]), meta))
         bullets = [ListItem(Paragraph(escape(str(item)), body)) for item in experience.get("bullets", [])]
         if bullets:
             story.append(ListFlowable(bullets, bulletType="bullet", leftIndent=14, bulletFontName="Helvetica"))

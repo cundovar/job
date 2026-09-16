@@ -48,6 +48,22 @@ def _skills_sections(plan: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[
     return sections
 
 
+def _contact_for_variant(person: Dict[str, Any], master: Dict[str, Any], variant_id: str) -> Dict[str, Any]:
+    contact = person.get("contact", {})
+    allowed_fields = (
+        master.get("adaptation_rules", {})
+        .get("contact_fields_by_variant", {})
+        .get(variant_id)
+    )
+    if not isinstance(allowed_fields, list):
+        return contact
+    return {
+        field: contact[field]
+        for field in allowed_fields
+        if field in contact and contact[field]
+    }
+
+
 def _experiences(plan: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str, Any]]:
     catalog = master.get("experience_catalog", {})
     result = []
@@ -206,7 +222,7 @@ def create_cv_draft(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str,
         "title": plan.get("target_title", "Développeur web / Webmaster"),
         "profile": profile,
         "section_order": plan.get("section_order", ["skills", "experiences", "projects", "education"]),
-        "contact": person.get("contact", {}),
+        "contact": _contact_for_variant(person, master, variant_id),
         "location": person.get("location", "Paris / Île-de-France"),
         "skills": _skills_sections(plan, master),
         "experiences": apply_experience_presentation(_experiences(plan, master), plan, master),

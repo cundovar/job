@@ -20,8 +20,10 @@ from cv_generator.exporters import (
     PDF_PORTRAIT_DIAMETER,
     _identity_baselines,
     cv_to_html,
+    cv_to_markdown,
     cv_to_pdf,
 )
+from cv_generator.ats_exporter import cv_to_ats_html, cv_to_ats_pdf
 from cv_generator.cv_quality_checker import review_cv
 from cv_generator.cv_creator import create_cv_draft
 from cv_generator.layout import sparse_main_vertical_offset, title_requires_wrap, wrap_tracked_title
@@ -501,6 +503,73 @@ def test_pdf_and_html_use_the_real_portrait(tmp_path):
     cv_to_pdf(final_cv, pdf_path)
     assert pdf_path.read_bytes().startswith(b"%PDF")
     assert pdf_path.stat().st_size > 10_000
+
+
+def test_grouped_experience_renders_all_links_in_every_export(tmp_path):
+    final_cv = {
+        "cv": {
+            "title": "Développeur web",
+            "profile": "Profil test.",
+            "contact": {},
+            "skills": [],
+            "experiences": [{
+                "period": "2026-03 – Aujourd'hui",
+                "organization": "La Magicieuse · Hélène Massage & Ayurveda",
+                "title": "Missions et projets professionnels",
+                "bullets": ["Deux missions regroupées."],
+                "links": [
+                    "https://www.la-magicieuse.org/",
+                    "https://massagesdhelene.com/",
+                ],
+            }],
+            "projects": [],
+            "education": [],
+            "languages": [],
+        }
+    }
+
+    markdown = cv_to_markdown(final_cv)
+    design_html = cv_to_html(final_cv)
+    ats_html = cv_to_ats_html(final_cv)
+    for expected in ("la-magicieuse.org", "massagesdhelene.com"):
+        assert expected in markdown
+        assert expected in design_html
+        assert expected in ats_html
+
+    design_pdf = tmp_path / "design.pdf"
+    ats_pdf = tmp_path / "ats.pdf"
+    cv_to_pdf(final_cv, design_pdf)
+    cv_to_ats_pdf(final_cv, ats_pdf)
+    for pdf_path in (design_pdf, ats_pdf):
+        text = "\n".join(page.extract_text() or "" for page in PdfReader(pdf_path).pages)
+        assert "la-magicieuse.org" in text
+        assert "massagesdhelene.com" in text
+
+
+def test_nontechnical_variants_hide_technical_contact_links():
+    master = load_json("data/cv_master_profile.json")
+    job = {"title": "Agent d'accueil", "description": "Accueil du public."}
+
+    for variant_id in ("accueil", "logistique", "surveillance"):
+        draft = create_cv_draft(job, master, {
+            "selected_base_variant": variant_id,
+            "target_title": "Poste ciblé",
+            "experience_plan": [],
+            "skills_to_emphasize": {},
+        })
+        assert draft["cv"]["contact"] == {
+            "email": "varas.cundo@gmail.com",
+            "phone": "06 23 84 84 45",
+        }
+
+    technical_draft = create_cv_draft(job, master, {
+        "selected_base_variant": "fullstack",
+        "target_title": "Développeur web",
+        "experience_plan": [],
+        "skills_to_emphasize": {},
+    })
+    assert technical_draft["cv"]["contact"]["portfolio"] == "https://varascundo.com/"
+    assert technical_draft["cv"]["contact"]["github"] == "https://github.com/cundovar"
 
 
 def test_identity_block_is_centered_on_portrait():
@@ -1239,6 +1308,62 @@ def test_technical_overlaps_are_grouped_by_strategy():
     grouped = next(item for item in draft["cv"]["experiences"] if item["id"] == "technical_missions_2026")
     assert len(grouped["source_experience_ids"]) >= 2
     assert grouped["period"] == "2026-03 – Aujourd'hui"
+
+
+GENERAL_TRAINER_JOB = {
+    "title": "Conseiller numérique France Services",
+    "description": "Conseiller numerique, mediation numerique, inclusion numerique, ateliers.",
+}
+
+
+def test_general_trainer_cv_groups_recent_web_missions():
+    master = load_json("data/cv_master_profile.json")
+
+    plan = analyze_job_for_cv(GENERAL_TRAINER_JOB, master)
+    draft = create_cv_draft(GENERAL_TRAINER_JOB, master, plan)
+
+    assert plan["selected_base_variant"] == "formateur_generaliste"
+    assert plan["presentation_strategy"]["experience_display_mode"] == "grouped_missions"
+    grouped = next(item for item in draft["cv"]["experiences"] if item["id"] == "technical_missions_2026")
+    assert set(grouped["source_experience_ids"]) == {"la_magicieuse", "helene_massage_ayurveda"}
+
+
+def test_general_trainer_cv_keeps_pedagogy_evidence_despite_grouping():
+    master = load_json("data/cv_master_profile.json")
+
+    plan = analyze_job_for_cv(GENERAL_TRAINER_JOB, master)
+
+    planned_ids = {item["experience_id"] for item in plan["experience_plan"]}
+    assert {"pole_s", "freelance_wordpress"} <= planned_ids
+
+
+def test_every_cv_variant_keeps_at_least_four_experiences():
+    master = load_json("data/cv_master_profile.json")
+    jobs = [
+        GENERAL_TRAINER_JOB,
+        {"title": "Agent logistique", "description": "Préparation de commandes, manutention, entrepôt."},
+        {"title": "Agent de sécurité", "description": "Surveillance, rondes de nuit, gardiennage."},
+        {"title": "Hôte d'accueil", "description": "Accueil physique et téléphonique, standard."},
+        {"title": "Webmaster", "description": "WordPress, SEO, mise à jour de site."},
+        {"title": "Poste", "description": "."},
+    ]
+
+    for job in jobs:
+        plan = analyze_job_for_cv(job, master)
+        assert len(plan["experience_plan"]) >= 4, job["title"]
+
+
+def test_grouped_block_counts_as_its_members_for_the_minimum():
+    master = load_json("data/cv_master_profile.json")
+    job = {"title": "Webmaster", "description": "WordPress, SEO, mise à jour de site."}
+
+    plan = analyze_job_for_cv(job, master)
+    draft = create_cv_draft(job, master, plan)
+
+    # The floor applies to the plan, not to the rendered lines: the block merges
+    # two missions into a single entry.
+    assert len(plan["experience_plan"]) == 4
+    assert len(draft["cv"]["experiences"]) == 3
 
 
 def test_quality_checker_reports_skill_without_visible_evidence():
