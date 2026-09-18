@@ -28,7 +28,7 @@ filters/         contrat, mots-clés, localisation, secteur
 analyzers/       ai_analyzer (juge d'offre) + scoring_engine
 cv_generator/    4 rôles IA (analyse, création, revue, révision) + garde-fous Python + export ATS
 agents/          lettre de motivation, mail de candidature, résumé
-applications/    tracker, builder, sélection de variante de CV
+applications/    tracker, builder, sélection de variante de CV, brique envoi (send.py, jamais un outil Hermes)
 storage/         JSON et Google Sheets
 hermes_commands/ job_top, job_today, job_prepare, job_apply, job_relance, cv_prepare
 front/ server/   interface de validation (Vite/React + Express)

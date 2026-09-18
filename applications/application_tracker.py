@@ -91,6 +91,82 @@ class ApplicationTracker:
     def list_records(self) -> List[Dict[str, Any]]:
         return list(self._load().values())
 
+    def _record_base(self, records, job):
+        key = self.job_key(job)
+        record = records.get(key, {})
+        record.setdefault(
+            "key", key
+        )
+        record.setdefault("job_title", job.get("title", ""))
+        record.setdefault("company", job.get("company", ""))
+        record.setdefault("url", job.get("url", ""))
+        record.setdefault("created_at", datetime.now().isoformat())
+        return record
+
+    def mark_sent(self, job: Dict[str, Any], send_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Journalise un envoi réel vers une entreprise.
+
+        Un record `applied` garde au minimum status, applied_at, follow_up_at,
+        job_title, company, key, created_at, updated_at (règle 5 du CLAUDE.md) :
+        on ajoute les champs de la boucle de retour, on n'en retire jamais.
+        """
+        records = self._load()
+        now_dt = datetime.now()
+        record = self._record_base(records, job)
+        record.update(
+            {
+                "status": "applied",
+                "applied_at": now_dt.date().isoformat(),
+                "follow_up_at": (now_dt.date() + timedelta(days=7)).isoformat(),
+                "send": {
+                    "sent_at": now_dt.isoformat(),
+                    "outcome": {"reply": None, "interview": None, "rejection_reason": None},
+                    **send_info,
+                },
+                "updated_at": now_dt.isoformat(),
+            }
+        )
+        records[self.job_key(job)] = record
+        self._save(records)
+        return record
+
+    def mark_send_failed(self, job: Dict[str, Any], error: str) -> Dict[str, Any]:
+        """Un échec d'envoi se journalise, pour ne jamais retenter à l'aveugle."""
+        records = self._load()
+        now_dt = datetime.now()
+        record = self._record_base(records, job)
+        record.update(
+            {
+                "status": "send_failed",
+                "send": {"attempted_at": now_dt.isoformat(), "error": error},
+                "updated_at": now_dt.isoformat(),
+            }
+        )
+        records[self.job_key(job)] = record
+        self._save(records)
+        return record
+
+    def sent_on(self, day: date) -> int:
+        """Nombre d'envois réels partis ce jour — base du quota."""
+        return sum(
+            1
+            for record in self.list_records()
+            if str(record.get("send", {}).get("sent_at", "")).startswith(day.isoformat())
+        )
+
+    def company_contacted(self, company: str) -> bool:
+        """Vrai si un envoi (réussi ou raté) existe déjà pour cette entreprise."""
+        target = str(company or "").strip().casefold()
+        if not target:
+            return False
+        for record in self.list_records():
+            if record.get("status") not in {"applied", "send_failed"}:
+                continue
+            known = str(record.get("company") or "").strip().casefold()
+            if known == target or (known in target or target in known) and min(len(known), len(target)) >= 3:
+                return True
+        return False
+
     def due_followups(self, today: date | None = None) -> List[Dict[str, Any]]:
         today = today or date.today()
         due = []
