@@ -11,6 +11,8 @@ since a degraded letter that looks finished is worse than a visible error.
 """
 from __future__ import annotations
 
+import re
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict
 
@@ -19,9 +21,44 @@ from utils.cli_agent_bridge import CLIAgentBridgeClient
 AGENT_NAME = "agent_redacteur_lettres"
 PROMPT_FILE = "agent_redacteur_lettres.md"
 
+_MOIS_FR = [
+    "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+]
+
+# Ligne « Ville, le … » attendue en tête de lettre : la fin peut être un
+# espace réservé (« [date] ») ou une date inventée par le modèle.
+_PLACE_DATE_RE = re.compile(
+    r"^(?P<city>[^,\n]{1,32})?,?\s*le\s+(?P<day>\[?date\]?|\d{1,2}(?:er)?\s+\S+\s+\d{4}|\d{1,2}/\d{1,2}/\d{2,4})\s*$"
+)
+
 
 class MotivationLetterError(RuntimeError):
     """Raised when no provider could produce a motivation letter."""
+
+
+def _french_date(day: date) -> str:
+    """Date en toutes lettres à la française : 18 septembre 2026, 1er mars 2026."""
+    jour = "1er" if day.day == 1 else str(day.day)
+    return f"{jour} {_MOIS_FR[day.month - 1]} {day.year}"
+
+
+def _stamp_place_and_date(letter: str, today: date | None = None) -> str:
+    """Remplace la ligne de date par la vraie date du jour.
+
+    La date d'envoi est un fait du système : le modèle ne peut pas la
+    connaître et l'invente (relevé le 18/09/2026 : « [date] », « 15 janvier
+    2025 »…). On ne la demande donc pas, on la tamponne. Sans ligne
+    reconnaissable en tête de lettre, on ne touche à rien.
+    """
+    lines = letter.splitlines()
+    for index, line in enumerate(lines[:3]):
+        match = _PLACE_DATE_RE.match(line.strip())
+        if match:
+            city = (match.group("city") or "Paris").strip()
+            lines[index] = f"{city}, le {_french_date(today or date.today())}"
+            return "\n".join(lines)
+    return letter
 
 
 def _load_system_prompt() -> str:
@@ -84,4 +121,4 @@ def generate_motivation_letter(
     letter = (result.data.get("lettre") or "").strip()
     if not letter:
         raise MotivationLetterError("L'agent IA n'a pas renvoyé de lettre.")
-    return letter
+    return _stamp_place_and_date(letter)

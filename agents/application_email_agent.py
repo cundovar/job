@@ -22,6 +22,9 @@ def generate_application_email(
     title = _job_value(job, "title", "le poste proposé")
     company = _job_value(job, "company")
     company_line = f" au sein de {company}" if company else ""
+    # Sur la voie spontanée, aucune annonce n'existe : parler « du poste »
+    # présuppose un recrutement en cours que l'entreprise n'a jamais publié.
+    spontaneous = _job_value(job, "source") == "prospection_spontanee"
 
     # Pick 2-3 key strengths relevant to the job
     title_l = title.lower()
@@ -49,12 +52,22 @@ def generate_application_email(
             "formation et automatisation IA."
         )
 
+    objet = (
+        f"Objet : Candidature spontanée — {title}"
+        if spontaneous
+        else f"Objet : Candidature — {title}"
+    )
+    ouverture = (
+        f"Je vous adresse une candidature spontanée en tant que {title}{company_line}."
+        if spontaneous
+        else f"Je vous adresse ma candidature pour le poste de {title}{company_line}."
+    )
     return "\n".join([
-        f"Objet : Candidature — {title}",
+        objet,
         "",
         "Bonjour,",
         "",
-        f"Je vous adresse ma candidature pour le poste de {title}{company_line}.",
+        ouverture,
         "",
         pitch,
         "",
