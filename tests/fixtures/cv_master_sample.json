@@ -1,0 +1,271 @@
+{
+  "schema_version": "1.0",
+  "source": {
+    "platform": "fixture",
+    "design_id": "sample-0000",
+    "design_title": "CV de test",
+    "page_count": 2,
+    "extracted_at": "2020-01-01T00:00:00",
+    "canva_edit_url": "https://example.invalid/design/sample-0000"
+  },
+  "usage": {
+    "purpose": "Profil maitre factice, reserve aux tests. Aucune donnee reelle.",
+    "rules": [
+      "Ne jamais affirmer ce qui ne figure pas dans ce fichier.",
+      "Une donnee absente reste absente.",
+      "Les dates incertaines sont signalees, jamais arrondies.",
+      "Ce fichier ne decrit personne de reel."
+    ]
+  },
+  "person": {
+    "first_name": "Camille",
+    "last_name": "Dupont",
+    "display_name": "Camille Dupont",
+    "usual_name": "Camille",
+    "location": "Ville-Exemple, France",
+    "contact": {
+      "email": "camille.dupont@example.invalid",
+      "phone": "+33 6 00 00 00 00",
+      "github": "https://example.invalid/github/camille",
+      "portfolio": "https://example.invalid/camille"
+    },
+    "languages": [
+      {"name": "Francais", "level": "Langue maternelle"},
+      {"name": "Anglais", "level": "Professionnel"}
+    ],
+    "eligibility": {
+      "work_authorization": {"value": null, "evidence": null},
+      "driver_license": {"value": null, "evidence": null},
+      "english": {"value": null, "evidence": "Aucun test de niveau declare."},
+      "degree": {"value": null, "evidence": "Aucun diplome verifie dans cette fixture."}
+    },
+    "education": [
+      {
+        "year": 2019,
+        "title": "Titre professionnel Developpeur web (fictif)",
+        "school": "Centre de formation Exemple",
+        "present_on_pages": [1],
+        "tags": ["web", "php", "javascript"],
+        "visibility": "public"
+      }
+    ]
+  },
+  "positioning": {
+    "title_variants": {
+      "fullstack": "Developpeur full-stack",
+      "frontend": "Developpeur front-end",
+      "webmaster": "Webmaster",
+      "wordpress": "Integrateur WordPress"
+    },
+    "summary_variants": {
+      "fullstack": "Developpeur full-stack de test, profil entierement invente.",
+      "frontend": "Developpeur front-end de test, profil entierement invente.",
+      "webmaster": "Webmaster de test, profil entierement invente.",
+      "wordpress": "Integrateur WordPress de test, profil entierement invente."
+    },
+    "default_priority": ["fullstack", "frontend", "webmaster", "wordpress"],
+    "do_not_force_fullstack": true
+  },
+  "skills_confidence": {
+    "HTML5": "confirme",
+    "CSS3": "confirme",
+    "JavaScript ES6+": "confirme",
+    "PHP 8": "confirme",
+    "Symfony 6/7": "partiel",
+    "WordPress": "confirme",
+    "MySQL": "confirme",
+    "Git": "confirme",
+    "React": "partiel",
+    "Vue.js 3": "partiel"
+  },
+  "experience_catalog": {
+    "agence_exemple": {
+      "organization": "Agence Exemple",
+      "title": "Developpeur web",
+      "period": {"start": "2021-01", "end": "2023-06", "date_confidence": "certaine"},
+      "tags": ["php", "symfony", "mysql", "git"],
+      "visibility": "public",
+      "highlights": [
+        "Maintenance d'un site vitrine fictif.",
+        "Correction de bugs sur une base de code inventee."
+      ],
+      "preferred_for": ["fullstack", "webmaster"]
+    },
+    "studio_fictif": {
+      "organization": "Studio Fictif",
+      "title": "Integrateur web",
+      "period": {"start": "2019-09", "end": "2020-12", "date_confidence": "certaine"},
+      "tags": ["html", "css", "wordpress"],
+      "visibility": "public",
+      "highlights": [
+        "Integration de maquettes imaginaires.",
+        "Mise en ligne de themes WordPress de demonstration."
+      ],
+      "preferred_for": ["frontend", "wordpress"]
+    },
+    "association_test": {
+      "organization": "Association Test",
+      "title": "Benevole technique",
+      "period": {"start": "2018-01", "end": "2019-08", "date_confidence": "approximative"},
+      "tags": ["wordpress", "accompagnement"],
+      "visibility": "public",
+      "highlights": ["Aide informatique benevole, contexte invente."],
+      "preferred_for": ["webmaster", "wordpress"]
+    },
+    "boutique_imaginaire": {
+      "organization": "Boutique Imaginaire",
+      "title": "Charge de site e-commerce",
+      "period": {"start": "2017-03", "end": "2017-12", "date_confidence": "certaine"},
+      "tags": ["wordpress", "woocommerce"],
+      "visibility": "public",
+      "highlights": ["Suivi d'un catalogue produit fictif."],
+      "preferred_for": ["wordpress", "webmaster"]
+    }
+  },
+  "project_catalog": {
+    "projet_demo": {
+      "year": 2022,
+      "title": "Projet de demonstration",
+      "description": "Application inventee, utilisee uniquement pour les tests.",
+      "technologies": ["PHP", "Symfony", "MySQL"],
+      "tags": ["backend", "php", "symfony"],
+      "visibility": "public",
+      "preferred_for": ["fullstack", "webmaster"],
+      "evidence_refs": ["preuve_demo"]
+    }
+  },
+  "cv_variants": [
+    {
+      "page": 1,
+      "id": "fullstack",
+      "title": "Developpeur full-stack",
+      "profile": "Profil full-stack factice.",
+      "tags": ["php", "symfony", "javascript", "mysql"],
+      "skills": {
+        "frontend": ["HTML5", "CSS3", "JavaScript ES6+"],
+        "backend": ["PHP 8", "Symfony 6/7"],
+        "data": ["MySQL"],
+        "tools": ["Git"],
+        "methodology": ["Revue de code"]
+      },
+      "experience_refs": ["agence_exemple", "studio_fictif", "association_test", "boutique_imaginaire"],
+      "project_refs": ["projet_demo"]
+    },
+    {
+      "page": 2,
+      "id": "webmaster",
+      "title": "Webmaster",
+      "profile": "Profil webmaster factice.",
+      "tags": ["wordpress", "seo", "maintenance"],
+      "skills": {
+        "frontend": ["HTML5", "CSS3"],
+        "backend": ["PHP 8"],
+        "data": ["MySQL"],
+        "tools": ["Git", "WordPress"],
+        "methodology": ["Maintenance"]
+      },
+      "experience_refs": ["agence_exemple", "studio_fictif", "association_test", "boutique_imaginaire"],
+      "project_refs": ["projet_demo"]
+    }
+  ],
+  "approved_phrases": {
+    "webmaster": ["Maintient des sites WordPress de demonstration."],
+    "wordpress": ["Integre des themes WordPress fictifs."],
+    "backend": ["Developpe des API PHP inventees."]
+  },
+  "forbidden_claims": [
+    "Expert",
+    "Lead developer",
+    "Architecte logiciel",
+    "10 ans d'experience"
+  ],
+  "layout_constraints": {
+    "target_format": "A4",
+    "max_pages": 1,
+    "allowed_overflow_pages": 0,
+    "max_profile_chars": 400,
+    "min_experiences": 4,
+    "max_experiences": 4,
+    "max_experiences_by_variant": {},
+    "max_bullets_per_experience": 3,
+    "max_bullet_chars": 140,
+    "max_skill_sections": 5,
+    "max_skill_items_total": 20,
+    "max_education_items": 2,
+    "max_projects": 1,
+    "prefer_short_bullets": true,
+    "avoid_dense_paragraphs": true,
+    "max_projects_by_variant": {}
+  },
+  "adaptation_rules": {
+    "variant_selection": {
+      "fullstack": ["php", "symfony", "backend", "api"],
+      "webmaster": ["wordpress", "webmaster", "maintenance", "seo"]
+    },
+    "required_projects_by_variant": {
+      "fullstack": ["projet_demo"],
+      "webmaster": []
+    },
+    "experience_priority_by_variant": {
+      "fullstack": ["agence_exemple", "studio_fictif", "association_test", "boutique_imaginaire"],
+      "webmaster": ["studio_fictif", "agence_exemple", "boutique_imaginaire", "association_test"]
+    },
+    "preferred_skills_by_variant": {},
+    "editorial_guidance_by_variant": {},
+    "standing_experience_preferences_by_variant": {},
+    "contact_fields_by_variant": {},
+    "style": {
+      "tone": "factuel",
+      "avoid": ["superlatifs", "jargon commercial"],
+      "prefer": ["verbes d'action", "faits verifiables"]
+    },
+    "required_experiences_by_variant": {},
+    "excluded_experiences_by_variant": {},
+    "excluded_skills_by_variant": {}
+  },
+  "agent_contracts": {
+    "cv_job_analyzer": {
+      "role": "Analyse l'offre et propose une variante.",
+      "must_output": ["variant_id", "keywords"],
+      "must_not": ["inventer une competence absente du profil"]
+    },
+    "cv_creator": {
+      "role": "Compose le CV a partir du profil maitre.",
+      "must_output": ["profile", "experiences", "skills"],
+      "must_not": ["ajouter une experience absente du catalogue"]
+    },
+    "cv_quality_checker": {
+      "role": "Note le CV produit.",
+      "must_output": ["score", "issues"],
+      "must_not": ["reecrire le CV"]
+    },
+    "cv_style_reviser": {
+      "role": "Revise le style sans changer les faits.",
+      "must_output": ["profile", "experiences"],
+      "must_not": ["modifier une date"]
+    }
+  },
+  "export_targets": {
+    "json": {"enabled": true, "file_name": "cv.json", "purpose": "Source de verite de la sortie."},
+    "markdown": {"enabled": true, "file_name": "cv.md", "purpose": "Lecture humaine."},
+    "canva_copy": {"enabled": false, "file_name": "cv_canva.txt", "purpose": "Copie manuelle."},
+    "html": {"enabled": false, "file_name": "cv.html", "purpose": "Apercu."},
+    "pdf": {"enabled": false, "file_name": "cv.pdf", "purpose": "Envoi."}
+  },
+  "normalization_notes": [
+    "Fixture de test : toutes les donnees sont inventees.",
+    "Aucune correspondance avec une personne ou une entreprise reelle."
+  ],
+  "experience_groups": {},
+  "evidence_catalog": {
+    "preuve_demo": {
+      "label": "Projet de demonstration",
+      "summary": "Preuve fictive rattachee au projet de demonstration.",
+      "technologies": ["PHP", "Symfony"],
+      "capabilities": ["Developpement backend"],
+      "evidence_level": "demonstrable",
+      "source_project_ids": ["projet_demo"],
+      "usable_for": ["fullstack", "webmaster"]
+    }
+  }
+}

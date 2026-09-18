@@ -13,8 +13,10 @@ from pathlib import Path
 from typing import Any, Callable, Dict
 
 from applications import ApplicationTracker, build_application_package
+from hermes_commands.company_top import format_company_list, load_cached_companies
 from hermes_commands.utils import format_job_list, load_cached_jobs, ranked_jobs
 from pipeline import run_job_search, load_criteria
+from pipeline_spontaneous import prepare_application, run_spontaneous_search
 
 
 def _tool_result(text: str) -> Dict[str, Any]:
@@ -125,6 +127,65 @@ def job_relance(args: Dict[str, Any]) -> str:
     return "\n".join(lines).rstrip()
 
 
+def company_top(args: Dict[str, Any]) -> str:
+    limit = args.get("limit")
+    limit = int(limit) if limit is not None else None
+    refresh = bool(args.get("refresh", False))
+
+    results = load_cached_companies()
+    if refresh or not results:
+        results = run_spontaneous_search(limit=limit)
+    elif limit is not None:
+        results = results[:limit]
+
+    return format_company_list(
+        results, title=f"Prospection spontanee — {len(results)} structure(s)"
+    )
+
+
+def company_prepare(args: Dict[str, Any]) -> str:
+    number = int(args.get("number", 1))
+    with_cv = bool(args.get("with_cv", True))
+
+    results = load_cached_companies()
+    if not results:
+        results = run_spontaneous_search()
+
+    usable = [result for result in results if result.get("opportunity")]
+    if number < 1 or number > len(usable):
+        raise ValueError(f"Entreprise {number} introuvable. Exploitables: {len(usable)}")
+
+    payload = prepare_application(usable[number - 1], with_cv=with_cv)
+    lines = [
+        "Candidature spontanee preparee.",
+        "",
+        f"Structure : {payload['company']}",
+        f"Poste vise : {payload['title']}",
+        f"Constats confirmes : {payload['confirmed_findings']}",
+        f"Variante CV : {payload['recommended_cv']}",
+        "",
+        "Documents generes :",
+        f"- {payload['files']['resume']}",
+        f"- {payload['files']['motivation_letter']}",
+        f"- {payload['files']['application_email']}",
+        f"- {payload['files']['metadata']}",
+    ]
+    cv = payload.get("cv")
+    if cv:
+        lines.extend(
+            [
+                "",
+                f"CV adapte : {cv['status']} (qualite {cv['quality_score']}, ATS {cv['ats_score']})",
+                f"- {cv['cv_dir']}",
+            ]
+        )
+    lines.extend(["", "Aucun envoi. Le dossier reste local, a valider par l'utilisateur."])
+    return "\n".join(lines)
+
+
+# RÈGLE DE SÉCURITÉ : ce dictionnaire est la liste des permissions de Hermes.
+# Il ne contient aucun outil d'envoi, et ne doit jamais en contenir. Préparer un
+# dossier, oui ; l'expédier, jamais. La garantie est ici, pas dans un prompt.
 TOOLS: Dict[str, Dict[str, Any]] = {
     "job_status": {
         "description": "Affiche le statut global de la recherche d'emploi.",
@@ -170,6 +231,30 @@ TOOLS: Dict[str, Dict[str, Any]] = {
         "inputSchema": {
             "type": "object",
             "properties": {"tracker": {"type": "string", "default": "data/applications_tracker.json"}},
+            "additionalProperties": False,
+        },
+    },
+    "company_top": {
+        "description": "Affiche les entreprises ciblees en candidature spontanee et leurs constats verifies.",
+        "handler": company_top,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer"},
+                "refresh": {"type": "boolean", "default": False},
+            },
+            "additionalProperties": False,
+        },
+    },
+    "company_prepare": {
+        "description": "Prepare une candidature spontanee pour une entreprise exploitable. Ne l'envoie pas.",
+        "handler": company_prepare,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "number": {"type": "integer", "default": 1},
+                "with_cv": {"type": "boolean", "default": True},
+            },
             "additionalProperties": False,
         },
     },

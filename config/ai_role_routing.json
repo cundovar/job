@@ -72,6 +72,10 @@
       "codex_medium",
       "glm_cv",
       "deepseek_cv"
+    ],
+    "company_verifier": [
+      "deepseek_job",
+      "codex_medium"
     ]
   }
 }

@@ -1,0 +1,143 @@
+# config/companies.yaml
+# Critères de ciblage — choix produit, validés le 18/09/2026
+# À ajuster manuellement, ce fichier ne doit pas être régénéré par déduction automatique
+
+criteres:
+  type_structure:
+    - agence_com_engagee   # agences de communication "engagée" / éthique
+    - scop                 # coopératives (SCOP/SCIC)
+  zone: ile_de_france
+  taille_max_effectif: 15
+  note: >
+    Une structure qui ne coche pas ces trois critères ne doit pas être ajoutée
+    à cette liste, même si elle a été évoquée ailleurs comme piste (prestation,
+    freelance, etc.).
+
+# Poste visé par défaut selon le type de structure.
+#
+# Ce n'est PAS un constat sur l'entreprise : c'est notre intention de
+# candidature. Il ne peut donc jamais être "CONFIRMED" par le Vérificateur.
+# Il doit rester déclaré ici, versionné et relisible — jamais déduit du site.
+#
+# Les intitulés sont repris des target_positions de config/criteria.yaml
+# (priorité 1) pour rester cohérents avec les variantes de CV existantes.
+# Surchargeable entreprise par entreprise via la colonne "poste_vise" du CSV.
+poste_vise_par_type:
+  agence_com_engagee: "Développeur web / Intégrateur"
+  scop: "Développeur full-stack PHP / Symfony"
+
+# Statuts possibles : a_qualifier | prioritaire | secondaire | ecartee
+# "taille_verifiee: false" = taille non confirmée, à vérifier avant contact
+#
+# Ce fichier est l'espace de qualification humaine : il peut contenir des pistes
+# sans URL. Seules les structures dont l'URL a été relevée en clair passent dans
+# config/companies.csv, qui est la seule entrée lue par le prospecteur.
+companies:
+  - nom: RUP
+    type: scop
+    secteur: communication_ess
+    zone: Paris
+    taille_estimee: 15
+    taille_verifiee: false
+    statut: prioritaire
+    notes: "Pas de développeur identifié dans l'équipe — piste prestation technique (WordPress, automatisation n8n)."
+
+  - nom: Limite
+    type: agence_com_engagee
+    zone: Ile-de-France
+    taille_estimee: null
+    taille_verifiee: false
+    statut: prioritaire
+
+  - nom: WAA
+    type: agence_com_engagee
+    zone: Ile-de-France
+    taille_estimee: null
+    taille_verifiee: false
+    statut: prioritaire
+
+  - nom: Econovia
+    type: agence_com_engagee
+    zone: Ile-de-France
+    taille_estimee: null
+    taille_verifiee: false
+    statut: prioritaire
+
+  - nom: CommuniKey
+    type: agence_com_engagee
+    zone: Ile-de-France
+    taille_estimee: null
+    taille_verifiee: false
+    statut: prioritaire
+
+  - nom: Initiale
+    type: agence_com_engagee
+    zone: Ile-de-France
+    taille_estimee: null
+    taille_verifiee: false
+    statut: prioritaire
+
+  - nom: "Agence 3e étage"
+    type: agence_com_engagee
+    zone: Ile-de-France
+    taille_estimee: null
+    taille_verifiee: false
+    statut: prioritaire
+
+  - nom: "Agence Jaam"
+    type: agence_com_engagee
+    zone: Paris
+    taille_estimee: null
+    taille_verifiee: false
+    statut: a_qualifier
+    notes: "Ajoutée le 18/09/2026, URL relevée en clair et vérifiée (200). Type de structure et taille non confirmés."
+
+  - nom: Sidièse
+    type: agence_com_engagee
+    zone: Ile-de-France
+    taille_estimee: null
+    taille_verifiee: false
+    statut: secondaire
+    notes: "Jugée trop corporate — priorité plus basse."
+
+  - nom: Adrénaline
+    type: agence_com_engagee
+    zone: Ile-de-France
+    taille_estimee: null
+    taille_verifiee: false
+    statut: secondaire
+    notes: "Jugée trop corporate — priorité plus basse."
+
+  - nom: "Agence 148"
+    type: agence_com_engagee
+    secteur: agence_collective_b_corp
+    zone: "Paris 18e"
+    taille_estimee: null
+    taille_verifiee: false
+    statut: secondaire
+    notes: "A déjà des développeurs en interne ; seule offre ouverte connue = SEO freelance, pas dev."
+
+  - nom: "Ess'Team"
+    type: agence_com_engagee
+    zone: Ile-de-France
+    statut: ecartee
+    notes: "Concurrent direct — pas une cible."
+
+  # Structures évoquées ailleurs mais à qualifier / probablement hors critère taille
+  - nom: "Les-Tilleuls.coop"
+    type: scop
+    secteur: esn
+    zone: "Paris (multi-sites : Lille, Nantes, Lyon)"
+    taille_estimee: null
+    taille_verifiee: false
+    statut: a_qualifier
+    notes: "SCOP multi-villes avec équipe Symfony/API Platform/React établie — probablement au-dessus du seuil de 15 pers., à vérifier avant intégration à la liste prioritaire."
+
+  - nom: TelesCoop
+    type: scop
+    secteur: esn
+    zone: "Paris 10e (full remote)"
+    taille_estimee: null
+    taille_verifiee: false
+    statut: a_qualifier
+    notes: "Priorisée sur Webu (Grenoble) et La Coopérative des Internets (Lyon) pour raisons géographiques — à requalifier ici car zone/taille non confirmées."
