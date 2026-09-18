@@ -189,7 +189,13 @@ def test_failed_send_is_journalled_and_blocks_retry(tmp_path):
 
 
 def test_smtp_sender_sends_through_smtp_without_network(tmp_path, monkeypatch):
-    """L'implémentation réelle est exercée via un smtplib factice : zéro réseau."""
+    """L'implémentation réelle est exercée via un smtplib factice : zéro réseau.
+
+    Sans EMAIL_SMTP_LOGIN, le login du relais retombe sur l'adresse
+    d'expédition. La variable est retirée explicitement : plusieurs modules
+    appellent load_dotenv() à l'import, donc le vrai .env entre dans
+    l'environnement de la suite et ce repli ne doit pas dépendre de lui.
+    """
     captured = {}
 
     class FakeSMTP:
@@ -218,6 +224,7 @@ def test_smtp_sender_sends_through_smtp_without_network(tmp_path, monkeypatch):
     monkeypatch.setenv("EMAIL_SMTP_PORT", "587")
     monkeypatch.setenv("EMAIL_SENDER", "cundo@test.local")
     monkeypatch.setenv("EMAIL_PASSWORD", "secret")
+    monkeypatch.delenv("EMAIL_SMTP_LOGIN", raising=False)
 
     result = SMTPEmailSender().send("cible@entreprise.fr", "Objet test", "Corps test")
 
@@ -230,6 +237,44 @@ def test_smtp_sender_sends_through_smtp_without_network(tmp_path, monkeypatch):
         "to": "cible@entreprise.fr",
         "subject": "Objet test",
     }
+
+
+def test_smtp_login_can_differ_from_the_visible_sender(tmp_path, monkeypatch):
+    """Sur un relais, on s'authentifie avec le compte et on écrit depuis le domaine.
+
+    Le login du relais ne doit jamais fuiter dans l'en-tête From : le
+    destinataire voit l'adresse du domaine, pas l'identité du compte d'envoi.
+    """
+    captured = {}
+
+    class FakeSMTP:
+        def __init__(self, server, port):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def starttls(self):
+            pass
+
+        def login(self, user, password):
+            captured["login"] = user
+
+        def send_message(self, message):
+            captured["from"] = message["From"]
+
+    monkeypatch.setattr("applications.sender.smtplib.SMTP", FakeSMTP)
+    monkeypatch.setenv("EMAIL_SENDER", "contact@domaine.test")
+    monkeypatch.setenv("EMAIL_SMTP_LOGIN", "compte-relais@fournisseur.test")
+    monkeypatch.setenv("EMAIL_PASSWORD", "secret")
+
+    SMTPEmailSender().send("cible@entreprise.fr", "Objet", "Corps")
+
+    assert captured["login"] == "compte-relais@fournisseur.test"
+    assert captured["from"] == "contact@domaine.test"
 
 
 def test_smtp_sender_refuses_to_build_without_credentials(monkeypatch):

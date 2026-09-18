@@ -2,8 +2,8 @@
 Fournisseurs d'envoi pour la brique candidature.
 
 L'interface est agnostique du choix Gmail personnel vs domaine authentifié :
-tout vient de l'environnement (EMAIL_SMTP_SERVER/PORT/SENDER/PASSWORD), rien
-n'est codé en dur. Zéro appel réseau dans cette brique côté tests : les tests
+tout vient de l'environnement (EMAIL_SMTP_SERVER/PORT/SENDER/SMTP_LOGIN/PASSWORD),
+rien n'est codé en dur. Zéro appel réseau dans cette brique côté tests : les tests
 utilisent leur propre fake ou monkeypatchent smtplib.
 """
 from __future__ import annotations
@@ -44,6 +44,11 @@ class SMTPEmailSender(EmailSender):
         self.server = os.getenv("EMAIL_SMTP_SERVER", "smtp.gmail.com")
         self.port = int(os.getenv("EMAIL_SMTP_PORT", "587"))
         self.sender = os.getenv("EMAIL_SENDER")
+        # Le login du relais n'est pas forcément l'adresse d'expédition. Sur un
+        # relais type Brevo on s'authentifie avec le compte et on écrit depuis
+        # une adresse vérifiée du domaine ; sur une boîte classique les deux
+        # coïncident, d'où le repli sur EMAIL_SENDER.
+        self.login = os.getenv("EMAIL_SMTP_LOGIN") or os.getenv("EMAIL_SENDER")
         self.password = os.getenv("EMAIL_PASSWORD")
         if not self.sender or not self.password:
             raise RuntimeError(
@@ -67,7 +72,7 @@ class SMTPEmailSender(EmailSender):
         try:
             with smtplib.SMTP(self.server, self.port) as connection:
                 connection.starttls()
-                connection.login(self.sender, self.password)
+                connection.login(self.login, self.password)
                 connection.send_message(message)
         except (OSError, smtplib.SMTPException) as exc:
             return SendResult(ok=False, provider=self.provider, error=str(exc))
