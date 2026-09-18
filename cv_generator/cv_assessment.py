@@ -206,14 +206,26 @@ def evaluate_match(
 def evaluate_truthfulness(master: Dict[str, Any], final_cv: Dict[str, Any]) -> Dict[str, Any]:
     cv = _cv_payload(final_cv)
     catalog = master.get("experience_catalog", {})
+    groups = master.get("experience_groups", {})
     allowed_skills = set(master.get("skills_confidence", {}).keys())
     for variant in master.get("cv_variants", []):
         allowed_skills.update(flatten_skills(variant.get("skills", {})))
     normalized_allowed = {normalize(item) for item in allowed_skills}
     issues: List[Dict[str, str]] = []
     for experience in cv.get("experiences", []):
-        if experience.get("id") not in catalog:
-            issues.append({"type": "unknown_experience", "value": str(experience.get("id"))})
+        exp_id = experience.get("id")
+        if exp_id in catalog:
+            continue
+        # Un bloc groupé est accepté seulement si le groupe est déclaré,
+        # si les membres utilisés sont des membres déclarés du groupe,
+        # et si chaque membre déclaré existe dans le catalogue unitaire.
+        group = groups.get(exp_id)
+        if group is not None:
+            member_ids = set(group.get("member_ids", []))
+            used_ids = set(experience.get("source_experience_ids") or member_ids)
+            if member_ids and used_ids <= member_ids and member_ids <= set(catalog):
+                continue
+        issues.append({"type": "unknown_experience", "value": str(exp_id)})
     for section in cv.get("skills", []):
         for item in section.get("items", []):
             if normalize(item) not in normalized_allowed:

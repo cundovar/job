@@ -32,7 +32,8 @@ def _apply_final_review_status(assessment: Dict[str, Any], final_review: Dict[st
         "verdict": final_review.get("verdict"),
         "evidence_coverage": final_review.get("evidence_coverage", []),
     }
-    if final_review.get("status") == "needs_revision":
+    # L'avis IA peut retarder un CV prêt, jamais débloquer un contrôle en échec.
+    if final_review.get("status") == "needs_revision" and assessment["overall_status"] == "ready":
         assessment["overall_status"] = "review"
     return assessment
 

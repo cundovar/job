@@ -28,6 +28,7 @@ from cv_generator.exporters import (
     cv_to_pdf,
 )
 from cv_generator.ats_exporter import cv_to_ats_html, cv_to_ats_pdf
+from cv_generator.cv_assessment import evaluate_truthfulness
 from cv_generator.cv_quality_checker import review_cv
 from cv_generator.cv_creator import create_cv_draft
 from cv_generator.layout import sparse_main_vertical_offset, title_requires_wrap, wrap_tracked_title
@@ -1419,3 +1420,111 @@ def test_empty_completion_names_the_exhausted_budget():
 
     # Un contenu réel passe inchangé.
     assert _check_completion('{"ok": true}', "stop", 32000) == '{"ok": true}'
+
+
+def _truthfulness_master(catalog_ids, group=None):
+    """Maître minimal synthétique — jamais une copie du profil réel."""
+    master = {
+        "experience_catalog": {exp_id: {} for exp_id in catalog_ids},
+        "experience_groups": {},
+        "skills_confidence": {},
+        "cv_variants": [],
+        "forbidden_claims": [],
+    }
+    if group is not None:
+        master["experience_groups"][group["id"]] = group
+    return master
+
+
+def _cv_with_experiences(*experiences):
+    return {"cv": {"experiences": list(experiences)}}
+
+
+def test_truthfulness_accepts_declared_group():
+    """Un bloc groupé déclaré, avec membres au catalogue, n'est pas une invention."""
+    master = _truthfulness_master(
+        ["mission_a", "mission_b"],
+        group={"id": "g1", "member_ids": ["mission_a", "mission_b"]},
+    )
+    final_cv = _cv_with_experiences(
+        {"id": "g1", "source_experience_ids": ["mission_a", "mission_b"]}
+    )
+
+    result = evaluate_truthfulness(master, final_cv)
+
+    assert result["status"] == "pass"
+    assert result["issues"] == []
+
+
+def test_truthfulness_accepts_declared_group_without_source_ids():
+    """Sans source_experience_ids, les membres déclarés servent de référence."""
+    master = _truthfulness_master(
+        ["mission_a", "mission_b"],
+        group={"id": "g1", "member_ids": ["mission_a", "mission_b"]},
+    )
+    final_cv = _cv_with_experiences({"id": "g1"})
+
+    result = evaluate_truthfulness(master, final_cv)
+
+    assert result["status"] == "pass"
+
+
+def test_truthfulness_rejects_undeclared_group():
+    """Un identifiant ni au catalogue ni dans experience_groups reste un échec."""
+    master = _truthfulness_master(["mission_a"])
+    final_cv = _cv_with_experiences({"id": "g1", "source_experience_ids": ["mission_a"]})
+
+    result = evaluate_truthfulness(master, final_cv)
+
+    assert result["status"] == "fail"
+    assert result["issues"] == [{"type": "unknown_experience", "value": "g1"}]
+
+
+def test_truthfulness_rejects_group_with_unknown_member():
+    """Un groupe qui déclare un membre absent du catalogue unitaire est refusé."""
+    master = _truthfulness_master(
+        ["mission_a"],
+        group={"id": "g1", "member_ids": ["mission_a", "mission_fantome"]},
+    )
+    final_cv = _cv_with_experiences({"id": "g1"})
+
+    result = evaluate_truthfulness(master, final_cv)
+
+    assert result["status"] == "fail"
+    assert result["issues"] == [{"type": "unknown_experience", "value": "g1"}]
+
+
+def test_truthfulness_rejects_group_with_unexpected_source_ids():
+    """Un bloc groupé qui s'appuie sur des membres non déclarés est refusé."""
+    master = _truthfulness_master(
+        ["mission_a", "mission_b"],
+        group={"id": "g1", "member_ids": ["mission_a"]},
+    )
+    final_cv = _cv_with_experiences(
+        {"id": "g1", "source_experience_ids": ["mission_a", "mission_b"]}
+    )
+
+    result = evaluate_truthfulness(master, final_cv)
+
+    assert result["status"] == "fail"
+    assert result["issues"] == [{"type": "unknown_experience", "value": "g1"}]
+
+
+def test_final_review_cannot_downgrade_blocked():
+    """L'avis IA ne débloque pas un contrôle Python en échec."""
+    assessment = {"overall_status": "blocked"}
+    final_review = {"status": "needs_revision"}
+
+    result = _apply_final_review_status(assessment, final_review)
+
+    assert result["overall_status"] == "blocked"
+
+
+def test_final_review_downgrades_ready():
+    """Une révision demandée retarde un CV prêt, sans le bloquer."""
+    assessment = {"overall_status": "ready"}
+    final_review = {"status": "needs_revision"}
+
+    result = _apply_final_review_status(assessment, final_review)
+
+    assert result["overall_status"] == "review"
