@@ -70,6 +70,18 @@ Un échec d'envoi se journalise aussi : statut d'échec + motif, pour ne jamais 
 À faire à la main, par l'utilisateur ; le code n'en dépend que par la configuration :
 
 1. Domaine d'envoi authentifié : SPF, DKIM, DMARC. Sans cela tout finit en indésirables, quelle que soit la qualité du message.
+
+   État constaté le 18/09/2026 sur `varascundo.com` :
+   ```
+   MX     → mx1/mx2/mx3.mail.ovh.net   (boîte OVH déjà existante)
+   SPF    → v=spf1 include:mx.ovh.com ~all
+   DMARC  → v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com   (mode observation, rien n'est rejeté)
+   ```
+   Aucun enregistrement DKIM trouvé sous les sélecteurs usuels. Deux chemins possibles :
+   - **A — Gmail personnel.** Déjà configuré (`EMAIL_SENDER`/`EMAIL_SMTP_SERVER` dans `.env.example`, utilisé aujourd'hui pour le rapport quotidien). Zéro action DNS, Google authentifie déjà `gmail.com`. Recommandé pour démarrer vu le volume visé (1-2/jour).
+   - **B — `contact@varascundo.com`.** Plus cohérent avec le portfolio cité dans les lettres. Demande d'activer DKIM sur la boîte OVH (manager OVH, pas du DNS manuel), de vérifier que la source d'envoi retenue est couverte par le SPF, puis de durcir `DMARC` de `p=none` vers `p=quarantine` une fois les rapports satisfaisants.
+
+   L'interface fournisseur (ci-dessous) doit rester agnostique de ce choix : elle lit les identifiants depuis l'environnement, sans coder en dur A ou B.
 2. Compte fournisseur d'envoi, avec ses conditions d'usage pour de la prospection.
 3. Vérification des règles applicables à la prospection par email en France — ces règles évoluent et ne se déduisent pas d'une architecture (section 10 de la spec).
 4. Stratégie de volume : très faible au départ, montée lente. Le quota du jour (point de configuration) doit commencer à 1 ou 2.
