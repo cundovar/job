@@ -1,11 +1,15 @@
 import io
 import json
 
+import pytest
+
 from pypdf import PdfReader
 
 from cv_generator import prepare_custom_cv
 from cv_generator.ai_agents import (
     ANALYZER_PROMPT,
+    CVAgentError,
+    _check_completion,
     CREATOR_PROMPT,
     REVIEWER_PROMPT,
     REVISER_PROMPT,
@@ -1392,3 +1396,26 @@ def test_quality_checker_reports_skill_without_visible_evidence():
 
     assert "SKILL_WITHOUT_EVIDENCE" in review["problem_codes"]
     assert review["status"] == "needs_revision"
+
+
+def test_empty_completion_names_the_exhausted_budget():
+    """Une réponse vide doit se lire, pas se déboguer.
+
+    Les modèles de raisonnement dépensent le budget de complétion avant
+    d'écrire. Sans ce message, l'échec remontait en « n'a pas renvoyé un objet
+    JSON », ce qui envoie chercher un bug de parsing là où il n'y a qu'un
+    max_tokens trop court.
+    """
+    with pytest.raises(CVAgentError) as exhausted:
+        _check_completion("", "length", 5000)
+    message = str(exhausted.value)
+    assert "budget" in message
+    assert "CV_AI_MAX_TOKENS" in message
+    assert "5000" in message
+
+    with pytest.raises(CVAgentError) as empty:
+        _check_completion("   ", "stop", 32000)
+    assert "réponse vide" in str(empty.value)
+
+    # Un contenu réel passe inchangé.
+    assert _check_completion('{"ok": true}', "stop", 32000) == '{"ok": true}'

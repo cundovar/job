@@ -42,6 +42,29 @@ class AgentClient(Protocol):
     ) -> AgentResult | Dict[str, Any]: ...
 
 
+def _check_completion(content: str, finish_reason: str | None, max_tokens: int) -> str:
+    """Traduit une réponse vide en cause lisible.
+
+    Les modèles de raisonnement consomment le budget de complétion avant
+    d'émettre le moindre caractère. Quand il est trop court, l'API répond
+    `finish_reason="length"` avec un contenu vide — ce qui, sans ce contrôle,
+    remonte en « l'agent n'a pas renvoyé un objet JSON » et envoie chercher un
+    bug de parsing là où il n'y a qu'un budget insuffisant.
+    """
+    if content.strip():
+        return content
+    if finish_reason == "length":
+        raise CVAgentError(
+            f"budget de complétion épuisé avant émission de contenu "
+            f"(max_tokens={max_tokens}, finish_reason=length). "
+            f"Relever CV_AI_MAX_TOKENS : un modèle de raisonnement dépense ce "
+            f"budget en réflexion avant d'écrire sa réponse."
+        )
+    raise CVAgentError(
+        f"réponse vide du fournisseur (finish_reason={finish_reason or 'inconnu'})"
+    )
+
+
 def _parse_json_response(content: str) -> Dict[str, Any]:
     raw = (content or "").strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
@@ -65,7 +88,9 @@ class CVLLMClient:
     """Execute the provider/model fallback route configured for each AI role."""
 
     def __init__(self, bridge_client: CLIAgentBridgeClient | None = None) -> None:
-        timeout = float(os.getenv("CV_AI_TIMEOUT_SECONDS", os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "60")))
+        # 60 s ne suffit pas au budget de tokens ci-dessous : le modèle passe
+        # plusieurs minutes à raisonner avant de répondre.
+        timeout = float(os.getenv("CV_AI_TIMEOUT_SECONDS", os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "300")))
         self._cli_bridge = bridge_client or CLIAgentBridgeClient()
         provider_override = os.getenv("CV_AI_PROVIDER_ORDER")
         self._provider_order = (
@@ -100,7 +125,9 @@ class CVLLMClient:
         self._glm_model = os.getenv("CV_GLM_MODEL", os.getenv("GLM_MODEL", "glm-5.3"))
         self._claude_model = os.getenv("CV_CLAUDE_MODEL", "claude-sonnet-4-6")
         self._temperature = float(os.getenv("CV_AI_TEMPERATURE", "0.2"))
-        self._max_tokens = int(os.getenv("CV_AI_MAX_TOKENS", "5000"))
+        # 5000 ne suffit pas : cv_job_analyzer dépense à lui seul ~12 200 tokens
+        # de raisonnement avant d'émettre un caractère, et la réponse revient vide.
+        self._max_tokens = int(os.getenv("CV_AI_MAX_TOKENS", "32000"))
         self._anthropic_key = os.getenv("ANTHROPIC_API_KEY")
 
     def _call_cli_bridge(
@@ -144,7 +171,10 @@ class CVLLMClient:
             temperature=self._temperature,
             max_tokens=self._max_tokens,
         )
-        content = response.choices[0].message.content or ""
+        choice = response.choices[0]
+        content = _check_completion(
+            choice.message.content or "", choice.finish_reason, self._max_tokens
+        )
         return AgentResult(_parse_json_response(content), "deepseek", selected_model)
 
     def _call_glm(
@@ -165,7 +195,10 @@ class CVLLMClient:
             temperature=self._temperature,
             max_tokens=self._max_tokens,
         )
-        content = response.choices[0].message.content or ""
+        choice = response.choices[0]
+        content = _check_completion(
+            choice.message.content or "", choice.finish_reason, self._max_tokens
+        )
         return AgentResult(_parse_json_response(content), "glm", selected_model)
 
     def _call_claude(
@@ -190,6 +223,9 @@ class CVLLMClient:
             messages=[{"role": "user", "content": user_message}],
         )
         content = "".join(block.text for block in response.content if hasattr(block, "text"))
+        # Anthropic dit "max_tokens" là où l'API OpenAI dit "length".
+        finish_reason = "length" if response.stop_reason == "max_tokens" else response.stop_reason
+        content = _check_completion(content, finish_reason, self._max_tokens)
         return AgentResult(_parse_json_response(content), "anthropic", selected_model)
 
     def _route_for(self, agent_name: str) -> List[AIRouteStep]:
