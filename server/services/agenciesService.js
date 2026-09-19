@@ -5,7 +5,10 @@ import { PROJECT_ROOT } from '../config.js';
 
 const PYTHON_BIN = process.env.PYTHON_BIN || 'python3';
 const COMPANY_TOP_TIMEOUT = 240000; // 4 min
-const COMPANY_PREPARE_TIMEOUT = 420000; // 7 min
+const COMPANY_PREPARE_TIMEOUT = Number.parseInt(
+  process.env.COMPANY_PREPARE_TIMEOUT_MS || String(20 * 60 * 1000),
+  10
+);
 
 function normalizeDomain(domain) {
   if (!domain || typeof domain !== 'string') return null;

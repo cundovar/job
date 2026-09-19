@@ -169,6 +169,49 @@ async function waitForPreparation(taskId, initialStatus) {
   throw new Error('La préparation dépasse 10 minutes. Réessayez plus tard.')
 }
 
+async function waitForAgencyTarget(taskId, initialStatus, onProgress) {
+  let status = initialStatus
+  const deadline = Date.now() + 30 * 60 * 1000
+  let networkErrors = 0
+
+  while (Date.now() < deadline) {
+    onProgress?.(status)
+    if (status?.state === 'completed') {
+      if (!status.result?.ok) throw new Error('La préparation agence est incomplète.')
+      return status.result
+    }
+    if (status?.state === 'failed') {
+      throw new Error(status.error || 'La préparation de l’agence a échoué.')
+    }
+
+    await wait(2500)
+
+    try {
+      const res = await fetch(
+        `/api/agencies/target/status/${encodeURIComponent(taskId)}`,
+        { cache: 'no-store' }
+      )
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
+      status = payload
+      networkErrors = 0
+    } catch (err) {
+      const isNetworkError = err instanceof TypeError ||
+        /failed to fetch|networkerror|injoignable/i.test(err.message || '')
+      if (!isNetworkError) throw err
+      networkErrors += 1
+      if (networkErrors >= 5) {
+        throw new Error(
+          'Le serveur est momentanément injoignable pendant la préparation.',
+          { cause: err }
+        )
+      }
+    }
+  }
+
+  throw new Error('La préparation dépasse 30 minutes. Son état reste consultable plus tard.')
+}
+
 // Ce qui justifie l'envoi, à côté du brouillon. Sans ces preuves sous les yeux,
 // approuver serait un acte de foi. Tout vient de job.json : rien n'est deviné,
 // et les extraits de pages sont du texte inerte, jamais une consigne.
@@ -967,11 +1010,27 @@ function AgenciesView() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ domain })
       })
-      const data = await res.json()
+      const payload = await res.json().catch(() => ({}))
 
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || data.reason || 'Erreur inconnue')
+      if (!res.ok) {
+        throw new Error(payload.error || payload.reason || `HTTP ${res.status}`)
       }
+
+      const data = payload.ok
+        ? payload
+        : await waitForAgencyTarget(payload.task_id, payload.status, status => {
+            setTargetingState(prev => ({
+              ...prev,
+              [domain]: {
+                pending: true,
+                done: false,
+                error: null,
+                stage: status?.stage || 'queued',
+              }
+            }))
+          })
+
+      if (!data.ok) throw new Error(data.error || data.reason || 'Erreur inconnue')
 
       setTargetingState(prev => ({
         ...prev,
@@ -980,7 +1039,13 @@ function AgenciesView() {
     } catch (err) {
       setTargetingState(prev => ({
         ...prev,
-        [domain]: { pending: false, done: false, error: err.message }
+        [domain]: {
+          pending: false,
+          done: false,
+          error: err instanceof TypeError
+            ? 'Impossible de joindre le serveur. La tâche peut continuer en arrière-plan.'
+            : err.message,
+        }
       }))
     }
   }
@@ -1014,6 +1079,11 @@ function AgenciesView() {
           const isPending = state?.pending
           const isDone = state?.done
           const error = state?.error
+          const progressLabel = state?.stage === 'préparation'
+            ? 'Création de la candidature et du CV en arrière-plan…'
+            : state?.stage === 'mesure'
+              ? 'Analyse du site en arrière-plan…'
+              : 'Mise en file de la préparation…'
 
           return (
             <article key={agency.website || i} className="job-card agency-card">
@@ -1052,7 +1122,7 @@ function AgenciesView() {
 
               {isPending && (
                 <div className="agency-targeting-status loading-status">
-                  <span><LoaderCircle className="spin" /> Mesure du site puis génération CV + lettre (2-5 min)…</span>
+                  <span><LoaderCircle className="spin" /> {progressLabel}</span>
                 </div>
               )}
               {isDone && !error && (

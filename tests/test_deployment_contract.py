@@ -45,6 +45,27 @@ def test_agency_target_uses_runtime_python_binary():
     assert "'python3.10'" not in service
 
 
+def test_agency_target_uses_an_async_task_contract():
+    routes = (
+        PROJECT_ROOT / "server" / "routes" / "applications.js"
+    ).read_text(encoding="utf-8")
+    app = (PROJECT_ROOT / "front" / "src" / "App.jsx").read_text(encoding="utf-8")
+
+    assert "enqueueAgencyTask" in routes
+    assert "activeAgencyTasksByDomain" in routes
+    assert "router.get('/agencies/target/status/:taskId'" in routes
+    assert "res.status(202).json" in routes
+    assert "waitForAgencyTarget" in app
+    assert "/api/agencies/target/status/" in app
+    assert "networkErrors >= 5" in app
+
+    service = (
+        PROJECT_ROOT / "server" / "services" / "agenciesService.js"
+    ).read_text(encoding="utf-8")
+    assert "COMPANY_PREPARE_TIMEOUT_MS" in service
+    assert "20 * 60 * 1000" in service
+
+
 def test_job_cards_use_a_stable_react_key():
     app_source = (PROJECT_ROOT / "front" / "src" / "App.jsx").read_text(
         encoding="utf-8"

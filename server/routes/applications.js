@@ -33,6 +33,7 @@ const CV_TASK_TIMEOUT_MS = Number.parseInt(
 const CV_TASK_KILL_GRACE_MS = 5000;
 const CV_TASK_RETENTION_MS = 60 * 60 * 1000;
 const PREPARE_TASK_RETENTION_MS = 60 * 60 * 1000;
+const AGENCY_TASK_RETENTION_MS = 60 * 60 * 1000;
 // Mêmes valeurs que APPROVED_STATUS dans applications/send.py : le front écrit
 // exactement ce que la brique envoi contrôle.
 const APPROVED_STATUS = 'APPROVED';
@@ -356,6 +357,10 @@ export default function createApplicationsRouter(repo) {
   const prepareTasks = new Map();
   let prepareSequence = 0;
   let prepareChain = Promise.resolve();
+  const agencyTasks = new Map();
+  const activeAgencyTasksByDomain = new Map();
+  let agencySequence = 0;
+  let agencyChain = Promise.resolve();
 
   function publicPrepareTask(task) {
     if (!task) return null;
@@ -399,6 +404,98 @@ export default function createApplicationsRouter(repo) {
         const cleanup = setTimeout(() => {
           prepareTasks.delete(task.task_id);
         }, PREPARE_TASK_RETENTION_MS);
+        cleanup.unref();
+      }
+    });
+
+    return task;
+  }
+
+  function publicAgencyTask(task) {
+    if (!task) return null;
+    return {
+      task_id: task.task_id,
+      domain: task.domain,
+      agency_name: task.agency_name,
+      state: task.state,
+      stage: task.stage,
+      queued_at: task.queued_at,
+      started_at: task.started_at,
+      completed_at: task.completed_at,
+      error: task.error,
+      result: task.result,
+    };
+  }
+
+  function enqueueAgencyTask({ domain, agencyName, alreadyTargeted }) {
+    const activeTask = activeAgencyTasksByDomain.get(domain);
+    if (activeTask && ['queued', 'running'].includes(activeTask.state)) {
+      return activeTask;
+    }
+
+    agencySequence += 1;
+    const task = {
+      task_id: `agency_${Date.now().toString(36)}_${agencySequence}`,
+      domain,
+      agency_name: agencyName,
+      state: 'queued',
+      stage: 'queued',
+      queued_at: new Date().toISOString(),
+      started_at: null,
+      completed_at: null,
+      error: null,
+      result: null,
+    };
+    agencyTasks.set(task.task_id, task);
+    activeAgencyTasksByDomain.set(domain, task);
+
+    agencyChain = agencyChain.then(async () => {
+      task.state = 'running';
+      task.stage = 'mesure';
+      task.started_at = new Date().toISOString();
+
+      try {
+        const measureResult = await measureAgency(agencyName);
+        if (!measureResult.ok) {
+          task.state = 'failed';
+          task.error = measureResult.error || measureResult.reason || 'Mesure impossible';
+          task.result = measureResult;
+          console.error(`[agency task ${task.task_id}]`, task.error);
+          return;
+        }
+
+        task.stage = 'préparation';
+        const prepareResult = await prepareAgency(measureResult.number, agencyName);
+        if (!prepareResult.ok) {
+          task.state = 'failed';
+          task.error = prepareResult.error || 'Préparation impossible';
+          task.result = prepareResult;
+          console.error(`[agency task ${task.task_id}]`, task.error);
+          return;
+        }
+
+        task.state = 'completed';
+        task.stage = 'completed';
+        task.result = {
+          ok: true,
+          domain,
+          number: measureResult.number,
+          constats_confirmes: measureResult.constats,
+          already_targeted: alreadyTargeted,
+          dry: false,
+        };
+      } catch (err) {
+        task.state = 'failed';
+        task.error = String(err?.message || err || 'Erreur inconnue').trim().slice(-4000);
+        console.error(`[agency task ${task.task_id}]`, task.error);
+      } finally {
+        task.completed_at = new Date().toISOString();
+        if (activeAgencyTasksByDomain.get(domain) === task) {
+          activeAgencyTasksByDomain.delete(domain);
+        }
+        const cleanup = setTimeout(() => {
+          agencyTasks.delete(task.task_id);
+        }, AGENCY_TASK_RETENTION_MS);
         cleanup.unref();
       }
     });
@@ -573,8 +670,8 @@ export default function createApplicationsRouter(repo) {
     }
   });
 
-  // POST /api/agencies/target — Ajoute une agence au ciblage et prépare le dossier
-  router.post('/agencies/target', async (req, res) => {
+  // POST /api/agencies/target — Ajoute une agence puis met la préparation en file
+  router.post('/agencies/target', (req, res) => {
     const domain = req.body?.domain;
     const dry = req.body?.dry === true;
 
@@ -628,42 +725,29 @@ export default function createApplicationsRouter(repo) {
         });
       }
 
-      // Mesure
-      const measureResult = await measureAgency(displayName);
-      if (!measureResult.ok) {
-        console.error(`[POST /agencies/target] Mesure échouée pour ${displayName}:`, measureResult);
-        return res.json({
-          ok: false,
-          stage: measureResult.stage,
-          reason: measureResult.reason,
-          error: measureResult.error
-        });
-      }
-
-      // Préparation
-      const prepareResult = await prepareAgency(measureResult.number, displayName);
-      if (!prepareResult.ok) {
-        console.error(`[POST /agencies/target] Préparation échouée pour ${displayName}:`, prepareResult);
-        return res.json({
-          ok: false,
-          stage: prepareResult.stage,
-          error: prepareResult.error
-        });
-      }
-
-      // Succès
-      res.json({
-        ok: true,
+      const task = enqueueAgencyTask({
         domain: normalizedDomain,
-        number: measureResult.number,
-        constats_confirmes: measureResult.constats,
-        already_targeted: alreadyTargeted,
-        dry: false
+        agencyName: displayName,
+        alreadyTargeted,
+      });
+      res.status(202).json({
+        accepted: true,
+        task_id: task.task_id,
+        status: publicAgencyTask(task),
       });
     } catch (err) {
       console.error('[POST /agencies/target]', err.message);
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // GET /api/agencies/target/status/:taskId — Suit mesure, candidature et CV
+  router.get('/agencies/target/status/:taskId', (req, res) => {
+    const task = agencyTasks.get(req.params.taskId);
+    if (!task) {
+      return res.status(404).json({ error: 'Tâche agence introuvable ou expirée' });
+    }
+    res.json(publicAgencyTask(task));
   });
 
   return router;
