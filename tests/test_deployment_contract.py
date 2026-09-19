@@ -15,6 +15,27 @@ def test_runtime_image_contains_front_export_module():
     assert any("front_export.py" in command[1:-1] for command in copy_commands)
 
 
+def test_runtime_image_contains_spontaneous_prospection_modules():
+    dockerfile = (PROJECT_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    copy_commands = [
+        line.split()
+        for line in dockerfile.splitlines()
+        if line.strip().startswith("COPY ")
+    ]
+
+    copied_sources = {
+        source
+        for command in copy_commands
+        for source in command[1:-1]
+    }
+    assert {
+        "pipeline_spontaneous.py",
+        "opportunity.py",
+        "company_analysis/",
+        "prospectors/",
+    } <= copied_sources
+
+
 def test_agency_target_uses_runtime_python_binary():
     service = (
         PROJECT_ROOT / "server" / "services" / "agenciesService.js"

@@ -24,16 +24,18 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
-COPY main.py pipeline.py front_export.py ./
+COPY main.py pipeline.py pipeline_spontaneous.py opportunity.py front_export.py ./
 COPY assets/ ./assets/
 COPY agents/ ./agents/
 COPY analyzers/ ./analyzers/
 COPY applications/ ./applications/
+COPY company_analysis/ ./company_analysis/
 COPY cv_generator/ ./cv_generator/
 COPY config/ ./config/
 COPY filters/ ./filters/
 COPY hermes_commands/ ./hermes_commands/
 COPY notifications/ ./notifications/
+COPY prospectors/ ./prospectors/
 COPY scrapers/ ./scrapers/
 COPY storage/ ./storage/
 COPY utils/ ./utils/
