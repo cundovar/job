@@ -101,6 +101,53 @@ def test_refused_when_company_already_contacted(tmp_path):
     assert "déduplication" in result["refusal"]
 
 
+def test_refused_when_the_same_site_carries_another_name(tmp_path):
+    """Faux négatif du nom : même domaine, raison sociale différente, un seul envoi.
+
+    C'est le cas que la comparaison de noms laissait passer — et le second envoi
+    partait pour de bon.
+    """
+    dossier = make_dossier(tmp_path)
+    tracker = ApplicationTracker(tmp_path / "tracker.json")
+    tracker.mark_sent(
+        {"title": "Autre poste", "company": "Studio Econovia Développement",
+         "url": "https://www.econovia.fr/contact"},
+        {},
+    )
+
+    result = send_dossier(dossier, FakeSender(), tracker=tracker, companies_csv="/dev/null")
+
+    assert result["refused"]
+    assert "déduplication" in result["refusal"] and "econovia.fr" in result["refusal"]
+
+
+def test_a_lookalike_name_on_another_site_stays_contactable(tmp_path):
+    """Faux positif du nom : « Econovia » ne doit pas bloquer « Econovia Conseil ».
+
+    Deux domaines distincts, deux organisations : la seconde reste joignable.
+    """
+    dossier = make_dossier(tmp_path)
+    tracker = ApplicationTracker(tmp_path / "tracker.json")
+    tracker.mark_sent(
+        {"title": "Poste", "company": "Econovia Conseil", "url": "https://econovia-conseil.com"}, {}
+    )
+
+    result = send_dossier(dossier, FakeSender(), tracker=tracker, companies_csv="/dev/null")
+
+    assert not result["refused"], result.get("refusal")
+
+
+def test_excluded_company_is_caught_despite_the_www_prefix(tmp_path):
+    """DO_NOT_CONTACT ne se contourne pas avec un « www. » ou un slash final."""
+    dossier = make_dossier(tmp_path)
+    ecartee = [{"nom": "Tout autre nom", "site": "https://www.econovia.fr/", "statut": "ecartee"}]
+
+    result = send_dossier(dossier, FakeSender(), companies_csv=write_companies(tmp_path, ecartee))
+
+    assert result["refused"]
+    assert "DO_NOT_CONTACT" in result["refusal"]
+
+
 def test_refused_when_daily_quota_exhausted(tmp_path, monkeypatch):
     dossier = make_dossier(tmp_path)
     tracker = ApplicationTracker(tmp_path / "tracker.json")
@@ -110,7 +157,7 @@ def test_refused_when_daily_quota_exhausted(tmp_path, monkeypatch):
     monkeypatch.setenv("SEND_DAILY_QUOTA", "1")
 
     result = send_dossier(
-        dossier, FakeSender(), tracker=tracker, companies_csv="/dev/null", today=date(2026, 9, 18)
+        dossier, FakeSender(), tracker=tracker, companies_csv="/dev/null", today=date.today()
     )
 
     assert result["refused"]

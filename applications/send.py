@@ -21,6 +21,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, List
 
+from company_analysis.duplicate import duplicate_check
+
 from .application_tracker import ApplicationTracker
 from .sender import EmailSender, SendResult
 
@@ -57,21 +59,6 @@ def extract_public_contact(job: Dict[str, Any]) -> tuple[str, str] | None:
 def _companies_rows(csv_path: Path) -> List[Dict[str, str]]:
     with csv_path.open(encoding="utf-8", newline="") as handle:
         return [row for row in csv.DictReader(handle) if row.get("nom")]
-
-
-def _same_company(a: str, b: str) -> bool:
-    a = str(a or "").strip().casefold()
-    b = str(b or "").strip().casefold()
-    if not a or not b:
-        return False
-    if a == b:
-        return True
-    shorter, longer = sorted((a, b), key=len)
-    return len(shorter) >= 3 and shorter in longer
-
-
-def _same_site(url_a: str, url_b: str) -> bool:
-    return bool(url_a) and bool(url_b) and url_a.rstrip("/").casefold() == url_b.rstrip("/").casefold()
 
 
 def _mail_parts(mail_path: Path) -> tuple[str, str]:
@@ -112,29 +99,35 @@ def run_controls(
         )
     ]
 
-    do_not_contact = [
-        row
-        for row in companies
-        if str(row.get("statut") or "") == "ecartee"
-        and (
-            _same_company(row.get("nom"), job.get("company"))
-            or _same_site(row.get("site"), job.get("url"))
-        )
-    ]
+    # Les deux contrôles suivants posent la même question — « connaît-on déjà
+    # cette organisation ? » — à deux registres différents. Une seule mesure les
+    # sert, pour qu'ils ne puissent pas répondre selon deux règles distinctes.
+    duplicates = duplicate_check(
+        job.get("url", ""),
+        job.get("company", ""),
+        contacted=tracker.contact_history(),
+        registry=companies,
+    )["value"]
+
+    excluded = duplicates["excluded"]
     verdicts.append(
         Verdict(
             "DO_NOT_CONTACT",
-            not do_not_contact,
-            "entreprise marquée ecartee dans companies.csv" if do_not_contact else "aucune exclusion",
+            not excluded,
+            f"entreprise marquée ecartee dans companies.csv ({excluded[0]['reason']})"
+            if excluded
+            else "aucune exclusion",
         )
     )
 
-    already = tracker.company_contacted(job.get("company", ""))
+    already = duplicates["contacted"]
     verdicts.append(
         Verdict(
             "déduplication",
             not already,
-            "un envoi existe déjà pour cette entreprise" if already else "premier contact",
+            f"un envoi existe déjà pour cette entreprise ({already[0]['reason']})"
+            if already
+            else "premier contact",
         )
     )
 

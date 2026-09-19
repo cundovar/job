@@ -154,18 +154,17 @@ class ApplicationTracker:
             if str(record.get("send", {}).get("sent_at", "")).startswith(day.isoformat())
         )
 
-    def company_contacted(self, company: str) -> bool:
-        """Vrai si un envoi (réussi ou raté) existe déjà pour cette entreprise."""
-        target = str(company or "").strip().casefold()
-        if not target:
-            return False
-        for record in self.list_records():
-            if record.get("status") not in {"applied", "send_failed"}:
-                continue
-            known = str(record.get("company") or "").strip().casefold()
-            if known == target or (known in target or target in known) and min(len(known), len(target)) >= 3:
-                return True
-        return False
+    def contact_history(self) -> List[Dict[str, Any]]:
+        """Les envois déjà partis, réussis ou ratés — matière de la déduplication.
+
+        Un échec compte : on ne retente jamais à l'aveugle. Le rapprochement
+        lui-même n'est pas fait ici, c'est le rôle de duplicate_check.
+        """
+        return [
+            record
+            for record in self.list_records()
+            if record.get("status") in {"applied", "send_failed"}
+        ]
 
     def due_followups(self, today: date | None = None) -> List[Dict[str, Any]]:
         today = today or date.today()
