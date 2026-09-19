@@ -11,6 +11,7 @@ import {
 import './App.css'
 import ManualCvView from './ManualCvView'
 import CvAssessment from './CvAssessment'
+import HermesChat from './HermesChat'
 
 const DATA_URL = '/data'
 
@@ -1609,6 +1610,7 @@ function App() {
 
   return (
     <div className="app-layout">
+      <HermesChat />
       <aside className="sidebar">
         <button
           className="prepare-btn launch-search-btn"

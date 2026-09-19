@@ -21,6 +21,7 @@ import JsonApplicationsRepository from './repositories/jsonApplicationsRepositor
 
 import createApplicationsRouter from './routes/applications.js';
 import createSearchRouter from './routes/search.js';
+import createHermesRouter from './routes/hermes.js';
 
 const app = express();
 
@@ -199,6 +200,7 @@ app.use(express.static(frontDistPath));
 // Routes API
 app.use('/api', createApplicationsRouter(repo));
 app.use('/api/search', createSearchRouter());
+app.use('/api/hermes', createHermesRouter());
 
 // SPA fallback : redirige vers index.html pour les routes qui n'existent pas
 app.get('*', (req, res) => {
@@ -222,4 +224,7 @@ app.listen(PORT, () => {
   console.log(`   GET  /api/agencies/target/status/:taskId`);
   console.log(`   POST /api/search/run`);
   console.log(`   GET  /api/search/status`);
+  console.log(`   POST /api/hermes/session`);
+  console.log(`   GET  /api/hermes/messages/:sessionId`);
+  console.log(`   POST /api/hermes/chat`);
 });
