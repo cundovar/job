@@ -3,7 +3,7 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { PROJECT_ROOT } from '../config.js';
 
-const PYTHON_BIN = 'python3.10';
+const PYTHON_BIN = process.env.PYTHON_BIN || 'python3';
 const COMPANY_TOP_TIMEOUT = 240000; // 4 min
 const COMPANY_PREPARE_TIMEOUT = 420000; // 7 min
 

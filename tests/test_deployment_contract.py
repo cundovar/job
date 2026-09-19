@@ -15,6 +15,15 @@ def test_runtime_image_contains_front_export_module():
     assert any("front_export.py" in command[1:-1] for command in copy_commands)
 
 
+def test_agency_target_uses_runtime_python_binary():
+    service = (
+        PROJECT_ROOT / "server" / "services" / "agenciesService.js"
+    ).read_text(encoding="utf-8")
+
+    assert "process.env.PYTHON_BIN || 'python3'" in service
+    assert "'python3.10'" not in service
+
+
 def test_job_cards_use_a_stable_react_key():
     app_source = (PROJECT_ROOT / "front" / "src" / "App.jsx").read_text(
         encoding="utf-8"
