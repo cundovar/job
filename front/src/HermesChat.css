@@ -31,7 +31,10 @@
   z-index: 51;
   width: 380px;
   max-width: calc(100vw - var(--sp-4) * 2);
-  height: 70vh;
+  /* dvh (et non vh) pour que le panneau se redimensionne avec le clavier
+     virtuel mobile plutôt que de garder la hauteur du viewport initial. */
+  height: 70vh; /* fallback navigateurs sans dvh */
+  height: 70dvh;
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -151,4 +154,24 @@
 
 .hermes-input-row button {
   flex-shrink: 0;
+}
+
+/* --- Mobile (<768px) -----------------------------------------
+   Le FAB « 💬 Hermes » passe à gauche pour ne pas recouvrir le FAB
+   « Lancer une recherche » (droite, en mode recherche). Le panneau
+   s'étale sur la largeur disponible ; sa hauteur en dvh (héritée
+   ci-dessus) s'ajuste avec le clavier virtuel pour garder la zone
+   de saisie toujours visible. ---------------------------------- */
+@media (max-width: 767.98px) {
+  .hermes-fab {
+    left: var(--sp-4);
+    right: auto;
+  }
+
+  .hermes-panel {
+    left: var(--sp-3);
+    right: var(--sp-3);
+    width: auto;
+    max-width: none;
+  }
 }
