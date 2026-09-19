@@ -1,6 +1,6 @@
 ---
 objective: "Le bouton Retenir et préparer lance la candidature agence en arrière-plan et reste fiable malgré une génération longue."
-status: in-progress
+status: implemented
 ---
 
 # Plan: Préparation agence asynchrone
