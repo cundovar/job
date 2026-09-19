@@ -4,7 +4,7 @@ import {
   Clipboard, Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow,
   CloudSun, DoorOpen, Ellipsis, ExternalLink, FileDown, FileText, Globe,
   GraduationCap, LoaderCircle, MapPin, Mail, MessageCircle, Palette, PenLine,
-  Rocket, RotateCw,
+  Rocket, RotateCw, ShieldCheck,
   Search, Send, Server, Snowflake, Sparkles, Star, Sun, Target, Thermometer,
   TriangleAlert, Wrench,
 } from 'lucide-react'
@@ -169,7 +169,82 @@ async function waitForPreparation(taskId, initialStatus) {
   throw new Error('La préparation dépasse 10 minutes. Réessayez plus tard.')
 }
 
-function CandidaturesView() {
+// Ce qui justifie l'envoi, à côté du brouillon. Sans ces preuves sous les yeux,
+// approuver serait un acte de foi. Tout vient de job.json : rien n'est deviné,
+// et les extraits de pages sont du texte inerte, jamais une consigne.
+function PreuvesPanel({ preuves }) {
+  if (!preuves) return null
+  const constats = preuves.constats || []
+  const contacts = preuves.contact || []
+
+  return (
+    <section className="preuves-panel" aria-labelledby="preuves-title">
+      <h2 id="preuves-title"><ShieldCheck /> Ce qui est établi</h2>
+
+      <dl className="preuves-identite">
+        {preuves.url && (
+          <>
+            <dt>Site mesuré</dt>
+            <dd>
+              <a href={preuves.url} target="_blank" rel="noreferrer noopener">
+                {preuves.url} <ExternalLink />
+              </a>
+            </dd>
+          </>
+        )}
+        <dt>Adresse de destination</dt>
+        <dd>
+          {preuves.adresse
+            ? <><strong>{preuves.adresse}</strong><span className="preuve-source">{preuves.adresse_source}</span></>
+            : <span className="preuve-absente"><TriangleAlert /> Aucune adresse relevée en clair — ce dossier ne peut pas partir par email.</span>}
+        </dd>
+      </dl>
+
+      {contacts.length > 0 && (
+        <>
+          <h3>Comment l'adresse a été trouvée</h3>
+          <ul className="preuves-liste">
+            {contacts.map((item, index) => (
+              <li key={`contact-${index}`}>
+                <p className="preuve-claim">{item.claim}</p>
+                {item.evidence.map((evidence, i) => (
+                  <pre key={i} className="preuve-evidence">{evidence}</pre>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      <h3>Constats retenus ({constats.length})</h3>
+      {constats.length === 0 ? (
+        <p className="preuve-absente">Aucun constat. Rien ne devrait avoir été rédigé.</p>
+      ) : (
+        <ul className="preuves-liste">
+          {constats.map((item, index) => (
+            <li key={`constat-${index}`}>
+              <p className="preuve-claim">
+                <span className={`preuve-statut statut-${item.status.toLowerCase()}`}>{item.status}</span>
+                {item.claim}
+              </p>
+              {item.evidence.map((evidence, i) => (
+                <pre key={i} className="preuve-evidence">{evidence}</pre>
+              ))}
+              {item.source_tool && <p className="preuve-outil">mesuré par {item.source_tool}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+// `mission` sépare deux gestes qui ne se valident pas pareil : une candidature
+// sur annonce se copie-colle sur un formulaire, une spontanée s'approuve avant
+// de partir par email. Les mélanger dans une même liste rendait le bouton
+// « Approuver » incompréhensible.
+function CandidaturesView({ mission = 'annonce' }) {
+  const spontanee = mission === 'spontanee'
   const [candidatures, setCandidatures] = useState([])
   const [statuts, setStatuts] = useState({})       // { [id]: { status, applied_at, follow_up_at } }
   const [backendOk, setBackendOk] = useState(true)  // false si le backend est injoignable
@@ -180,15 +255,18 @@ function CandidaturesView() {
   const [cvStatuses, setCvStatuses] = useState({})  // { [id]: { exists, files, review } }
   const [cvPendingId, setCvPendingId] = useState(null)
   const [cvFeedback, setCvFeedback] = useState(null) // { id, type, text }
+  const [approvals, setApprovals] = useState({})    // { [id]: { status, approved } }
+  const [approvalPendingId, setApprovalPendingId] = useState(null)
   const cvPollControllerRef = useRef(null)
 
-  // Charge les candidatures depuis le fichier JSON statique
+  // Charge les candidatures depuis le fichier JSON statique. Le bloc `preuves`
+  // n'existe que pour les dossiers de prospection : il suffit à les distinguer.
   useEffect(() => {
     fetch(`${DATA_URL}/candidatures.json`)
       .then(r => r.json())
-      .then(d => setCandidatures(d.candidatures || []))
+      .then(d => setCandidatures((d.candidatures || []).filter(c => Boolean(c.preuves) === spontanee)))
       .catch(() => {})
-  }, [])
+  }, [spontanee])
 
   useEffect(() => {
     return () => {
@@ -344,6 +422,48 @@ function CandidaturesView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, backendOk])
 
+  // L'approbation vit dans metadata.json, pas dans l'index statique : elle est
+  // toujours relue au serveur pour ne jamais afficher une autorisation périmée.
+  const refreshApproval = async (id) => {
+    if (!id || !backendOk) return
+    try {
+      const res = await fetch(`/api/applications/${id}/approval`, { cache: 'no-store' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const state = await res.json()
+      setApprovals(prev => ({ ...prev, [id]: state }))
+    } catch {
+      setApprovals(prev => ({ ...prev, [id]: null }))
+    }
+  }
+
+  useEffect(() => {
+    if (!selected) return
+    const timeout = setTimeout(() => refreshApproval(selected), 0)
+    return () => clearTimeout(timeout)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, backendOk])
+
+  // Pose ou retire l'autorisation d'envoi. N'envoie rien : l'envoi reste une
+  // commande que seul l'utilisateur lance depuis un terminal.
+  const handleApproval = async (id, approved) => {
+    setApprovalPendingId(id)
+    setApiError(null)
+    try {
+      const res = await fetch(`/api/applications/${id}/approval`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved }),
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
+      setApprovals(prev => ({ ...prev, [id]: payload }))
+    } catch (err) {
+      setApiError(err.message || "Impossible d'enregistrer l'approbation.")
+    } finally {
+      setApprovalPendingId(null)
+    }
+  }
+
   // Marque une candidature comme postulée
   const handleApplied = async (e, id) => {
     e.stopPropagation()
@@ -385,6 +505,9 @@ function CandidaturesView() {
     const cvStatus = cvStatuses[selected]
     const cvReady = hasGeneratedCv(cvStatus)
     const cvReview = cvStatus?.review
+    const approval = approvals[selected]
+    const approvalPending = approvalPendingId === selected
+    const preuvesSuffisantes = Boolean(c?.preuves?.adresse)
     return (
       <div className="candidature-detail">
         <button className="tab back-btn" onClick={() => setSelected(null)}><ArrowLeft /> Retour</button>
@@ -394,6 +517,42 @@ function CandidaturesView() {
           <span><Briefcase /> {c?.poste}</span>
           <span><Calendar /> {c?.date}</span>
         </div>
+
+        <PreuvesPanel preuves={c?.preuves} />
+
+        {/* Autorisation d'envoi. Distincte de « J'ai postulé » : celle-ci ouvre
+            la porte, l'autre constate un envoi déjà fait. */}
+        {c?.preuves && backendOk && (
+          <div className="approval-zone">
+            {approval?.approved ? (
+              <>
+                <span className="badge-approved"><ShieldCheck /> Envoi approuvé</span>
+                <button
+                  type="button"
+                  className="annuler-btn"
+                  onClick={() => handleApproval(selected, false)}
+                  disabled={approvalPending}
+                >
+                  {approvalPending ? '…' : "Retirer l'approbation"}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="approve-btn"
+                onClick={() => handleApproval(selected, true)}
+                disabled={approvalPending || !preuvesSuffisantes}
+              >
+                {approvalPending ? 'Enregistrement…' : <><ShieldCheck /> Approuver l'envoi</>}
+              </button>
+            )}
+            <p className="approval-note">
+              {preuvesSuffisantes
+                ? <>Approuver n'envoie rien. L'envoi reste lancé à la main : <code>python -m applications.send --dossier output/applications/{selected} --send</code></>
+                : "Sans adresse relevée en clair, ce dossier ne peut pas être approuvé pour un envoi email."}
+            </p>
+          </div>
+        )}
 
         {/* Bouton / badge postulé dans la vue détail */}
         <div className="postule-zone">
@@ -492,7 +651,17 @@ function CandidaturesView() {
   // Vue liste des candidatures
   return (
     <div className="candidatures-list">
-      <h1><PenLine /> Candidatures préparées ({candidatures.length})</h1>
+      <h1>
+        {spontanee
+          ? <><ShieldCheck /> Candidatures spontanées ({candidatures.length})</>
+          : <><PenLine /> Candidatures préparées ({candidatures.length})</>}
+      </h1>
+      {spontanee && (
+        <p className="liste-intro">
+          Dossiers construits sans annonce. Chacun porte les preuves qui justifient
+          l'envoi : ouvre-le pour les relire avant d'approuver.
+        </p>
+      )}
 
       {!backendOk && (
         <div className="backend-warning">
@@ -506,7 +675,30 @@ function CandidaturesView() {
       )}
 
       {candidatures.length === 0 && (
-        <div className="empty-state"><p>Aucune candidature préparée. Demande "prépare candidature n°X".</p></div>
+        <div className="empty-state">
+          {spontanee ? (
+            <>
+              <p>
+                Aucune candidature spontanée préparée. La prospection se pilote par
+                Hermes, qui mesure les entreprises de <code>config/companies.yaml</code> :
+                demande <strong>company_top</strong> pour les mesurer, puis{' '}
+                <strong>company_prepare</strong> pour construire le dossier retenu.
+              </p>
+              <p className="empty-fallback">Hermes indisponible ? Les mêmes étapes au terminal :</p>
+              <ol className="empty-steps">
+                <li>
+                  <code>python3 -m hermes_commands.company_top --refresh</code>
+                </li>
+                <li>
+                  <code>python3 -m hermes_commands.company_prepare X</code>
+                </li>
+              </ol>
+              <p>Le dossier apparaît ici dès la seconde étape terminée.</p>
+            </>
+          ) : (
+            <p>Aucune candidature préparée. Demande "prépare candidature n°X".</p>
+          )}
+        </div>
       )}
 
       {candidatures.map(c => {
@@ -752,6 +944,7 @@ function PostuleesView() {
 function AgenciesView() {
   const [payload, setPayload] = useState(null)
   const [fetchError, setFetchError] = useState(false)
+  const [targetingState, setTargetingState] = useState({}) // { [domain]: { pending, done, error } }
 
   useEffect(() => {
     fetch(`${DATA_URL}/agencies/latest.json`)
@@ -761,6 +954,36 @@ function AgenciesView() {
   }, [])
 
   const agencies = payload?.agencies || []
+
+  const handleTargetAgency = async (agency) => {
+    if (!agency.website) return
+
+    const domain = new URL(agency.website).hostname
+    setTargetingState(prev => ({ ...prev, [domain]: { pending: true, done: false, error: null } }))
+
+    try {
+      const res = await fetch('/api/agencies/target', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain })
+      })
+      const data = await res.json()
+
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || data.reason || 'Erreur inconnue')
+      }
+
+      setTargetingState(prev => ({
+        ...prev,
+        [domain]: { pending: false, done: true, error: null }
+      }))
+    } catch (err) {
+      setTargetingState(prev => ({
+        ...prev,
+        [domain]: { pending: false, done: false, error: err.message }
+      }))
+    }
+  }
 
   return (
     <div className="agencies-list">
@@ -774,53 +997,103 @@ function AgenciesView() {
 
       {fetchError && (
         <div className="empty-state">
-          <p>Données agences non disponibles. Lance “lance prospection agences web”.</p>
+          <p>Données agences non disponibles. Lance "lance prospection agences web".</p>
         </div>
       )}
 
       {!fetchError && agencies.length === 0 && (
         <div className="empty-state">
-          <p>Aucune agence retenue pour l’instant. Relance une prospection agences web.</p>
+          <p>Aucune agence retenue pour l'instant. Relance une prospection agences web.</p>
         </div>
       )}
 
       <div className="job-list">
-        {agencies.map((agency, i) => (
-          <article key={agency.website || i} className="job-card agency-card">
-            <div className="card-top">
-              <div className="card-badges">
-                <span className="badge-agency">Agence</span>
+        {agencies.map((agency, i) => {
+          const domain = agency.website ? new URL(agency.website).hostname : null
+          const state = domain ? targetingState[domain] : null
+          const isPending = state?.pending
+          const isDone = state?.done
+          const error = state?.error
+
+          return (
+            <article key={agency.website || i} className="job-card agency-card">
+              <div className="card-top">
+                <div className="card-badges">
+                  <span className="badge-agency">Agence</span>
+                </div>
+                <span className="job-score"><strong>{agency.score ?? '?'}</strong>/100</span>
               </div>
-              <span className="job-score"><strong>{agency.score ?? '?'}</strong>/100</span>
-            </div>
-            <div className="job-header">
-              <h3>{agency.name}</h3>
-            </div>
-            <div className="job-meta">
-              {agency.stack?.length > 0 && <span><Wrench /> {agency.stack.join(', ')}</span>}
-              {agency.emails?.length > 0 && <span><Mail /> {agency.emails[0]}</span>}
-              {agency.query && <span><Search /> {agency.query}</span>}
-            </div>
-            {agency.reasons?.length > 0 && (
-              <div className="job-points">
-                <strong>Pourquoi c’est intéressant :</strong>
-                <ul>{agency.reasons.slice(0, 5).map((r, idx) => <li key={idx}>{r}</li>)}</ul>
+              <div className="job-header">
+                <h3>{agency.name}</h3>
               </div>
-            )}
-            <div className="agency-actions">
-              {agency.website && (
-                <a href={agency.website} target="_blank" rel="noopener noreferrer" className="job-link">
-                  <Globe /> Ouvrir le site
-                </a>
+              <div className="job-meta">
+                {agency.stack?.length > 0 && <span><Wrench /> {agency.stack.join(', ')}</span>}
+                {agency.emails?.length > 0 && <span><Mail /> {agency.emails[0]}</span>}
+                {agency.query && <span><Search /> {agency.query}</span>}
+              </div>
+              {agency.analyse && (
+                <div className="job-points agency-analyse" style={{ borderLeft: '3px solid #7aa7ff', paddingLeft: 10, marginTop: 8 }}>
+                  <strong>{agency.analyse.type}</strong>
+                  <p style={{ margin: '6px 0' }}>{agency.analyse.resume}</p>
+                  {agency.analyse.forts?.length > 0 && (
+                    <ul>{agency.analyse.forts.map((f, i) => <li key={`f${i}`}>✅ {f}</li>)}</ul>
+                  )}
+                  {agency.analyse.faibles?.length > 0 && (
+                    <ul>{agency.analyse.faibles.map((f, i) => <li key={`w${i}`}>⚠️ {f}</li>)}</ul>
+                  )}
+                </div>
               )}
-              {agency.contact_urls?.[0] && (
-                <a href={agency.contact_urls[0]} target="_blank" rel="noopener noreferrer" className="job-link">
-                  <Send /> Contact / recrutement
-                </a>
+              {agency.reasons?.length > 0 && (
+                <div className="job-points">
+                  <strong>Signaux du barème :</strong>
+                  <ul>{agency.reasons.slice(0, 5).map((r, idx) => <li key={idx}>{r}</li>)}</ul>
+                </div>
               )}
-            </div>
-          </article>
-        ))}
+
+              {isPending && (
+                <div className="agency-targeting-status loading-status">
+                  <span><LoaderCircle className="spin" /> Mesure du site puis génération CV + lettre (2-5 min)…</span>
+                </div>
+              )}
+              {isDone && !error && (
+                <div className="agency-targeting-status success-status">
+                  <span><CircleCheck /> Dossier prêt — voir l'onglet 🛡 Spontanées</span>
+                </div>
+              )}
+              {error && (
+                <div className="agency-targeting-status error-status">
+                  <span><TriangleAlert /> {error}</span>
+                </div>
+              )}
+
+              <div className="agency-actions">
+                {domain && (
+                  <button
+                    className={`prepare-btn ${isDone ? 'done' : ''}`}
+                    onClick={() => handleTargetAgency(agency)}
+                    disabled={isPending || isDone}
+                  >
+                    {isPending
+                      ? <>Préparation…</>
+                      : isDone
+                        ? <>✅ Dossier préparé</>
+                        : <>🎯 Retenir & préparer</>}
+                  </button>
+                )}
+                {agency.website && (
+                  <a href={agency.website} target="_blank" rel="noopener noreferrer" className="job-link">
+                    <Globe /> Ouvrir le site
+                  </a>
+                )}
+                {agency.contact_urls?.[0] && (
+                  <a href={agency.contact_urls[0]} target="_blank" rel="noopener noreferrer" className="job-link">
+                    <Send /> Contact / recrutement
+                  </a>
+                )}
+              </div>
+            </article>
+          )
+        })}
       </div>
     </div>
   )
@@ -1128,7 +1401,8 @@ function useSearchRunner() {
 const NAV_ITEMS = [
   { id: 'recherche', Icon: Search, label: 'Recherches', hint: 'Offres analysées', primary: true },
   { id: 'manual-cv', Icon: Sparkles, label: 'CV', hint: 'Depuis une annonce', primary: true },
-  { id: 'candidatures', Icon: PenLine, label: 'Lettres', hint: 'Lettres prêtes', primary: true },
+  { id: 'candidatures', Icon: PenLine, label: 'Lettres', hint: 'Réponses à une annonce', primary: true },
+  { id: 'spontanees', Icon: ShieldCheck, label: 'Spontanées', hint: 'Sans annonce, à approuver' },
   { id: 'cvs', Icon: FileText, label: 'Mes CV', hint: 'CV générés', primary: false },
   { id: 'postulees', Icon: CircleCheck, label: 'Postulées', hint: 'Suivi des envois', primary: true },
   { id: 'agencies', Icon: Building2, label: 'Agences', hint: 'Prospection hors annonces' },
@@ -1139,7 +1413,7 @@ function App() {
   const [index, setIndex] = useState(null)
   const [activeSearch, setActiveSearch] = useState(null)
   const [activeCategory, setActiveCategory] = useState('backend')
-  const [activeMode, setActiveMode] = useState('recherche')  // recherche | manual-cv | cvs | agencies | candidatures | postulees | weather
+  const [activeMode, setActiveMode] = useState('recherche')  // recherche | manual-cv | cvs | agencies | candidatures | spontanees | postulees | weather
   const [nbPostulees, setNbPostulees] = useState(0)          // compteur sidebar dynamique
   const [moreOpen, setMoreOpen] = useState(false)            // feuille « Plus » (mobile)
   const [jobs, setJobs] = useState([])
@@ -1316,7 +1590,9 @@ function App() {
         {activeMode === 'manual-cv' ? (
           <ManualCvView onOpenCandidatures={() => setActiveMode('candidatures')} />
         ) : activeMode === 'candidatures' ? (
-          <CandidaturesView />
+          <CandidaturesView key="annonce" />
+        ) : activeMode === 'spontanees' ? (
+          <CandidaturesView key="spontanee" mission="spontanee" />
         ) : activeMode === 'cvs' ? (
           <MesCvView />
         ) : activeMode === 'postulees' ? (
@@ -1441,14 +1717,18 @@ function App() {
         )}
       </main>
 
-      {/* Bouton flottant — équivalent mobile du bouton en tête de sidebar */}
-      <button
-        className="fab"
-        onClick={launchSearch}
-        disabled={searchLaunching || searchStatus.running}
-      >
-        {launchLabel}
-      </button>
+      {/* Bouton flottant — équivalent mobile du bouton en tête de sidebar.
+          Réservé au mode recherche : il ne lance que le scraping d'annonces, et
+          ailleurs il recouvrait le contenu en proposant une action hors sujet. */}
+      {activeMode === 'recherche' && (
+        <button
+          className="fab"
+          onClick={launchSearch}
+          disabled={searchLaunching || searchStatus.running}
+        >
+          {launchLabel}
+        </button>
+      )}
 
       {/* Barre de navigation basse — mobile uniquement */}
       <nav className="bottom-nav">

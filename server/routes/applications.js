@@ -12,6 +12,17 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { PROJECT_ROOT } from '../config.js';
 import { downloadFilename } from '../services/cvDownloads.js';
+import {
+  normalizeDomain,
+  validateDomain,
+  domainMatchesAgency,
+  cleanAgencyName,
+  isAlreadyTargeted,
+  appendToCSV,
+  appendToYAML,
+  measureAgency,
+  prepareAgency
+} from '../services/agenciesService.js';
 
 const MAX_CV_PROCESS_OUTPUT = 10 * 1024 * 1024;
 const CV_PYTHON_BIN = process.env.CV_PYTHON_BIN || 'python3';
@@ -22,6 +33,10 @@ const CV_TASK_TIMEOUT_MS = Number.parseInt(
 const CV_TASK_KILL_GRACE_MS = 5000;
 const CV_TASK_RETENTION_MS = 60 * 60 * 1000;
 const PREPARE_TASK_RETENTION_MS = 60 * 60 * 1000;
+// Mêmes valeurs que APPROVED_STATUS dans applications/send.py : le front écrit
+// exactement ce que la brique envoi contrôle.
+const APPROVED_STATUS = 'APPROVED';
+const READY_STATUS = 'ready_to_apply';
 const REQUIRED_FRESH_CV_FILES = [
   'cv_final.pdf',
   'cv_ats.pdf',
@@ -87,6 +102,39 @@ function readApplicationMetadata(id) {
   } catch {
     return {};
   }
+}
+
+/**
+ * Écrit le statut d'approbation dans metadata.json du dossier.
+ *
+ * C'est le fichier que lit `applications/send.py` : il n'existe donc qu'une
+ * seule réponse à « a-t-on le droit d'envoyer ». Ne pas dupliquer cette
+ * information dans le tracker, qui journalise ce qui est arrivé et non ce qui
+ * est permis.
+ *
+ * Écriture atomique : un metadata.json tronqué par une coupure rendrait le
+ * dossier illisible pour le front comme pour la brique envoi.
+ */
+function writeApprovalStatus(id, approved) {
+  const dir = applicationDir(id);
+  const metadataPath = path.join(dir, 'metadata.json');
+  const metadata = readApplicationMetadata(id);
+  metadata.status = approved ? APPROVED_STATUS : READY_STATUS;
+  metadata.approval_updated_at = new Date().toISOString();
+  const temporaryPath = `${metadataPath}.${process.pid}.tmp`;
+  fs.writeFileSync(temporaryPath, `${JSON.stringify(metadata, null, 2)}\n`, 'utf-8');
+  fs.renameSync(temporaryPath, metadataPath);
+  return metadata;
+}
+
+function approvalState(id) {
+  const metadata = readApplicationMetadata(id);
+  return {
+    id,
+    status: metadata.status || '',
+    approved: metadata.status === APPROVED_STATUS,
+    approval_updated_at: metadata.approval_updated_at || null,
+  };
 }
 
 function cvCatalogEntry(id, application = {}) {
@@ -471,6 +519,36 @@ export default function createApplicationsRouter(repo) {
     }
   });
 
+  // GET /api/applications/:id/approval — Le dossier est-il autorisé à partir ?
+  router.get('/applications/:id/approval', (req, res) => {
+    try {
+      const dir = applicationDir(req.params.id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      res.json(approvalState(req.params.id));
+    } catch (err) {
+      console.error('[GET /applications/:id/approval]', err.message);
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // POST /api/applications/:id/approval — Pose ou retire l'autorisation d'envoi.
+  // N'envoie rien : seul l'utilisateur lance `python -m applications.send`.
+  router.post('/applications/:id/approval', (req, res) => {
+    try {
+      const approved = req.body?.approved;
+      if (typeof approved !== 'boolean') {
+        return res.status(400).json({ error: 'Champ "approved" booléen requis' });
+      }
+      const dir = applicationDir(req.params.id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      writeApprovalStatus(req.params.id, approved);
+      res.json(approvalState(req.params.id));
+    } catch (err) {
+      console.error('[POST /applications/:id/approval]', err.message);
+      res.status(400).json({ error: err.message });
+    }
+  });
+
   // POST /api/applications/:id/applied — Marque une candidature comme postulée
   router.post('/applications/:id/applied', async (req, res) => {
     try {
@@ -492,6 +570,99 @@ export default function createApplicationsRouter(repo) {
       console.error('[POST /applications/:id/not-applied]', err.message);
       const status = err.message.includes('introuvable') ? 404 : 500;
       res.status(status).json({ error: err.message });
+    }
+  });
+
+  // POST /api/agencies/target — Ajoute une agence au ciblage et prépare le dossier
+  router.post('/agencies/target', async (req, res) => {
+    const domain = req.body?.domain;
+    const dry = req.body?.dry === true;
+
+    // Validation
+    if (!domain || typeof domain !== 'string') {
+      return res.status(400).json({ error: 'Domaine manquant ou invalide' });
+    }
+
+    const normalizedDomain = normalizeDomain(domain);
+    if (!validateDomain(normalizedDomain)) {
+      return res.status(400).json({ error: 'Format de domaine invalide' });
+    }
+
+    try {
+      // Charger latest.json
+      const agenciesPath = path.join(PROJECT_ROOT, 'front/public/data/agencies/latest.json');
+      if (!fs.existsSync(agenciesPath)) {
+        return res.status(500).json({ error: 'Fichier agences non trouvé' });
+      }
+
+      const agenciesData = JSON.parse(fs.readFileSync(agenciesPath, 'utf-8'));
+      const agencies = agenciesData.agencies || [];
+
+      // Trouver l'agence
+      const agency = agencies.find(a => domainMatchesAgency(normalizedDomain, a));
+      if (!agency) {
+        return res.status(404).json({ error: `Agence avec domaine ${normalizedDomain} non trouvée` });
+      }
+
+      // Vérifier idempotence
+      const csvPath = path.join(PROJECT_ROOT, 'config/companies.csv');
+      const yamlPath = path.join(PROJECT_ROOT, 'config/companies.yaml');
+      // Nom nettoyé : évite qu'un « Voir » scrapé pollue csv → mesure → lettre
+      const displayName = cleanAgencyName(agency.name, normalizedDomain);
+      const alreadyTargeted = isAlreadyTargeted(normalizedDomain, csvPath);
+
+      if (!dry && !alreadyTargeted) {
+        // Ajouter append-only
+        appendToCSV(csvPath, displayName, normalizedDomain);
+        appendToYAML(yamlPath, displayName, normalizedDomain);
+        console.log(`[POST /agencies/target] Agence ${displayName} ajoutée au ciblage`);
+      }
+
+      if (dry) {
+        return res.json({
+          ok: true,
+          domain: normalizedDomain,
+          dry: true,
+          already_targeted: alreadyTargeted,
+          agency_name: displayName
+        });
+      }
+
+      // Mesure
+      const measureResult = await measureAgency(displayName);
+      if (!measureResult.ok) {
+        console.error(`[POST /agencies/target] Mesure échouée pour ${displayName}:`, measureResult);
+        return res.json({
+          ok: false,
+          stage: measureResult.stage,
+          reason: measureResult.reason,
+          error: measureResult.error
+        });
+      }
+
+      // Préparation
+      const prepareResult = await prepareAgency(measureResult.number, displayName);
+      if (!prepareResult.ok) {
+        console.error(`[POST /agencies/target] Préparation échouée pour ${displayName}:`, prepareResult);
+        return res.json({
+          ok: false,
+          stage: prepareResult.stage,
+          error: prepareResult.error
+        });
+      }
+
+      // Succès
+      res.json({
+        ok: true,
+        domain: normalizedDomain,
+        number: measureResult.number,
+        constats_confirmes: measureResult.constats,
+        already_targeted: alreadyTargeted,
+        dry: false
+      });
+    } catch (err) {
+      console.error('[POST /agencies/target]', err.message);
+      res.status(500).json({ error: err.message });
     }
   });
 

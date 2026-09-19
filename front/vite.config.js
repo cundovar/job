@@ -41,10 +41,13 @@ export default defineConfig({
     }),
   ],
   server: {
-    // Proxy : les requêtes /api sont redirigées vers le backend Node (port 3001)
+    // Proxy : les requêtes /api sont redirigées vers le backend Node.
+    // Le port 3001 est souvent pris par un autre projet ; dans ce cas le proxy
+    // répond du HTML au lieu du JSON et le front croit le backend absent.
+    // VITE_API_PORT doit valoir le PORT passé à `node server/index.js`.
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: `http://localhost:${process.env.VITE_API_PORT || 3001}`,
         changeOrigin: true,
       },
     },

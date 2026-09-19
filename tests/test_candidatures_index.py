@@ -69,6 +69,92 @@ def test_rebuild_candidatures_index_uses_project_owned_application_files(tmp_pat
     }
 
 
+def _spontaneous_dossier(tmp_path, *, public_contact):
+    application_dir = tmp_path / "output" / "applications" / "2026-09-18_acme_integrateur"
+    application_dir.mkdir(parents=True)
+    (application_dir / "lettre_motivation.md").write_text("Lettre", encoding="utf-8")
+    (application_dir / "mail_candidature.md").write_text("Mail", encoding="utf-8")
+    (application_dir / "metadata.json").write_text(
+        json.dumps({"company": "Acme", "job_title": "Intégrateur"}), encoding="utf-8"
+    )
+    (application_dir / "job.json").write_text(
+        json.dumps(
+            {
+                "url": "https://acme.test",
+                "mission": "spontaneous",
+                "public_contact": public_contact,
+                "findings": [
+                    {
+                        "claim": "Le site de Acme est construit avec WordPress.",
+                        "evidence": ["<meta generator> : WordPress 7.1.1"],
+                        "status": "CONFIRMED",
+                        "source_tool": "detect_stack",
+                        "category": "stack",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return application_dir
+
+
+def test_index_carries_the_proofs_that_justify_the_send(tmp_path):
+    """Valider sans preuve sous les yeux est un acte de foi : elles voyagent avec le brouillon."""
+    application_dir = _spontaneous_dossier(
+        tmp_path,
+        public_contact=[
+            {
+                "claim": "Acme affiche l'adresse contact@acme.test.",
+                "evidence": ["mailto:contact@acme.test relevé sur https://acme.test/"],
+            }
+        ],
+    )
+    index_path = tmp_path / "candidatures.json"
+
+    rebuild_candidatures_index(application_dir.parent, index_path)
+
+    proofs = json.loads(index_path.read_text(encoding="utf-8"))["candidatures"][0]["preuves"]
+    assert proofs["url"] == "https://acme.test"
+    # L'adresse affichée est celle qu'applications.send utilisera, pas une variante.
+    assert proofs["adresse"] == "contact@acme.test"
+    assert "contact@acme.test" in proofs["adresse_source"]
+    assert proofs["constats"][0]["status"] == "CONFIRMED"
+    assert proofs["constats"][0]["evidence"] == ["<meta generator> : WordPress 7.1.1"]
+    assert proofs["constats"][0]["source_tool"] == "detect_stack"
+
+
+def test_index_leaves_the_address_empty_when_no_constat_spells_it_out(tmp_path):
+    """Cas RUP : sans adresse relevée en clair, le front n'en invente pas une."""
+    application_dir = _spontaneous_dossier(tmp_path, public_contact=[])
+    index_path = tmp_path / "candidatures.json"
+
+    rebuild_candidatures_index(application_dir.parent, index_path)
+
+    proofs = json.loads(index_path.read_text(encoding="utf-8"))["candidatures"][0]["preuves"]
+    assert proofs["adresse"] == ""
+    assert proofs["adresse_source"] == ""
+    assert proofs["contact"] == []
+    # Le dossier reste affiché : c'est l'approbation qui sera refusée, pas la lecture.
+    assert len(proofs["constats"]) == 1
+
+
+def test_index_has_no_proof_block_for_a_classic_job_ad(tmp_path):
+    """Une candidature sur annonce n'a pas de job.json de prospection — pas de trou à combler."""
+    application_dir = tmp_path / "output" / "applications" / "2026-09-18_beta_dev"
+    application_dir.mkdir(parents=True)
+    (application_dir / "lettre_motivation.md").write_text("Lettre", encoding="utf-8")
+    (application_dir / "mail_candidature.md").write_text("Mail", encoding="utf-8")
+    (application_dir / "metadata.json").write_text(
+        json.dumps({"company": "Beta", "job_title": "Dev"}), encoding="utf-8"
+    )
+    index_path = tmp_path / "candidatures.json"
+
+    rebuild_candidatures_index(application_dir.parent, index_path)
+
+    assert "preuves" not in json.loads(index_path.read_text(encoding="utf-8"))["candidatures"][0]
+
+
 def test_prepare_payload_rebuilds_index_without_external_hermes_script(
     tmp_path,
     monkeypatch,

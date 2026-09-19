@@ -218,6 +218,7 @@ app.listen(PORT, () => {
   console.log(`   GET  /api/applications/:id/cv/download/:file`);
   console.log(`   POST /api/applications/:id/applied`);
   console.log(`   POST /api/applications/:id/not-applied`);
+  console.log(`   POST /api/agencies/target`);
   console.log(`   POST /api/search/run`);
   console.log(`   GET  /api/search/status`);
 });
