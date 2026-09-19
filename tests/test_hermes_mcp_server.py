@@ -37,5 +37,58 @@ class HermesMCPServerTests(unittest.TestCase):
         self.assertIn(f"Offres en cache : {expected_count}", text)
 
 
+PREPARED_PAYLOAD = {
+    "company": "Econovia",
+    "title": "Développeur web / Intégrateur",
+    "confirmed_findings": 3,
+    "recommended_cv": "webmaster",
+    "files": {
+        "resume": "offre_resume.md",
+        "motivation_letter": "lettre_motivation.md",
+        "application_email": "mail_candidature.md",
+        "metadata": "metadata.json",
+    },
+}
+
+
+def test_company_prepare_makes_the_dossier_visible_in_the_front(monkeypatch):
+    """Un dossier préparé par Hermes doit arriver dans l'onglet Spontanées.
+
+    Régression : le handler MCP portait sa propre copie de la logique et ne
+    reconstruisait pas candidatures.json, contrairement à la CLI. Le dossier
+    existait sur le disque mais restait invisible du front — donc invalidable,
+    donc inenvoyable. Les deux chemins passent maintenant par la même fonction.
+    """
+    import hermes_mcp_server
+    from hermes_commands import company_prepare
+
+    rebuilt = []
+    monkeypatch.setattr(
+        hermes_mcp_server, "load_cached_companies", lambda: [{"opportunity": {"title": "Dev"}}]
+    )
+    monkeypatch.setattr(
+        company_prepare, "prepare_application", lambda company, with_cv=True: PREPARED_PAYLOAD
+    )
+    monkeypatch.setattr(
+        company_prepare,
+        "rebuild_candidatures_index",
+        lambda source, destination: rebuilt.append(Path(destination)),
+    )
+
+    text = hermes_mcp_server.TOOLS["company_prepare"]["handler"]({"number": 1})
+
+    assert rebuilt, "candidatures.json n'a pas été reconstruit : le front ne verra rien"
+    assert rebuilt[0].name == "candidatures.json"
+    assert "Econovia" in text and "Aucun envoi" in text
+
+
+def test_hermes_has_no_sending_tool():
+    """La garantie « Hermes ne peut pas envoyer » tient au code, pas à un prompt."""
+    import hermes_mcp_server
+
+    forbidden = [name for name in hermes_mcp_server.TOOLS if "send" in name or "envoi" in name]
+    assert forbidden == []
+
+
 if __name__ == "__main__":
     unittest.main()

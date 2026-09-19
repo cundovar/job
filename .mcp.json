@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "job-search": {
+      "command": "python3",
+      "args": ["hermes_mcp_server.py"]
+    }
+  }
+}

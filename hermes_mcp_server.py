@@ -13,10 +13,11 @@ from pathlib import Path
 from typing import Any, Callable, Dict
 
 from applications import ApplicationTracker, build_application_package
+from hermes_commands.company_prepare import format_preparation, prepare_numbered_application
 from hermes_commands.company_top import format_company_list, load_cached_companies
 from hermes_commands.utils import format_job_list, load_cached_jobs, ranked_jobs
 from pipeline import run_job_search, load_criteria
-from pipeline_spontaneous import prepare_application, run_spontaneous_search
+from pipeline_spontaneous import run_spontaneous_search
 
 
 def _tool_result(text: str) -> Dict[str, Any]:
@@ -144,43 +145,14 @@ def company_top(args: Dict[str, Any]) -> str:
 
 
 def company_prepare(args: Dict[str, Any]) -> str:
-    number = int(args.get("number", 1))
-    with_cv = bool(args.get("with_cv", True))
-
     results = load_cached_companies()
     if not results:
         results = run_spontaneous_search()
 
-    usable = [result for result in results if result.get("opportunity")]
-    if number < 1 or number > len(usable):
-        raise ValueError(f"Entreprise {number} introuvable. Exploitables: {len(usable)}")
-
-    payload = prepare_application(usable[number - 1], with_cv=with_cv)
-    lines = [
-        "Candidature spontanee preparee.",
-        "",
-        f"Structure : {payload['company']}",
-        f"Poste vise : {payload['title']}",
-        f"Constats confirmes : {payload['confirmed_findings']}",
-        f"Variante CV : {payload['recommended_cv']}",
-        "",
-        "Documents generes :",
-        f"- {payload['files']['resume']}",
-        f"- {payload['files']['motivation_letter']}",
-        f"- {payload['files']['application_email']}",
-        f"- {payload['files']['metadata']}",
-    ]
-    cv = payload.get("cv")
-    if cv:
-        lines.extend(
-            [
-                "",
-                f"CV adapte : {cv['status']} (qualite {cv['quality_score']}, ATS {cv['ats_score']})",
-                f"- {cv['cv_dir']}",
-            ]
-        )
-    lines.extend(["", "Aucun envoi. Le dossier reste local, a valider par l'utilisateur."])
-    return "\n".join(lines)
+    payload = prepare_numbered_application(
+        int(args.get("number", 1)), results, with_cv=bool(args.get("with_cv", True))
+    )
+    return format_preparation(payload)
 
 
 # RÈGLE DE SÉCURITÉ : ce dictionnaire est la liste des permissions de Hermes.

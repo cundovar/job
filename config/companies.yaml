@@ -141,3 +141,11 @@ companies:
     taille_verifiee: false
     statut: a_qualifier
     notes: "Priorisée sur Webu (Grenoble) et La Coopérative des Internets (Lyon) pour raisons géographiques — à requalifier ici car zone/taille non confirmées."
+  - nom: "Livementor"
+    type: agence_com_engagee
+    zone: Ile-de-France
+    taille_estimee: null
+    taille_verifiee: false
+    statut: a_qualifier
+    notes: "Ajoutée le 2026-09-19 via bouton front (découverte Étape 0). URL: https://livementor.com. Type et taille non confirmés."
+
