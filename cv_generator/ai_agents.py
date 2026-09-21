@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
 import re
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, replace as dataclass_replace
 from typing import Any, Dict, Iterable, List, Protocol
 
 from openai import OpenAI
@@ -27,6 +29,7 @@ class AgentResult:
     data: Dict[str, Any]
     provider: str
     model: str
+    duration_seconds: float | None = None
 
 
 class AgentClient(Protocol):
@@ -502,15 +505,17 @@ def _agent_call(
     system_prompt: str,
     payload: Dict[str, Any],
 ) -> AgentResult:
+    started = time.monotonic()
     raw = client.complete_json(
         agent_name=agent_name,
         system_prompt=system_prompt,
         payload=payload,
     )
+    duration = time.monotonic() - started
     if isinstance(raw, AgentResult):
-        return raw
+        return dataclass_replace(raw, duration_seconds=round(duration, 1))
     if isinstance(raw, dict):
-        return AgentResult(raw, "injected", "test-or-custom")
+        return AgentResult(raw, "injected", "test-or-custom", round(duration, 1))
     raise CVAgentError(f"Réponse invalide de l'agent {agent_name}")
 
 
@@ -557,8 +562,12 @@ def _truth_context(master: Dict[str, Any], role: str) -> Dict[str, Any]:
     return common
 
 
-def _agent_run(result: AgentResult) -> Dict[str, str]:
-    return {"provider": result.provider, "model": result.model}
+def _agent_run(result: AgentResult) -> Dict[str, Any]:
+    return {
+        "provider": result.provider,
+        "model": result.model,
+        "duration_seconds": result.duration_seconds,
+    }
 
 
 def _clip(value: Any, limit: int, fallback: str = "") -> str:
@@ -1302,9 +1311,177 @@ def correction_fingerprint(
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+_PATCH_MODE_PROMPT = """
+Privilégie le mode patch : réponds exactement {"changes": [{"action": "modify"|"remove",
+"path": "<chemin>", "new": <nouvelle valeur>}]}, un changement par correction à appliquer.
+Chemins acceptés : "profile", "skills[k].items[m]", "experiences[i]",
+"experiences[i].bullets[j]", "projects[i]", "education[i]". Ne cible que les location
+listées dans corrections_a_appliquer : tout ce qui n'est pas visé reste inchangé, ne renvoie
+pas le CV complet. Une puce modifiée exige {"text": "...", "sources": ["experience_id:index"
+ou "project_id"]} avec ses preuves. Si le patch ne suffit vraiment pas, renvoie le schéma
+complet du rédacteur.
+""".strip()
+
+
+def _parse_patch_path(path: Any) -> List[Any]:
+    """« experiences[1].bullets[2] » → [("experiences", 1), ("bullets", 2)]."""
+    tokens: List[Any] = []
+    for part in str(path or "").split("."):
+        match = re.fullmatch(r"([a-z_]+)(?:\[(\d+)\])?", part.strip())
+        if not match:
+            raise CVAgentError(f"Chemin de patch invalide : « {path} ».")
+        name, index = match.group(1), match.group(2)
+        tokens.append((name, int(index) if index is not None else None))
+    if not tokens:
+        raise CVAgentError("Chemin de patch vide.")
+    return tokens
+
+
+def _patch_scope(contract: List[Dict[str, Any]]) -> List[List[Any]]:
+    """Les préfixes de chemins que le patch a le droit de toucher.
+
+    Seules les erreurs bloquantes — vérité et gabarit — définissent le
+    périmètre : un patch n'existe pas pour aller retoucher du cosmétique.
+    La valeur « cv » (affirmation interdite sans localisation fine) ouvre tout.
+    """
+    prefixes: List[List[Any]] = []
+    for item in contract or []:
+        if item.get("origin") not in {"truth", "format"}:
+            continue
+        location = item.get("location")
+        if not location:
+            continue
+        try:
+            prefixes.append(_parse_patch_path(location))
+        except CVAgentError:
+            continue
+    return prefixes
+
+
+def _patch_path_in_scope(tokens: List[Any], prefixes: List[List[Any]]) -> bool:
+    for prefix in prefixes:
+        if prefix and prefix[0] == ("cv", None):
+            return True
+        if len(tokens) >= len(prefix) and tokens[: len(prefix)] == prefix:
+            return True
+    return False
+
+
+def _patch_parent(flat: Dict[str, Any], tokens: List[Any]) -> Any:
+    """Navigue vers le parent du dernier token ; renvoie (conteneur, clé)."""
+    node: Any = flat
+    for name, index in tokens[:-1]:
+        if index is None:
+            if not isinstance(node, dict) or name not in node:
+                raise CVAgentError(f"Chemin de patch introuvable : « {name} ».")
+            node = node[name]
+        else:
+            if not isinstance(node, dict) or name not in node:
+                raise CVAgentError(f"Chemin de patch introuvable : « {name} ».")
+            container = node[name]
+            if not isinstance(container, list) or index >= len(container):
+                raise CVAgentError(f"Index de patch hors limites : « {name}[{index}] ».")
+            node = container[index]
+    name, index = tokens[-1]
+    if index is None:
+        if not isinstance(node, dict):
+            raise CVAgentError(f"Chemin de patch invalide pour la cible « {name} ».")
+        return node, name
+    if not isinstance(node, dict) or name not in node:
+        raise CVAgentError(f"Chemin de patch introuvable : « {name} ».")
+    container = node[name]
+    if not isinstance(container, list) or index >= len(container):
+        raise CVAgentError(f"Index de patch hors limites : « {name}[{index}] ».")
+    return container, index
+
+
+def _apply_cv_patch(
+    flat: Dict[str, Any],
+    changes: Any,
+    scope: List[List[Any]],
+) -> Dict[str, Any]:
+    """Applique les changements du réviseur aux seuls chemins ciblés.
+
+    Python est un exécuteur mécanique : il pose la valeur rendue par l'agent
+    à l'endroit demandé et ne touche à rien d'autre — le reste du CV reste
+    identique octet pour octet au brouillon entrant.
+    """
+    if not isinstance(changes, list) or not changes:
+        raise CVAgentError("Patch vide : la liste « changes » est absente ou vide.")
+    updated = copy.deepcopy(flat)
+    for change in changes:
+        if not isinstance(change, dict):
+            raise CVAgentError("Changement de patch illisible (élément non objet).")
+        action = str(change.get("action") or "").strip().lower()
+        if action not in {"modify", "remove"}:
+            raise CVAgentError(
+                f"Action de patch inconnue : « {change.get('action')} »."
+            )
+        tokens = _parse_patch_path(change.get("path"))
+        if not _patch_path_in_scope(tokens, scope):
+            raise CVAgentError(
+                f"Chemin de patch hors périmètre du contrat : « {change.get('path')} »."
+            )
+        container, key = _patch_parent(updated, tokens)
+        if action == "remove":
+            if not isinstance(container, list):
+                raise CVAgentError(
+                    f"« remove » ne s'applique pas à « {change.get('path')} »."
+                )
+            del container[key]
+            continue
+        new = change.get("new")
+        if isinstance(key, int):
+            container[key] = new
+        else:
+            container[key] = new
+        # Une puce réécrite doit rester sourcée : on refuse tout de suite ce
+        # que le validateur bloquerait plus tard, avec la localisation.
+        if tokens[-1][0] == "bullets" and tokens[-1][1] is not None:
+            if not isinstance(new, dict) or not str(new.get("text") or "").strip():
+                raise CVAgentError(
+                    f"Puce modifiée sans texte : « {change.get('path')} »."
+                )
+            if not isinstance(new.get("sources"), list) or not new["sources"]:
+                raise CVAgentError(
+                    f"Puce modifiée sans preuve citée : « {change.get('path')} »."
+                )
+    return updated
+
+
+def _wrap_patched_cv(
+    draft: Dict[str, Any],
+    flat: Dict[str, Any],
+    job: Dict[str, Any],
+    master: Dict[str, Any],
+    plan: Dict[str, Any],
+    result: AgentResult,
+) -> Dict[str, Any]:
+    """Réassemble le CV autour du contenu patché.
+
+    Le flat patché est au schéma rédacteur (puces {text, sources}) : on le
+    repasse dans l'assemblage déterministe — mêmes identifiants, donc mêmes
+    intitulés et mêmes preuves pour tout ce que le patch n'a pas touché. La
+    sortie reste byte-identique au brouillon hors chemins ciblés.
+    """
+    final = _assemble_cv_content(
+        flat,
+        job,
+        master,
+        plan,
+        result,
+        "cv_style_reviser_ai",
+    )
+    final["source_draft_agent"] = draft.get("agent")
+    return final
+
+
 class AICVPipeline:
     def __init__(self, client: AgentClient | None = None) -> None:
         self.client = client or CVLLMClient()
+        #: Échecs de patch consécutifs du réviseur : à 2, on cesse de lui
+        #: proposer le mode patch et on repasse en réécriture complète.
+        self._patch_failures = 0
 
     def analyze(self, job: Dict[str, Any], master: Dict[str, Any]) -> Dict[str, Any]:
         rule_plan = analyze_job_rules(job, master)
@@ -1410,28 +1587,76 @@ class AICVPipeline:
         review: Dict[str, Any],
         truth_check: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
-        result = _agent_call(
-            self.client,
-            "cv_style_reviser",
-            REVISER_PROMPT,
-            {
-                "annonce_complete": _announcement_context(job),
-                "consignes_candidat": _candidate_instructions(job),
-                "source_verite": _truth_context(master, "reviser"),
-                "plan_adaptation": plan,
-                "brouillon": to_writer_schema(draft),
-                "jugement": review,
-                "corrections_a_appliquer": build_correction_contract(review, truth_check),
-            },
-        )
-        final = _assemble_cv_content(
-            result.data,
-            job,
-            master,
-            plan,
-            result,
-            "cv_style_reviser_ai",
-        )
+        contract = build_correction_contract(review, truth_check)
+        payload = {
+            "annonce_complete": _announcement_context(job),
+            "consignes_candidat": _candidate_instructions(job),
+            "source_verite": _truth_context(master, "reviser"),
+            "plan_adaptation": plan,
+            "brouillon": to_writer_schema(draft),
+            "jugement": review,
+            "corrections_a_appliquer": contract,
+        }
+
+        # Mode patch : le réviseur ne rend que les chemins à corriger, Python
+        # applique mécaniquement — le reste du CV reste identique au brouillon,
+        # aucune partie validée ne peut régresser. Après deux échecs de patch
+        # consécutifs, repli durable sur la réécriture complète.
+        final = None
+        if getattr(self, "_patch_failures", 0) < 2:
+            scope = _patch_scope(contract)
+            if scope:
+                result = _agent_call(
+                    self.client,
+                    "cv_style_reviser",
+                    REVISER_PROMPT + "\n\n" + _PATCH_MODE_PROMPT,
+                    payload,
+                )
+                data = result.data
+                if isinstance(data, dict) and isinstance(data.get("changes"), list):
+                    try:
+                        flat = _apply_cv_patch(payload["brouillon"], data["changes"], scope)
+                    except CVAgentError:
+                        # L'erreur localisée est rendue au réviseur : elle sera
+                        # dans le contrat du prochain appel. En attendant, on
+                        # referme le tour en réécriture complète.
+                        self._patch_failures = getattr(self, "_patch_failures", 0) + 1
+                    else:
+                        self._patch_failures = 0
+                        final = _wrap_patched_cv(
+                            draft, flat, job, master, plan, result
+                        )
+                elif isinstance(data, dict) and data.get("experiences"):
+                    # Le modèle a rendu le schéma complet malgré la consigne
+                    # patch : chemin historique, toléré sans compter un échec.
+                    final = _assemble_cv_content(
+                        data,
+                        job,
+                        master,
+                        plan,
+                        result,
+                        "cv_style_reviser_ai",
+                    )
+                else:
+                    # Ni patch ni schéma complet : échec de patch, le repli
+                    # ci-dessous referme le tour.
+                    self._patch_failures = getattr(self, "_patch_failures", 0) + 1
+
+        if final is None:
+            result = _agent_call(
+                self.client,
+                "cv_style_reviser",
+                REVISER_PROMPT,
+                payload,
+            )
+            final = _assemble_cv_content(
+                result.data,
+                job,
+                master,
+                plan,
+                result,
+                "cv_style_reviser_ai",
+            )
         final["source_draft_agent"] = draft.get("agent")
         final["review_applied"] = {
             "initial_quality_score": review.get("quality_score"),

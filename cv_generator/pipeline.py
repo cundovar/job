@@ -209,6 +209,18 @@ def _contract_violation_assessment(stage: str, error: str) -> Dict[str, Any]:
     }
 
 
+def _truth_signature(truth_check: Dict[str, Any]) -> frozenset:
+    """L'empreinte des erreurs de vérité bloquantes : codes + chemins.
+
+    Seule la vérité compte ici — le gabarit et la pertinence bougent d'un tour
+    à l'autre sans que ce soit un signe d'enlisement.
+    """
+    return frozenset(
+        (issue.get("code"), issue.get("path"))
+        for issue in truth_check.get("truth_issues", [])
+    )
+
+
 def prepare_custom_cv(
     job: Dict[str, Any],
     application_dir: str | Path,
@@ -250,6 +262,7 @@ def prepare_custom_cv(
     revision_rounds = 0
     stopped_because = "validated"
     agent_contract_error: str | None = None
+    previous_truth_signature = None
 
     while revision_rounds < MAX_AUTOMATIC_REVISION_ROUNDS:
         blocking = truth_check.get("verdict") == "refused"
@@ -301,6 +314,18 @@ def prepare_custom_cv(
                 "relevance_problem_count": len(review.get("problems", [])),
             }
         )
+        revised_signature = _truth_signature(revised_truth)
+        if (
+            revised_signature
+            and revised_signature == previous_truth_signature
+            and revision_rounds >= 2
+        ):
+            # Deux tours de révision consécutifs, exactement les mêmes codes
+            # bloquants aux mêmes endroits : le réviseur tourne en rond sur la
+            # vérité, une passe de plus ne produirait rien.
+            stopped_because = "truth_no_progress"
+            break
+        previous_truth_signature = revised_signature
         fingerprint = correction_fingerprint(content, corrections)
         if fingerprint in seen_fingerprints:
             # Le réviseur rend le même contenu avec les mêmes reproches : une

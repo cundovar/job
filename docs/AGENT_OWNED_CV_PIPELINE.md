@@ -150,3 +150,33 @@ trois prédicats divergents cohabitaient, et aucun ne lisait `overall_status`.
 
 Toute la chaîne CV tourne **sans `data/`**, sur `tests/fixtures/careco_cv_case.json`.
 Commande : `pytest tests/` depuis la racine du dépôt.
+
+## Le mode patch du réviseur
+
+Par défaut, `revise` demande au réviseur un **patch ciblé** au lieu d'une
+réécriture complète :
+
+```json
+{"changes": [{"action": "modify", "path": "experiences[0].bullets[2]",
+              "new": {"text": "…", "sources": ["boutique_fictive:0"]}}]}
+```
+
+- Python applique les changements aux seuls chemins demandés et repasse le
+  résultat dans l'assemblage déterministe : tout ce que le patch ne touche pas
+  reste identique au brouillon — aucune partie déjà validée ne peut régresser.
+- Le périmètre autorisé est l'ensemble des `location` bloquantes du contrat de
+  correction (vérité + gabarit). Un chemin hors périmètre est refusé avec une
+  erreur localisée rendue au réviseur.
+- Après **deux échecs de patch consécutifs**, le pipeline abandonne le mode
+  patch et revient à la réécriture complète (chemin historique). Une réponse
+  au schéma complet est aussi tolérée à tout moment.
+- La revalidation intégrale (vérité puis juge) court après chaque patch, comme
+  après chaque réécriture : le patch ne court-circuite aucun contrôle.
+
+## L'arrêt ciblé sur la vérité
+
+En complément de l'empreinte contenu/problèmes : si **deux tours de révision
+consécutifs** produisent exactement les mêmes codes bloquants aux mêmes
+chemins, la boucle s'arrête sur `stopped_because = "truth_no_progress"`, même
+si le contenu a changé. Chaque appel est désormais daté
+(`agent_run.duration_seconds`) pour arbitrer coûts et latence sur données.

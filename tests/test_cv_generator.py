@@ -1266,8 +1266,13 @@ def test_an_invention_blocks_before_the_recruiter_judge(tmp_path, careco_master)
     assert truth["truth_issues"][0]["code"] == "CLAIM_NOT_SUPPORTED_BY_SOURCE"
 
 
-def test_a_persistent_invention_exhausts_exactly_three_revisions(tmp_path, careco_master):
-    """Trois passes de correction au maximum, chacune tracée."""
+def test_a_persistent_invention_stops_after_two_identical_rounds(tmp_path, careco_master):
+    """Deux tours consécutifs avec exactement les mêmes codes bloquants : stop.
+
+    La révision reformule sans jamais retirer l'invention : les tours 1 et 2
+    produisent la même empreinte de vérité, la boucle s'arrête sur
+    truth_no_progress avant d'épuiser sa limite de trois.
+    """
     client = InventingAgentClient()
 
     prepare_custom_cv(
@@ -1275,12 +1280,12 @@ def test_a_persistent_invention_exhausts_exactly_three_revisions(tmp_path, carec
     )
     trace = json.loads((tmp_path / "cv" / "cv_agent_trace.json").read_text(encoding="utf-8"))
 
-    assert trace["automatic_revision_rounds"] == 3
+    assert trace["automatic_revision_rounds"] == 2
     assert trace["automatic_revision_limit"] == 3
-    assert trace["stopped_because"] == "revision_limit_reached"
-    assert len(trace["rounds"]) == 3
-    assert client.calls.count("cv_style_reviser") == 3
-    assert client.calls.count("cv_truth_checker") == 4
+    assert trace["stopped_because"] == "truth_no_progress"
+    assert len(trace["rounds"]) == 2
+    assert client.calls.count("cv_style_reviser") == 2
+    assert client.calls.count("cv_truth_checker") == 3
 
 
 def test_the_correction_contract_merges_truth_format_and_relevance():
@@ -1415,11 +1420,11 @@ def test_progress_counts_each_revision_round(tmp_path, careco_master):
         llm_client=RecordingClient(),
     )
 
-    assert rounds == [1, 2, 3]
+    assert rounds == [1, 2]
     final = json.loads((tmp_path / "cv" / "cv_progress.json").read_text(encoding="utf-8"))
     assert final["step"] == "done"
     assert final["status"] == "blocked"
-    assert final["revision_round"] == 3
+    assert final["revision_round"] == 2
     assert final["revision_limit"] == 3
 
 
@@ -1544,4 +1549,140 @@ def test_a_truncated_answer_names_the_budget_not_a_contract_violation():
         _parse_json_response('{"title":"W","experiences":[{"id":"a","bullets":[{"text":"Une')
 
     with pytest.raises(CVAgentError, match="budget de complétion"):
-        _check_completion('{"title":"W"', "length", 32000)
+        _check_completion('{"title":"W"}', "length", 32000)
+
+
+# --- Révision par patch ciblé ----------------------------------------------- #
+
+TOO_LONG_PERMANENCE = [
+    {
+        "id": "permanence_test",
+        "bullets": [
+            {"text": "Puce trop longue. " * 12, "sources": ["permanence_test:0"]}
+        ],
+    }
+]
+
+
+class PatchFlowClient(CarecoAgentClient):
+    """Juge exigeant au premier passage, réviseur qui répond par patch."""
+
+    def __init__(self, *, patch_changes, **kwargs):
+        super().__init__(**kwargs)
+        self.patch_changes = patch_changes
+        self.review_count = 0
+        self.patch_calls = 0
+        self.full_calls = 0
+
+    def complete_json(self, *, agent_name, system_prompt, payload):
+        result = super().complete_json(
+            agent_name=agent_name, system_prompt=system_prompt, payload=payload
+        )
+        if agent_name == "cv_quality_checker":
+            self.review_count += 1
+            if self.review_count == 1:
+                data = dict(result.data)
+                data["status"] = "needs_revision"
+                data["problems"] = [
+                    {
+                        "severity": "high",
+                        "section": "expériences",
+                        "problem": "La puce principale reste trop longue.",
+                        "suggested_fix": "Raccourcir la puce visée par le gabarit.",
+                    }
+                ]
+                return AgentResult(data=data, provider=result.provider, model=result.model)
+            return result
+        if agent_name == "cv_style_reviser":
+            if "Privilégie le mode patch" in system_prompt:
+                self.patch_calls += 1
+                return AgentResult(
+                    data={"changes": self.patch_changes},
+                    provider=result.provider,
+                    model=result.model,
+                )
+            # Réécriture complète : elle corrige réellement la puce trop longue.
+            self.full_calls += 1
+            data = dict(result.data)
+            experiences = []
+            for item in data.get("experiences") or []:
+                exp = dict(item)
+                exp["bullets"] = [
+                    (
+                        {**bullet, "text": "Puce raccourcie par la réécriture complète."}
+                        if len(bullet.get("text", "")) > 145
+                        else dict(bullet)
+                    )
+                    for bullet in exp.get("bullets") or []
+                ]
+                experiences.append(exp)
+            data["experiences"] = experiences
+            return AgentResult(data=data, provider=result.provider, model=result.model)
+        return result
+
+
+def test_a_patch_only_touches_the_targeted_path(tmp_path, careco_master):
+    """Le patch corrige la puce visée : le reste du CV reste identique au brouillon."""
+    client = PatchFlowClient(
+        patch_changes=[
+            {
+                "action": "modify",
+                "path": "experiences[0].bullets[0]",
+                "new": {
+                    "text": "Puce raccourcie par le patch, preuve conservée.",
+                    "sources": ["permanence_test:0"],
+                },
+            }
+        ],
+        experiences=TOO_LONG_PERMANENCE,
+    )
+
+    result = prepare_custom_cv(
+        CARECO["job"], application_dir=tmp_path, master_path=careco_master, llm_client=client
+    )
+    draft = json.loads((tmp_path / "cv" / "cv_draft.json").read_text(encoding="utf-8"))
+    content = json.loads((tmp_path / "cv" / "cv_content.json").read_text(encoding="utf-8"))
+    trace = json.loads((tmp_path / "cv" / "cv_agent_trace.json").read_text(encoding="utf-8"))
+
+    assert result["status"] == "ready"
+    assert result["published"] is True
+    assert client.patch_calls == 1
+    assert client.full_calls == 0
+
+    draft_cv, final_cv = draft["cv"], content["cv"]
+    assert final_cv["profile"] == draft_cv["profile"]
+    assert final_cv["skills"] == draft_cv["skills"]
+    assert final_cv["projects"] == draft_cv["projects"]
+    assert final_cv["education"] == draft_cv["education"]
+    assert len(final_cv["experiences"]) == len(draft_cv["experiences"])
+    assert final_cv["experiences"][0]["id"] == draft_cv["experiences"][0]["id"]
+    assert (
+        final_cv["experiences"][0]["bullets"][0]
+        == "Puce raccourcie par le patch, preuve conservée."
+    )
+    assert final_cv["experiences"][0]["bullets"][1:] == draft_cv["experiences"][0]["bullets"][1:]
+    assert final_cv["experiences"][1:] == draft_cv["experiences"][1:]
+
+    reviser_runs = [r for r in trace["runs"] if r.get("agent") == "cv_style_reviser_ai"]
+    assert reviser_runs and all(r.get("duration_seconds") is not None for r in reviser_runs)
+
+
+def test_an_out_of_scope_patch_falls_back_to_full_revision(tmp_path, careco_master):
+    """Un patch hors périmètre est refusé, puis le tour se referme en réécriture."""
+    client = PatchFlowClient(
+        patch_changes=[
+            {"action": "modify", "path": "profile", "new": "Accroche modifiée hors contrat."}
+        ],
+        experiences=TOO_LONG_PERMANENCE,
+    )
+
+    result = prepare_custom_cv(
+        CARECO["job"], application_dir=tmp_path, master_path=careco_master, llm_client=client
+    )
+    content = json.loads((tmp_path / "cv" / "cv_content.json").read_text(encoding="utf-8"))
+
+    assert client.patch_calls == 1
+    assert client.full_calls == 1
+    assert result["status"] == "ready"
+    assert result["published"] is True
+    assert "Accroche modifiée hors contrat." not in (content["cv"].get("profile") or "")
