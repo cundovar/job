@@ -253,7 +253,12 @@ def prepare_custom_cv(
 
     while revision_rounds < MAX_AUTOMATIC_REVISION_ROUNDS:
         blocking = truth_check.get("verdict") == "refused"
-        needs_editorial = review.get("status") in REVISION_STATUSES
+        # Un verdict mineur ne vaut un tour que s'il porte du gabarit : les
+        # format_issues interdisent l'export et sont corrigeables, contrairement
+        # au cosmétique de pertinence qui reste un signalement.
+        needs_editorial = review.get("status") in REVISION_STATUSES or bool(
+            truth_check.get("format_issues")
+        )
         if not blocking and not needs_editorial:
             stopped_because = "validated"
             break
@@ -307,7 +312,9 @@ def prepare_custom_cv(
         stopped_because = "revision_limit_reached"
 
     if stopped_because == "validated" and (
-        truth_check.get("verdict") == "refused" or review.get("status") in REVISION_STATUSES
+        truth_check.get("verdict") == "refused"
+        or review.get("status") in REVISION_STATUSES
+        or truth_check.get("format_issues")
     ):
         stopped_because = "revision_limit_reached"
 
