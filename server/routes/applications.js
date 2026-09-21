@@ -46,7 +46,6 @@ const READY_STATUS = 'ready_to_apply';
 // Un CV refusé ne produit plus de fichier final : la fraîcheur se mesure donc
 // sur les artefacts que le pipeline écrit quel que soit son verdict.
 const REQUIRED_FRESH_CV_FILES = [
-  'cv_content.json',
   'cv_agent_trace.json',
   'cv_assessment.json',
 ];

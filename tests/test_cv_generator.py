@@ -1045,17 +1045,28 @@ def test_agent_projects_and_education_survive_without_reinjection(tmp_path, care
     assert final["cv"]["education"] == []
 
 
-def test_creator_returning_no_experience_is_a_contract_error(tmp_path, careco_master):
-    """Un CV sans expérience est une erreur de contrat, pas un CV à compléter."""
+def test_creator_returning_no_experience_ends_in_review_not_a_crash(tmp_path, careco_master):
+    """Une violation de contrat produit `review` et un diagnostic, jamais un faux échec."""
     client = CarecoAgentClient(experiences=[])
 
-    with pytest.raises(CVAgentError, match="aucune expérience"):
-        prepare_custom_cv(
-            CARECO["job"],
-            application_dir=tmp_path,
-            master_path=careco_master,
-            llm_client=client,
-        )
+    result = prepare_custom_cv(
+        CARECO["job"],
+        application_dir=tmp_path,
+        master_path=careco_master,
+        llm_client=client,
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "review"
+    assert result["published"] is False
+    assert (tmp_path / "cv" / "cv_agent_trace.json").exists()
+    assert (tmp_path / "cv" / "cv_assessment.json").exists()
+    assert (tmp_path / "cv" / "cv_adaptation_plan.json").exists()
+    publication = result["assessment"]["publication"]
+    assert publication["stopped_because"] == "agent_contract_violation"
+    assert "aucune expérience" in publication["agent_error"]
+    # Aucune dimension n'est mesurable sans contenu : aucune ne tranche.
+    assert result["assessment"]["truthfulness"]["status"] == "review"
 
 
 def test_analyzer_plan_is_kept_verbatim_without_quota(careco_master):
@@ -1354,3 +1365,127 @@ def test_progress_counts_each_revision_round(tmp_path, careco_master):
     assert final["status"] == "blocked"
     assert final["revision_round"] == 3
     assert final["revision_limit"] == 3
+
+
+# --- Non-régression : la panne observée en production le 21/09/2026 ---------- #
+
+
+class NestedResponseClient(CarecoAgentClient):
+    """Le réviseur répond `{"cv": {...}}` au lieu du schéma à plat.
+
+    C'est la forme qu'un modèle recopie quand on lui montre la structure
+    assemblée comme exemple. Elle faisait remonter une `CVAgentError` non gérée
+    jusqu'au crash du sous-processus, sans aucun artefact écrit.
+    """
+
+    def complete_json(self, *, agent_name, system_prompt, payload):
+        result = super().complete_json(
+            agent_name=agent_name, system_prompt=system_prompt, payload=payload
+        )
+        if agent_name == "cv_style_reviser":
+            return AgentResult(
+                data={"cv": dict(result.data)}, provider="fake", model="fake-careco"
+            )
+        if agent_name == "cv_quality_checker":
+            data = dict(result.data)
+            data["status"] = "needs_revision"
+            data["problems"] = [{
+                "severity": "medium",
+                "section": "evidence",
+                "problem": "Une preuve manque.",
+                "suggested_fix": "Ajouter une expérience sourcée.",
+            }]
+            return AgentResult(data=data, provider="fake", model="fake-careco")
+        return result
+
+
+def test_a_reviser_answering_in_the_wrong_shape_does_not_crash(tmp_path, careco_master):
+    result = prepare_custom_cv(
+        CARECO["job"],
+        application_dir=tmp_path,
+        master_path=careco_master,
+        llm_client=NestedResponseClient(),
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "review"
+    assert result["published"] is False
+    for name in ("cv_content.json", "cv_agent_trace.json", "cv_assessment.json", "cv_truth_check.json"):
+        assert (tmp_path / "cv" / name).exists(), name
+    trace = json.loads((tmp_path / "cv" / "cv_agent_trace.json").read_text(encoding="utf-8"))
+    assert trace["stopped_because"] == "agent_contract_violation"
+    assert "aucune expérience" in trace["agent_error"]
+
+
+def test_the_last_valid_content_survives_a_reviser_failure(tmp_path, careco_master):
+    """Le brouillon et son diagnostic portent sur le même CV : ils restent publiables."""
+    result = prepare_custom_cv(
+        CARECO["job"],
+        application_dir=tmp_path,
+        master_path=careco_master,
+        llm_client=NestedResponseClient(),
+    )
+
+    content = json.loads((tmp_path / "cv" / "cv_content.json").read_text(encoding="utf-8"))
+    assert [item["id"] for item in content["cv"]["experiences"]] == [
+        "missions_techniques_2026",
+        "permanence_test",
+    ]
+    assert result["assessment"]["truthfulness"]["status"] == "pass"
+
+
+def test_a_crashing_regeneration_still_clears_the_previous_final_files(tmp_path, careco_master):
+    """Le chemin d'erreur ne doit pas laisser survivre un CV final périmé."""
+    prepare_custom_cv(
+        CARECO["job"], application_dir=tmp_path, master_path=careco_master,
+        llm_client=CarecoAgentClient(),
+    )
+    assert (tmp_path / "cv" / "cv_final.pdf").exists()
+
+    prepare_custom_cv(
+        CARECO["job"], application_dir=tmp_path, master_path=careco_master,
+        llm_client=CarecoAgentClient(experiences=[]),
+    )
+
+    assert not (tmp_path / "cv" / "cv_final.pdf").exists()
+    assert not (tmp_path / "cv" / "cv_ats.pdf").exists()
+
+
+def test_the_reviser_receives_the_shape_it_must_return(tmp_path, careco_master):
+    """La cause racine : le réviseur doit voir le schéma à plat, pas l'assemblé."""
+    client = CarecoAgentClient()
+    captured = {}
+
+    class Capturing(CarecoAgentClient):
+        def complete_json(self, *, agent_name, system_prompt, payload):
+            if agent_name == "cv_style_reviser":
+                captured.update(payload["brouillon"])
+            return super().complete_json(
+                agent_name=agent_name, system_prompt=system_prompt, payload=payload
+            )
+
+    prepare_custom_cv(
+        CARECO["job"], application_dir=tmp_path, master_path=careco_master,
+        llm_client=Capturing(experiences=[
+            {"id": "permanence_test", "bullets": [
+                {"text": "Puce trop longue. " * 12, "sources": ["permanence_test:0"]}
+            ]},
+        ]),
+    )
+
+    assert "cv" not in captured
+    assert {"title", "profile", "skills", "experiences", "projects", "education"} <= set(captured)
+    bullet = captured["experiences"][0]["bullets"][0]
+    assert set(bullet) == {"text", "sources"}
+    assert bullet["sources"] == ["permanence_test:0"]
+
+
+def test_a_truncated_answer_names_the_budget_not_a_contract_violation():
+    """Une réponse coupée doit dire « tronquée », pas « aucune expérience »."""
+    from cv_generator.ai_agents import _parse_json_response
+
+    with pytest.raises(CVAgentError, match="tronquée"):
+        _parse_json_response('{"title":"W","experiences":[{"id":"a","bullets":[{"text":"Une')
+
+    with pytest.raises(CVAgentError, match="budget de complétion"):
+        _check_completion('{"title":"W"', "length", 32000)

@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 from .ai_agents import (
     AICVPipeline,
     AgentClient,
+    CVAgentError,
     build_correction_contract,
     correction_fingerprint,
 )
@@ -121,6 +122,90 @@ def _remove_stale(output_dir: Path, names: tuple[str, ...]) -> List[str]:
     return removed
 
 
+def _finish_without_content(
+    job: Dict[str, Any],
+    plan: Dict[str, Any],
+    output_dir: Path,
+    application_dir: str | Path,
+    stage: str,
+    error: str,
+) -> Dict[str, Any]:
+    """Termine proprement quand le rédacteur n'a rien produit d'exploitable."""
+    assessment = _contract_violation_assessment(stage, error)
+    assessment["publication"] = {
+        "revision_rounds": 0,
+        "revision_limit": MAX_AUTOMATIC_REVISION_ROUNDS,
+        "stopped_because": "agent_contract_violation",
+        "truth_verdict": None,
+        "agent_error": error,
+        "blocking_issues": [],
+        "format_issues": [],
+    }
+    trace = {
+        "pipeline": "ai_cv_pipeline_v4",
+        "job": {"title": job.get("title"), "company": job.get("company"), "url": job.get("url")},
+        "runs": [_trace_item(plan)],
+        "rounds": [],
+        "correction_retried": False,
+        "automatic_revision_rounds": 0,
+        "automatic_corrections_exhausted": True,
+        "automatic_revision_limit": MAX_AUTOMATIC_REVISION_ROUNDS,
+        "stopped_because": "agent_contract_violation",
+        "agent_error": error,
+        "published": False,
+        "stale_artefacts_removed": _remove_stale(
+            output_dir, FINAL_ARTEFACTS + ("cv_final.json",)
+        ),
+    }
+    save_json(output_dir / "cv_adaptation_plan.json", plan)
+    save_json(output_dir / "cv_agent_trace.json", trace)
+    save_json(output_dir / "cv_assessment.json", assessment)
+    _write_progress(output_dir, "done", detail=error, status="review")
+    return {
+        "ok": True,
+        "pipeline": trace["pipeline"],
+        "application_dir": str(Path(application_dir)),
+        "cv_dir": str(output_dir),
+        "selected_base_variant": plan.get("selected_base_variant"),
+        "target_title": plan.get("target_title"),
+        "quality_score": 0,
+        "ats_score": 0,
+        "status": "review",
+        "published": False,
+        "assessment": assessment,
+        "agent_runs": trace["runs"],
+        "files": {
+            "plan": str(output_dir / "cv_adaptation_plan.json"),
+            "agent_trace": str(output_dir / "cv_agent_trace.json"),
+            "assessment": str(output_dir / "cv_assessment.json"),
+        },
+    }
+
+
+def _contract_violation_assessment(stage: str, error: str) -> Dict[str, Any]:
+    """Un agent qui viole son contrat produit `review`, jamais un faux échec.
+
+    Aucune dimension n'est mesurable sans contenu : elles restent `review`,
+    conformément à la règle « une donnée inconnue ne tranche pas ».
+    """
+    reason = f"L'agent {stage} n'a pas respecté son contrat : {error}"
+    return {
+        "schema_version": "cv_assessment_v1",
+        "eligibility": {"status": "review", "checks": [], "missing": [], "reason": reason},
+        "parseability": {"status": "review", "reason": reason, "missing": ["cv_content"]},
+        "match": {"score": 0, "band": "poor", "components": {}},
+        "human_quality": {"score": 0, "band": "poor", "components": {}},
+        "truthfulness": {
+            "status": "review",
+            "issues": [],
+            "details": [],
+            "format_issues": [],
+            "reason": reason,
+        },
+        "overall_status": "review",
+    }
+
+
 def prepare_custom_cv(
     job: Dict[str, Any],
     application_dir: str | Path,
@@ -137,7 +222,15 @@ def prepare_custom_cv(
     plan = agents.analyze(job, master)
 
     _write_progress(output_dir, "writing", detail=f"Variante : {plan.get('selected_base_variant')}")
-    draft = agents.create(job, master, plan)
+    try:
+        draft = agents.create(job, master, plan)
+    except CVAgentError as exc:
+        # Le rédacteur a violé son contrat : il n'existe aucun contenu à
+        # conserver. On écrit malgré tout le plan et le diagnostic, sans quoi
+        # le dossier serait invisible et la cause perdue.
+        return _finish_without_content(
+            job, plan, output_dir, application_dir, "cv_creator_ai", str(exc)
+        )
 
     content = draft
     _write_progress(output_dir, "verification")
@@ -153,6 +246,7 @@ def prepare_custom_cv(
     }
     revision_rounds = 0
     stopped_because = "validated"
+    agent_contract_error: str | None = None
 
     while revision_rounds < MAX_AUTOMATIC_REVISION_ROUNDS:
         blocking = truth_check.get("verdict") == "refused"
@@ -167,13 +261,24 @@ def prepare_custom_cv(
             detail="Correction des problèmes relevés",
             revision_round=revision_rounds + 1,
         )
-        content = agents.revise(job, master, plan, content, review, truth_check)
-        _write_progress(
-            output_dir, "verification", revision_round=revision_rounds + 1
-        )
-        truth_check = agents.verify(job, master, plan, content)
-        _write_progress(output_dir, "judgement", revision_round=revision_rounds + 1)
-        review = agents.review(job, master, plan, content)
+        try:
+            revised = agents.revise(job, master, plan, content, review, truth_check)
+            _write_progress(
+                output_dir, "verification", revision_round=revision_rounds + 1
+            )
+            revised_truth = agents.verify(job, master, plan, revised)
+            _write_progress(output_dir, "judgement", revision_round=revision_rounds + 1)
+            revised_review = agents.review(job, master, plan, revised)
+        except CVAgentError as exc:
+            # Le réviseur a violé son contrat. Le contenu précédent et son
+            # diagnostic portent sur le même CV : ils restent valides et
+            # publiables en révision. On ne remonte pas un faux échec système.
+            agent_contract_error = str(exc)
+            stopped_because = "agent_contract_violation"
+            break
+        # On ne remplace le trio qu'une fois les trois étapes réussies, pour ne
+        # jamais associer un contenu neuf à un diagnostic périmé.
+        content, truth_check, review = revised, revised_truth, revised_review
         revision_rounds += 1
         trace_runs.extend([_trace_item(content), _trace_item(truth_check), _trace_item(review)])
 
@@ -231,7 +336,12 @@ def prepare_custom_cv(
         assessment["overall_status"] = "blocked"
     elif format_issues and assessment["overall_status"] == "ready":
         assessment["overall_status"] = "review"
+    if agent_contract_error and assessment["overall_status"] == "ready":
+        # Un CV dont la dernière révision a échoué n'est pas « prêt » : la
+        # correction demandée n'a jamais été appliquée.
+        assessment["overall_status"] = "review"
     assessment["publication"] = {
+        "agent_error": agent_contract_error,
         "revision_rounds": revision_rounds,
         "revision_limit": MAX_AUTOMATIC_REVISION_ROUNDS,
         "stopped_because": stopped_because,
@@ -304,6 +414,7 @@ def prepare_custom_cv(
         "automatic_corrections_exhausted": stopped_because != "validated",
         "automatic_revision_limit": MAX_AUTOMATIC_REVISION_ROUNDS,
         "stopped_because": stopped_because,
+        "agent_error": agent_contract_error,
         "published": published,
         "stale_artefacts_removed": removed,
         "python_guardrails": [

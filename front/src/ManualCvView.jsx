@@ -47,7 +47,6 @@ function cvPublicationStatus(status) {
 // génération n'est incomplète que si le diagnostic lui-même manque.
 function generatedCvIsComplete(status) {
   return Boolean(
-    status?.files?.['cv_content.json'] &&
     status?.files?.['cv_agent_trace.json'] &&
     status?.files?.['cv_assessment.json']
   )

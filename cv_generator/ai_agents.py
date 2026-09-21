@@ -39,6 +39,12 @@ class AgentClient(Protocol):
     ) -> AgentResult | Dict[str, Any]: ...
 
 
+BUDGET_HINT = (
+    "Relever CV_AI_MAX_TOKENS : un modèle de raisonnement dépense ce budget en "
+    "réflexion avant d'écrire sa réponse."
+)
+
+
 def _check_completion(content: str, finish_reason: str | None, max_tokens: int) -> str:
     """Traduit une réponse vide en cause lisible.
 
@@ -48,15 +54,17 @@ def _check_completion(content: str, finish_reason: str | None, max_tokens: int) 
     remonte en « l'agent n'a pas renvoyé un objet JSON » et envoie chercher un
     bug de parsing là où il n'y a qu'un budget insuffisant.
     """
+    if finish_reason == "length":
+        # Une réponse coupée en plein JSON est inutilisable même si elle n'est
+        # pas vide : la laisser passer produisait plus loin une erreur de
+        # contrat trompeuse, très loin de la vraie cause.
+        raise CVAgentError(
+            f"budget de complétion épuisé "
+            f"({'avant émission de contenu' if not content.strip() else f'après {len(content)} caractères'}, "
+            f"max_tokens={max_tokens}, finish_reason=length). " + BUDGET_HINT
+        )
     if content.strip():
         return content
-    if finish_reason == "length":
-        raise CVAgentError(
-            f"budget de complétion épuisé avant émission de contenu "
-            f"(max_tokens={max_tokens}, finish_reason=length). "
-            f"Relever CV_AI_MAX_TOKENS : un modèle de raisonnement dépense ce "
-            f"budget en réflexion avant d'écrire sa réponse."
-        )
     raise CVAgentError(
         f"réponse vide du fournisseur (finish_reason={finish_reason or 'inconnu'})"
     )
@@ -69,6 +77,14 @@ def _parse_json_response(content: str) -> Dict[str, Any]:
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
+        # Un JSON qui ne se referme pas est une réponse tronquée. Tenter de
+        # sauver un préfixe donnerait un objet amputé de ses dernières clés, et
+        # l'erreur remonterait comme une violation de contrat de l'agent.
+        if raw and not raw.rstrip().endswith("}"):
+            raise CVAgentError(
+                f"réponse tronquée : le JSON ne se referme pas "
+                f"({len(raw)} caractères reçus). " + BUDGET_HINT
+            )
         match = re.search(r"\{.*\}", raw, re.DOTALL)
         if not match:
             raise CVAgentError("L'agent IA n'a pas renvoyé un objet JSON.")
@@ -472,9 +488,11 @@ SKILL_WITHOUT_EVIDENCE : ajoute une preuve sourcée visible ou retire la compét
 Respecte les limites Canva: un dépassement de longueur est une correction à appliquer, Python ne
 tronque plus. Corrige aussi chaque erreur listée dans controle_python: une erreur de vérité
 interdit la publication, une erreur de format doit disparaître avant l'export.
-Retourne le même schéma JSON que l'agent rédacteur: title, profile, skills, experiences avec
-bullets {text, sources}, un bloc groupé portant source_experience_ids et une puce par mission,
-projects avec un sous-ensemble de technologies exactes, et education avec les intitulés exacts.
+Retourne EXACTEMENT la même forme que `brouillon` : un objet à plat avec title, profile, skills,
+experiences, projects et education à la racine. N'imbrique jamais ta réponse sous une clé "cv".
+Chaque puce garde la forme {text, sources}, un bloc groupé garde source_experience_ids et une
+puce par mission, projects garde un sous-ensemble de technologies exactes, et education les
+intitulés exacts.
 """.strip()
 
 
@@ -766,6 +784,60 @@ def _validate_presentation_strategy(
         "experience_display_mode": group.get("display_mode", "grouped_missions"),
         "experience_group_id": group_id,
         "member_ids": requested,
+    }
+
+
+def to_writer_schema(content: Dict[str, Any]) -> Dict[str, Any]:
+    """Déballe un CV assemblé vers le schéma que les agents rédigent.
+
+    Le réviseur doit rendre la forme du rédacteur. Lui montrer la structure
+    assemblée — imbriquée sous `cv`, puces en texte, provenance dans un tableau
+    parallèle — l'invitait à recopier cette forme-là : sa réponse arrivait alors
+    sous `{"cv": ...}` et le contrat sautait. Le déballage préserve les sources
+    de chaque puce, qui sont ce que le réviseur doit impérativement conserver.
+    """
+    cv = content.get("cv", content) if isinstance(content, dict) else {}
+    experiences = []
+    for item in cv.get("experiences", []) or []:
+        if not isinstance(item, dict):
+            continue
+        bullets = item.get("bullets", []) or []
+        sources = item.get("bullet_sources", []) or []
+        entry: Dict[str, Any] = {
+            "id": item.get("id"),
+            "bullets": [
+                {
+                    "text": str(text),
+                    "sources": list(sources[index]) if index < len(sources) else [],
+                }
+                for index, text in enumerate(bullets)
+            ],
+        }
+        if item.get("source_experience_ids"):
+            entry["source_experience_ids"] = list(item["source_experience_ids"])
+        experiences.append(entry)
+    return {
+        "title": cv.get("title", ""),
+        "profile": cv.get("profile", ""),
+        "skills": [
+            {"title": section.get("title", ""), "items": list(section.get("items", []) or [])}
+            for section in cv.get("skills", []) or []
+            if isinstance(section, dict)
+        ],
+        "experiences": experiences,
+        "projects": [
+            {
+                "id": project.get("id"),
+                "description": project.get("description", ""),
+                "technologies": list(project.get("technologies", []) or []),
+            }
+            for project in cv.get("projects", []) or []
+            if isinstance(project, dict)
+        ],
+        "education": [
+            item.get("title") if isinstance(item, dict) else item
+            for item in cv.get("education", []) or []
+        ],
     }
 
 
@@ -1347,7 +1419,7 @@ class AICVPipeline:
                 "consignes_candidat": _candidate_instructions(job),
                 "source_verite": _truth_context(master, "reviser"),
                 "plan_adaptation": plan,
-                "brouillon": draft,
+                "brouillon": to_writer_schema(draft),
                 "jugement": review,
                 "corrections_a_appliquer": build_correction_contract(review, truth_check),
             },
