@@ -1,6 +1,6 @@
 ---
 objective: "La prospection d'agences devient une chaîne géographique, vérifiable et auditable allant de la découverte à l'envoi, avec une autonomie qui n'augmente qu'après validation humaine et mesure de sa fiabilité."
-status: pending
+status: in-progress
 ---
 
 # Plan: Prospection d'agences ciblée vers automatisation supervisée

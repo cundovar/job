@@ -115,10 +115,15 @@ def test_curated_csv_is_merged_without_losing_crawl_data(tmp_path):
     merged = v2.merge_curated_agencies(crawled, "paris-20", csv_path)
 
     by_name = {agency["name"]: agency for agency in merged}
-    assert by_name["Nom crawl"]["score"] == 80
-    assert by_name["Nom crawl"]["address"] == "1 rue Test 75020"
-    assert by_name["Nom crawl"]["postal_code"] == "75020"
-    assert "config/companies.csv" in by_name["Nom crawl"]["sources"]
+    # Le CSV est la voie de correction humaine : c'est son nom qui est publié,
+    # mais il ne coûte rien de ce que le crawl a mesuré.
+    assert "Nom crawl" not in by_name
+    assert by_name["Agence Test"]["score"] == 80
+    assert by_name["Agence Test"]["identity_match"] == "domaine"
+    assert by_name["Agence Test"]["address"] == "1 rue Test 75020"
+    assert by_name["Agence Test"]["postal_code"] == "75020"
+    assert "config/companies.csv" in by_name["Agence Test"]["sources"]
+    assert "moteur" in by_name["Agence Test"]["sources"]
     assert by_name["Sans site"]["website"] is None
     assert "Ecartee" not in by_name
 
@@ -143,6 +148,59 @@ def test_manual_address_survives_a_geocoding_failure(monkeypatch):
     assert agencies[0]["postal_code"] == "75020"
     assert agencies[0]["address_source"] == "relevé à la main (config/companies.csv)"
     assert agencies[0]["distance_m"] is None
+
+
+def test_two_runs_on_the_same_addresses_reuse_the_cache(monkeypatch, tmp_path):
+    """Critère 4 : même adresses, mêmes distances, et plus un seul appel au géocodeur."""
+    v2 = load_v2()
+    cache_path = tmp_path / "geocode_cache.json"
+    calls = []
+
+    def fake_geocode(query):
+        calls.append(query)
+        return 48.8700, 2.3990, query
+
+    monkeypatch.setattr(v2, "geocode", fake_geocode)
+    monkeypatch.setattr(v2, "geocode_ban", lambda _q: (None, None, ""))
+
+    def one_run():
+        agencies = [{
+            "name": "Agence Test",
+            "website": "https://example.test",
+            "address": "1 rue Test 75020",
+            "postal_code": "75020",
+            "address_source": "relevé à la main (config/companies.csv)",
+            "snippet": "",
+            "page_texts": [],
+        }]
+        cache = v2.load_geocode_cache(cache_path)
+        v2.enrich_with_distances(agencies, cache)
+        v2.save_geocode_cache(cache, cache_path)
+        return agencies[0]["distance_m"]
+
+    first = one_run()
+    after_first = len(calls)
+    second = one_run()
+
+    assert first is not None
+    assert second == first
+    assert len(calls) == after_first, "la deuxième passe a re-géocodé une adresse connue"
+    # Le cache est indexé sur l'adresse normalisée : espaces et casse ne créent
+    # pas deux entrées pour le même lieu.
+    stored = v2.load_geocode_cache(cache_path)
+    assert stored, "le cache n'a rien retenu"
+    assert all(key == v2.normalized_address(key) for key in stored)
+
+
+def test_a_geocoding_failure_is_never_cached(monkeypatch, tmp_path):
+    """Une coupure d'une minute figerait sinon l'adresse en « position inconnue »."""
+    v2 = load_v2()
+    monkeypatch.setattr(v2, "geocode", lambda _q: (None, None, ""))
+    monkeypatch.setattr(v2, "geocode_ban", lambda _q: (None, None, ""))
+    cache: dict = {}
+
+    assert v2.geocode_cached("1 rue Test 75020", cache) == (None, None, "")
+    assert cache == {}
 
 
 def test_published_agencies_never_carry_a_postal_code_without_an_address():
@@ -240,6 +298,414 @@ def test_company_prepare_does_not_generate_a_cv_by_default(monkeypatch):
 
     assert hermes_mcp_server.company_prepare({}) == "Test"
     assert captured["with_cv"] is False
+
+
+# --------------------------------------------------------------------------
+# Registre public (API Recherche d'Entreprises)
+#
+# Toute cette section tourne hors ligne : `opener=` remplace le réseau par la
+# fixture. Un test qui appellerait l'API réelle serait vert ou rouge selon la
+# météo du jour, et personne ne le relirait.
+# --------------------------------------------------------------------------
+
+REGISTRY_FIXTURE = PROJECT_ROOT / "tests" / "fixtures" / "agency_registry_montreuil.json"
+
+
+def load_registry():
+    import importlib.util
+
+    path = PROJECT_ROOT / "tools" / "agency_registry.py"
+    spec = importlib.util.spec_from_file_location("agency_registry", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def fixture_opener():
+    """Sert la fixture page par page et compte les appels."""
+    pages = json.loads(REGISTRY_FIXTURE.read_text(encoding="utf-8"))["pages"]
+    calls = []
+
+    def opener(url, _timeout):
+        calls.append(url)
+        page = 1
+        for part in url.split("?", 1)[-1].split("&"):
+            if part.startswith("page="):
+                page = int(part.split("=", 1)[1])
+        if page > len(pages):
+            return json.dumps({"results": [], "total_pages": len(pages), "page": page})
+        return json.dumps(pages[page - 1])
+
+    return opener, calls
+
+
+def test_registry_returns_candidates_never_confirmed_agencies():
+    """Critère 1 : identifiants et provenance, mais aucun verdict d'activité.
+
+    Le registre dit qu'une structure est immatriculée en 62.01Z. Il ne dit pas
+    qu'elle fait du web : le même code couvre une ESN et un freelance en régie.
+    """
+    registry = load_registry()
+    opener, _calls = fixture_opener()
+    client = registry.RegistryClient(opener=opener, sleeper=lambda _s: None, max_pages=5)
+
+    found = client.search(code_postal="93100", naf_codes=registry.NAF_AGENCE)
+
+    by_name = {c["name"]: c for c in found}
+    # L'établissement radié (état « C ») n'est pas une cible à démarcher.
+    assert "ANCIENNE AGENCE RADIEE" not in by_name
+    studio = by_name["STUDIO PYRENEES"]
+    assert studio["status"] == "candidate"
+    assert studio["siren"] == "900000001"
+    assert studio["siret"] == "90000000100017"
+    assert studio["sources"] == ["registre:recherche-entreprises"]
+    assert "n'est pas prouvée" in studio["why_candidate"]
+    # Le registre ne publie pas de site : en deviner un serait l'attribuer.
+    assert studio["website"] is None
+    for candidate in found:
+        assert candidate["status"] == "candidate"
+
+
+def test_registry_pagination_follows_total_pages_and_stops():
+    registry = load_registry()
+    opener, calls = fixture_opener()
+    client = registry.RegistryClient(opener=opener, sleeper=lambda _s: None, max_pages=5)
+
+    found = client.search(code_postal="93100")
+
+    assert len(calls) == 2, "la fixture annonce total_pages=2 : ni plus, ni moins"
+    assert {c["siren"] for c in found} == {"900000001", "900000002", "900000004"}
+
+
+def test_registry_rate_limit_is_respected_between_calls():
+    """Dépasser la cadence annoncée ferait tomber le registre pour tout le monde."""
+    registry = load_registry()
+    opener, _calls = fixture_opener()
+    slept, now = [], [0.0]
+    client = registry.RegistryClient(
+        opener=opener,
+        sleeper=slept.append,
+        clock=lambda: now[0],
+        max_calls_per_second=5,
+        max_pages=5,
+    )
+
+    client.search(code_postal="93100")
+
+    assert slept, "aucune pause entre deux appels consécutifs"
+    assert all(pause == pytest.approx(0.2) for pause in slept)
+
+
+def test_a_non_diffusible_establishment_keeps_an_absent_address():
+    """Critère 5 : une adresse absente du registre reste absente.
+
+    Le registre masque les structures non diffusibles au lieu de les omettre.
+    Compléter l'adresse à partir de la commune produirait une adresse fabriquée
+    et parfaitement crédible.
+    """
+    registry = load_registry()
+    opener, _calls = fixture_opener()
+    client = registry.RegistryClient(opener=opener, sleeper=lambda _s: None, max_pages=5)
+
+    masked = next(c for c in client.search(code_postal="93100") if c["siren"] == "900000002")
+
+    assert masked["diffusible"] is False
+    assert masked["legal_address"] is None
+    assert masked["legal_address_source"] is None
+    assert masked["postal_code"] is None
+    assert masked["commune_label"] == "MONTREUIL"
+
+
+def test_a_registry_outage_raises_instead_of_returning_nothing():
+    """Une liste vide se relit « il n'y a rien ici » : c'est ce vide qui a fait inventer."""
+    from urllib.error import HTTPError, URLError
+
+    registry = load_registry()
+
+    def quota(url, _timeout):
+        raise HTTPError(url, 429, "Too Many Requests", {}, None)
+
+    def offline(_url, _timeout):
+        raise URLError("nom de domaine introuvable")
+
+    for opener, fragment in ((quota, "429"), (offline, "injoignable")):
+        client = registry.RegistryClient(opener=opener, sleeper=lambda _s: None)
+        with pytest.raises(registry.RegistryError) as raised:
+            client.search(code_postal="93100")
+        assert fragment in str(raised.value)
+
+
+def test_a_registry_outage_does_not_erase_the_crawl_results(monkeypatch):
+    """Critère 5 : le registre tombe, le crawl web continue seul et on le dit."""
+    v2 = load_v2()
+
+    def boom(*_args, **_kwargs):
+        raise v2.RegistryError("registre : quota de requêtes dépassé (HTTP 429)")
+
+    monkeypatch.setattr(v2, "search_zone_candidates", boom)
+
+    rows, warnings = v2.registry_candidates("paris-20")
+
+    assert rows == []
+    assert warnings and "le crawl web continue seul" in warnings[0]
+
+
+def test_a_zone_without_an_explicit_postal_code_is_not_guessed():
+    """Deviner les communes d'« ile-de-france » choisirait le périmètre à notre place."""
+    v2 = load_v2()
+
+    rows, warnings = v2.registry_candidates("ile-de-france")
+
+    assert rows == []
+    assert warnings and "aucun code postal explicite" in warnings[0]
+    assert v2.postal_codes_of(["paris 20", "belleville", "75020"]) == ["75020"]
+
+
+# --------------------------------------------------------------------------
+# Fusion des trois sources et identité
+# --------------------------------------------------------------------------
+
+
+def test_the_same_establishment_from_three_sources_makes_one_entry():
+    """Critère 3 : registre + crawl + CSV se rejoignent sur une seule fiche."""
+    v2 = load_v2()
+
+    merged = v2.merge_records([
+        {"name": "Nom crawl", "website": "https://studio-pyrenees.fr/", "siren": "900000001",
+         "origin": v2.ORIGIN_WEB, "score": 72, "sources": ["moteur"]},
+        {"name": "STUDIO PYRENEES", "website": None, "siren": "900000001",
+         "siret": "90000000100017", "origin": v2.ORIGIN_REGISTRY,
+         "legal_address": "14 Rue de Paris 93100 Montreuil",
+         "legal_address_source": "registre (Sirene/RNE via API Recherche d'Entreprises)",
+         "sources": ["registre:recherche-entreprises"]},
+        {"name": "Studio Pyrénées", "website": "https://studio-pyrenees.fr", "siren": "900000001",
+         "origin": v2.ORIGIN_CSV, "address": "14 villa du Borrégo", "postal_code": "93100",
+         "address_source": "relevé à la main (config/companies.csv)",
+         "sources": ["config/companies.csv"]},
+    ])
+
+    assert len(merged) == 1
+    record = merged[0]
+    assert record["identity_match"] == "siren"
+    assert sorted(record["origins"]) == ["csv", "registre", "web"]
+    assert record["score"] == 72                       # le crawl garde sa mesure
+    assert record["name"] == "Studio Pyrénées"         # le CSV garde la main
+    assert record["address"] == "14 villa du Borrégo"  # relevé humain > registre
+    assert record["legal_address"] == "14 Rue de Paris 93100 Montreuil"
+    assert record["identity_candidates"] == []
+
+
+def test_an_uncertain_name_match_invents_no_domain_and_no_siren():
+    """Critère 3 : deux « Studio Bleu » normalisés pareil peuvent être deux sociétés."""
+    v2 = load_v2()
+
+    merged = v2.merge_records([
+        {"name": "Studio Bleu", "website": "https://studiobleu.fr/", "origin": v2.ORIGIN_WEB,
+         "score": 60, "sources": ["moteur"]},
+        {"name": "STUDIO BLEU", "website": None, "siren": "900000009",
+         "siret": "90000000900011", "origin": v2.ORIGIN_REGISTRY,
+         "legal_address": "3 Rue Inconnue 93100 Montreuil",
+         "legal_address_source": "registre (Sirene/RNE via API Recherche d'Entreprises)",
+         "sources": ["registre:recherche-entreprises"]},
+    ])
+
+    assert len(merged) == 1
+    record = merged[0]
+    assert record["identity_match"] == v2.UNCERTAIN_IDENTITY
+    # Rien du registre ne monte dans la fiche : le rapprochement n'est pas prouvé.
+    assert record["siren"] is None
+    assert record["siret"] is None
+    assert record["legal_address"] is None
+    # Mais rien n'est perdu non plus : le rapprochement possible reste nommé.
+    assert record["identity_candidates"][0]["siren"] == "900000009"
+    assert "non confirmé" in record["identity_candidates"][0]["source"]
+
+
+def test_an_identity_conflict_is_named_instead_of_being_resolved():
+    """Deux clés d'une fiche pointant vers deux groupes : fusionner serait trancher."""
+    v2 = load_v2()
+
+    merged = v2.merge_records([
+        {"name": "Studio Alpha", "website": "https://alpha.example/", "origin": v2.ORIGIN_WEB,
+         "score": 60, "sources": ["moteur"]},
+        {"name": "Studio Beta", "website": "https://beta.example/", "origin": v2.ORIGIN_WEB,
+         "score": 55, "sources": ["moteur"]},
+        # Le registre dit « Studio Beta », mais le SIREN est déjà pris par Alpha.
+        {"name": "Studio Beta", "website": "https://alpha.example/", "siren": "900000007",
+         "origin": v2.ORIGIN_REGISTRY, "sources": ["registre:recherche-entreprises"]},
+    ])
+
+    conflicts = [c for record in merged for c in record["identity_conflicts"]]
+    assert conflicts, "le conflit d'identité a été résolu en silence"
+    assert len(merged) == 2, "deux structures distinctes ont été fondues en une"
+
+
+def test_a_registry_only_candidate_never_receives_a_website():
+    """Critère 1/2 : sans site, pas de verdict — le registre ne prouve pas l'activité."""
+    v2 = load_v2()
+
+    record = v2.registry_record(
+        {"name": "STUDIO PYRENEES", "siren": "900000001", "siret": "90000000100017",
+         "activity_code": "62.01Z", "legal_address": "14 Rue de Paris 93100 Montreuil",
+         "commune_label": "MONTREUIL", "postal_code": "93100",
+         "why_candidate": "code APE 62.01Z relevé au registre — l'activité réelle n'est pas prouvée",
+         "sources": ["registre:recherche-entreprises"]},
+        "paris-20",
+    )
+
+    assert record["website"] is None
+    assert record["category"] == "incertain"
+
+
+# --------------------------------------------------------------------------
+# Verdict d'activité : ce que la structure dit d'elle-même
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "label,parts,expected",
+    [
+        ("Access42", ["Access42 — expertise et formations en accessibilité numérique",
+                      "Nous proposons une formation en accessibilité web (RGAA)."], "formation"),
+        ("Simplon", ["Simplon.co, organisme de formation aux métiers du numérique"], "formation"),
+        ("Agence web", ["Studio Mezzo — agence web à Paris",
+                        "Création de sites sur mesure. Nos réalisations."], "agence"),
+        ("Webflow", ["Webflow — le site web sans coder",
+                     "Commencez votre essai gratuit dès aujourd'hui."], "ecarte"),
+        ("Annuaire", ["Comparez les agences web et trouvez un prestataire",
+                      "Annuaire des agences digitales"], "ecarte"),
+        ("Sans texte", [""], "incertain"),
+    ],
+)
+def test_the_activity_verdict_comes_from_the_self_description(label, parts, expected):
+    """Critère 2/6 : ni le code APE ni le score ne rendent ce verdict."""
+    from company_analysis.verifier import classify_self_description
+
+    verdict = classify_self_description(parts)
+
+    assert verdict["category"] == expected, f"{label} : {verdict['reason']}"
+    if expected in ("agence", "formation"):
+        assert verdict["evidence"], f"{label} classé sans citation"
+
+
+def test_an_unreadable_self_description_is_uncertain_never_excluded():
+    """Une donnée manquante produit `incertain` : un écarté disparaît, pas un incertain."""
+    from company_analysis.verifier import classify_self_description
+
+    assert classify_self_description([])["category"] == "incertain"
+    assert classify_self_description(["Bienvenue sur notre site."])["category"] == "incertain"
+
+
+def test_the_registry_never_produces_an_activity_claim():
+    """Le Vérificateur ne peut pas fabriquer un constat d'activité depuis le registre."""
+    from company_analysis.verifier import build_claims
+
+    claims = build_claims(
+        {"nom": "Studio Pyrénées"},
+        {
+            "registry_lookup": {
+                "value": {
+                    "siren": "900000001",
+                    "legal_address": "14 Rue de Paris 93100 Montreuil",
+                },
+                "evidence": "registre (Sirene/RNE) — SIREN 900000001",
+            }
+        },
+    )
+    registry_claims = [c for c in claims if str(c["check"].get("kind", "")).startswith("registry_")]
+
+    assert registry_claims, "les mesures du registre n'ont produit aucun constat"
+    assert {c["category"] for c in registry_claims} == {"identity", "legal_address"}
+    # Le code APE est dans la mesure et n'est jamais reformulé en activité :
+    # « 62.01Z » publié comme « agence web » est exactement l'invention à éviter.
+    assert all(c["category"] != "activity" for c in registry_claims)
+
+
+# --------------------------------------------------------------------------
+# Barème déterministe
+# --------------------------------------------------------------------------
+
+
+def test_international_does_not_validate_the_nation_zone():
+    """Critère 6 : « international » contenait « nation », et validait Nation."""
+    v2 = load_v2()
+
+    assert v2.has_term("agence nation paris 20", "nation") is True
+    assert v2.has_term("une agence internationale", "nation") is False
+    assert v2.zone_of("agence internationale de conseil", "paris-20")[0] == "none"
+
+
+def test_platforms_and_directories_are_excluded():
+    """Critère 6 : ce ne sont pas des employeurs, ce sont des outils et des listes."""
+    v2 = load_v2()
+
+    for base, name, text in (
+        ("https://webflow.com/", "Webflow", "Créez un site sans coder, essai gratuit."),
+        ("https://livementor.com/", "Livementor", "Nos formations en ligne."),
+    ):
+        scored = v2.score_candidate(name, base, text, [], "paris-20")
+        assert scored["category"] == "ecarte", f"{name} : {scored['category_reason']}"
+
+    annuaire = v2.score_candidate(
+        "Annuaire des agences",
+        "https://lesagences.example/",
+        "Annuaire : comparez les agences web et trouvez un prestataire près de chez vous.",
+        [],
+        "paris-20",
+    )
+    assert annuaire["category"] == "ecarte"
+
+
+def test_a_verified_formation_is_never_excluded_for_not_being_an_agency():
+    """Critère 6 : le formateur est une cible, pas un faux positif à éliminer."""
+    v2 = load_v2()
+
+    for name, base, text in (
+        ("Access42", "https://access42.net/",
+         "Access42 : expertise et formations en accessibilité numérique. "
+         "Formation en RGAA, audits WCAG, à Paris 20e."),
+        ("Simplon", "https://simplon.co/",
+         "Simplon.co, organisme de formation aux métiers du numérique. "
+         "Formation développeur web à Paris 20e, titre professionnel RNCP."),
+    ):
+        scored = v2.score_candidate(name, base, text, [], "paris-20")
+        assert scored["category"] == "formation", f"{name} : {scored['category_reason']}"
+        assert scored["formation_org"] is True
+        # Le score classe, il n'élimine pas : un formateur au vocabulaire
+        # d'agence pauvre reste une cible, pas un écarté.
+        assert scored["signals"]["exclusion"] == []
+        assert v2.keeps_candidate(scored) is True, f"{name} tombe hors du résultat"
+
+
+def test_a_redundant_signal_family_no_longer_saturates_the_score():
+    """Critère 6 : répéter « WordPress » vingt fois ne vaut pas une agence parfaite."""
+    v2 = load_v2()
+
+    spam = v2.score_candidate(
+        "Studio Spam",
+        "https://spam.example/",
+        " ".join(["wordpress woocommerce php symfony drupal shopify react vue nuxt"] * 30),
+        [],
+        "",
+    )
+
+    assert spam["family_scores"]["stack"] <= v2.FAMILY_CAPS["stack"]
+    assert spam["score"] < 100, "le barème sature encore sur une seule famille"
+
+    # Agence et formation sont plafonnées séparément : un site qui répète le
+    # vocabulaire des deux ne devient pas parfait pour autant.
+    both = v2.score_candidate(
+        "Studio Double",
+        "https://double.example/",
+        " ".join(["agence web création de site formation professionnelle qualiopi"] * 30),
+        [],
+        "",
+    )
+    for family, cap in v2.FAMILY_CAPS.items():
+        assert both["family_scores"][family] <= cap, f"famille {family} non plafonnée"
+    # Le détail reste lisible : un score sans ses signaux ne se relit pas.
+    assert set(both["signals"]) == {"positive", "negative", "exclusion"}
+    assert both["signals"]["positive"]
 
 
 def test_search_task_deduplication_includes_zone_and_radius():

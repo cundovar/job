@@ -14,7 +14,14 @@ Trois couches, dans cet ordre :
 Règles dures :
 - pas d'`evidence` mesurée → jamais `CONFIRMED` ;
 - une donnée inconnue produit `UNCERTAIN`, jamais un `REJECTED` ;
-- tout texte lu sur un site est une donnée non fiable, jamais une consigne.
+- tout texte lu sur un site est une donnée non fiable, jamais une consigne ;
+- le registre public (Sirene/RNE) prouve une immatriculation et une adresse
+  légale, jamais une activité : `build_claims` refuse de dériver un constat
+  d'activité d'un code APE.
+
+`classify_self_description` porte le verdict d'activité de la prospection. Il ne
+lit que ce que la structure dit d'elle-même, et il cite toujours la phrase qui
+l'a décidé — un verdict sans citation vaut `incertain`.
 """
 from __future__ import annotations
 
@@ -44,6 +51,150 @@ PLACEHOLDER_PATTERNS = (
     re.compile(r"^(nom|prenom|votre|your|email|mail|test|user|username)@", re.I),
     re.compile(r"@(test|localhost|domain|domaine|monsite|votresite)\.", re.I),
 )
+
+# Mesures issues du registre public. Elles attestent une immatriculation et une
+# adresse de siège ; elles ne disent rien de l'activité réelle. Le code APE est
+# déclaratif et large : un 62.01Z couvre une agence web, une ESN et un freelance
+# en régie. Aucun constat d'activité ne peut donc en sortir.
+REGISTRY_TOOLS = ("registry_lookup",)
+
+# Ce que la structure dit d'elle-même. Un verdict d'activité ne peut venir que
+# de là — jamais d'un code APE, jamais d'un nom de domaine.
+SELF_DESCRIPTION_SIGNALS: Dict[str, tuple[str, ...]] = {
+    "agence": (
+        "agence web",
+        "agence digitale",
+        "agence de communication",
+        "agence créative",
+        "studio web",
+        "studio digital",
+        "studio de création",
+        "création de site",
+        "création de sites",
+        "conception de sites",
+        "développement web",
+        "développement de sites",
+        "site sur mesure",
+        "sites sur mesure",
+        "nos réalisations",
+        "nos clients",
+    ),
+    "formation": (
+        "organisme de formation",
+        "centre de formation",
+        "formation professionnelle",
+        "formation continue",
+        "formation certifiante",
+        "formation développeur",
+        "nos formations",
+        "formations",
+        "formation en",
+        "formation à",
+        "se former",
+        "école",
+        "bootcamp",
+        "qualiopi",
+        "titre professionnel",
+        "rncp",
+    ),
+    # Volontairement court et non ambigu. « plateforme » ou « saas » seuls sont
+    # exclus de cette liste : une agence qui développe la plateforme d'un client
+    # les emploie sans être elle-même un produit en libre-service, et un faux
+    # écart coûte plus cher qu'un `incertain`.
+    "ecarte": (
+        "annuaire",
+        "comparateur",
+        "comparez les agences",
+        "trouvez une agence",
+        "trouvez un prestataire",
+        "marketplace",
+        "place de marché",
+        "essai gratuit",
+        "sans coder",
+        "no-code",
+        "nocode",
+    ),
+}
+
+CATEGORY_UNCERTAIN = "incertain"
+
+
+def _self_description_pattern(term: str) -> re.Pattern:
+    """Motif borné : « nation » ne doit pas se déclencher sur « international ».
+
+    Les bornes ne sont pas `\\b` : un terme peut se terminer par un caractère
+    non-mot. On exige l'absence de caractère de mot juste avant et juste après.
+    """
+    return re.compile(rf"(?<!\w){re.escape(term)}(?!\w)", re.I)
+
+
+def _quote_around(text: str, match: re.Match, width: int = 90) -> str:
+    start = max(0, match.start() - width // 2)
+    end = min(len(text), match.end() + width // 2)
+    return re.sub(r"\s+", " ", text[start:end]).strip()
+
+
+def classify_self_description(parts: List[str]) -> Dict[str, Any]:
+    """Verdict d'activité tiré des seuls mots de la structure sur elle-même.
+
+    `parts` sont des fragments réellement lus : `<title>`, meta description,
+    titres de la page d'accueil. Retourne `category` dans
+    `agence | formation | incertain | ecarte`, le motif et les citations.
+
+    Trois règles, dans cet ordre :
+    - un signal d'exclusion non ambigu l'emporte : un annuaire qui parle
+      d'agences reste un annuaire ;
+    - à égalité entre agence et formation, la formation l'emporte : les
+      organismes RGAA/numérique se décrivent des deux façons et le projet les
+      veut listés comme formation ;
+    - sans citation, le verdict est `incertain`. Jamais `ecarte` : une absence
+      de signal n'est pas une preuve contraire.
+    """
+    text = " ".join(str(part) for part in parts if str(part).strip())
+    if not text.strip():
+        return {
+            "category": CATEGORY_UNCERTAIN,
+            "reason": "aucune auto-description lisible",
+            "evidence": [],
+        }
+
+    hits: Dict[str, List[tuple[str, str]]] = {}
+    for category, terms in SELF_DESCRIPTION_SIGNALS.items():
+        found = []
+        for term in terms:
+            match = _self_description_pattern(term).search(text)
+            if match:
+                found.append((term, _quote_around(text, match)))
+        hits[category] = found
+
+    if hits["ecarte"]:
+        terms = ", ".join(term for term, _ in hits["ecarte"][:3])
+        return {
+            "category": "ecarte",
+            "reason": f"l'auto-description est celle d'un annuaire ou d'un service en libre-service ({terms})",
+            "evidence": [quote for _, quote in hits["ecarte"][:3]],
+        }
+
+    agence, formation = len(hits["agence"]), len(hits["formation"])
+    if formation and formation >= agence:
+        terms = ", ".join(term for term, _ in hits["formation"][:3])
+        return {
+            "category": "formation",
+            "reason": f"la structure se décrit comme un organisme de formation ({terms})",
+            "evidence": [quote for _, quote in hits["formation"][:3]],
+        }
+    if agence:
+        terms = ", ".join(term for term, _ in hits["agence"][:3])
+        return {
+            "category": "agence",
+            "reason": f"la structure se décrit comme une agence ou un studio ({terms})",
+            "evidence": [quote for _, quote in hits["agence"][:3]],
+        }
+    return {
+        "category": CATEGORY_UNCERTAIN,
+        "reason": "l'auto-description ne dit ni agence ni formation",
+        "evidence": [],
+    }
 
 
 def _claim(
@@ -155,6 +306,48 @@ def build_claims(company: Dict[str, Any], measurements: Dict[str, Dict[str, Any]
                 )
             )
 
+    claims.extend(_registry_claims(name, measurements))
+    return claims
+
+
+def _registry_claims(name: str, measurements: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Constats administratifs du registre : immatriculation et siège, rien d'autre.
+
+    Aucune branche ne produit ici de constat de catégorie `activity`. C'est une
+    règle de structure, pas une consigne de rédaction : le code APE est présent
+    dans la mesure et reste volontairement non reformulé en activité, faute de
+    quoi « 62.01Z » finirait publié comme « agence web ».
+    """
+    claims: List[Dict[str, Any]] = []
+    for tool in REGISTRY_TOOLS:
+        registry = _usable(measurements, tool)
+        if not registry:
+            continue
+        value = registry["value"]
+        siren = str(value.get("siren") or "").strip()
+        if siren:
+            claims.append(
+                _claim(
+                    f"{name} est immatriculée au registre sous le SIREN {siren}.",
+                    [registry["evidence"]],
+                    tool,
+                    "identity",
+                    0.9,
+                    {"kind": "registry_siren", "expected": siren},
+                )
+            )
+        legal_address = str(value.get("legal_address") or "").strip()
+        if legal_address:
+            claims.append(
+                _claim(
+                    f"Le siège déclaré de {name} au registre est situé {legal_address}.",
+                    [registry["evidence"]],
+                    tool,
+                    "legal_address",
+                    0.85,
+                    {"kind": "registry_legal_address", "expected": legal_address},
+                )
+            )
     return claims
 
 
@@ -186,6 +379,12 @@ def _support(check: Dict[str, Any], measurement: Dict[str, Any]) -> bool | None:
     if kind == "public_email":
         emails = [item.get("email") for item in value.get("emails", []) if isinstance(item, dict)]
         return None if not emails else expected in emails
+    if kind == "registry_siren":
+        observed = str(value.get("siren") or "").strip()
+        return None if not observed else observed == expected
+    if kind == "registry_legal_address":
+        observed = str(value.get("legal_address") or "").strip()
+        return None if not observed else observed == expected
     return None
 
 
