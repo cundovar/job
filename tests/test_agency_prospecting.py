@@ -100,6 +100,26 @@ def test_published_agencies_never_carry_a_postal_code_without_an_address():
             )
 
 
+def test_the_hand_written_csv_obeys_the_same_rule():
+    """Même règle à la source qu'à la publication, sinon elle se perd en route.
+
+    `ville` porte déjà « Paris 75020 » : recopier le code postal dans sa propre
+    colonne alors qu'aucune adresse n'a été relevée en ferait une donnée
+    dérivée, qui se met à diverger et finit par se lire comme un relevé.
+    """
+    import csv
+
+    with (PROJECT_ROOT / "config" / "companies.csv").open(encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+
+    assert rows, "config/companies.csv est vide"
+    for row in rows:
+        if not row["adresse"].strip():
+            assert not row["code_postal"].strip(), (
+                f"{row['nom']} porte un code postal sans adresse"
+            )
+
+
 def test_company_list_shows_the_address_it_has():
     """Régression : l'adresse existait dans le CSV et n'était affichée nulle part."""
     from hermes_commands.company_top import format_company_list

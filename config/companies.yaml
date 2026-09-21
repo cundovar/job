@@ -1,12 +1,13 @@
 # config/companies.yaml
 # Critères de ciblage — choix produit, validés le 18/09/2026
+# Re-ciblé le 21/09/2026 : agences web, zone Paris-20e uniquement (décision utilisateur).
+# Les entrées hors nouveau périmètre sont marquées ecartee, pas supprimées.
 # À ajuster manuellement, ce fichier ne doit pas être régénéré par déduction automatique
 
 criteres:
   type_structure:
-    - agence_com_engagee   # agences de communication "engagée" / éthique
-    - scop                 # coopératives (SCOP/SCIC)
-  zone: ile_de_france
+    - agence_web           # agences web / digitales (re-ciblage du 21/09/2026)
+  zone: paris_20e          # was: ile_de_france — re-ciblage demandé le 21/09/2026
   taille_max_effectif: 15
   note: >
     Une structure qui ne coche pas ces trois critères ne doit pas être ajoutée
@@ -23,6 +24,7 @@ criteres:
 # (priorité 1) pour rester cohérents avec les variantes de CV existantes.
 # Surchargeable entreprise par entreprise via la colonne "poste_vise" du CSV.
 poste_vise_par_type:
+  agence_web: "Développeur web / Intégrateur"
   agence_com_engagee: "Développeur web / Intégrateur"
   scop: "Développeur full-stack PHP / Symfony"
 
@@ -33,56 +35,86 @@ poste_vise_par_type:
 # sans URL. Seules les structures dont l'URL a été relevée en clair passent dans
 # config/companies.csv, qui est la seule entrée lue par le prospecteur.
 companies:
+  - nom: "Studio Bleu"
+    type: agence_web
+    zone: "Paris 20e (rue du Capitaine Marchal, OSM)"
+    taille_estimee: null
+    taille_verifiee: false
+    statut: ecartee
+    notes: "Ajoutée le 21/09/2026 (re-ciblage Paris-20e). SIREN 801433483 affiché sur studiobleu.com ; registre : APE 62.01Z, active depuis 2014 (diffusion NON-DIFFUSIBLE) ; localisation 20e via OSM. ÉCARTÉE le jour même : le Vérificateur constate sur le site « Location d'espaces artistiques parisiens » (38 studios de répétition musique, 25 halls de danse) — pas une agence web, malgré l'APE 62.01Z."
+
+  - nom: "Digital Web"
+    type: agence_web
+    zone: "Paris 20e (26 rue des Rigoles, Sirene)"
+    taille_estimee: null
+    taille_verifiee: false
+    statut: a_qualifier
+    notes: "Ajoutée le 21/09/2026 (re-ciblage Paris-20e). digitalweb.fr = création de sites vitrines/e-commerce. Registre : SIREN 902442797, APE 62.02A, 26 rue des Rigoles 75020 (domiciliation Service Plus), créée 2021. Identité site↔entreprise non prouvée sur le site (SIREN absent) — à confirmer avant contact."
+
+  - nom: "Web Conception"
+    type: agence_web
+    zone: "Paris 20e (26 rue des Rigoles, Sirene)"
+    taille_estimee: null
+    taille_verifiee: false
+    statut: a_qualifier
+    notes: "Ajoutée le 21/09/2026 (re-ciblage Paris-20e). webconception.fr = webmarketing/création de sites. Registre : SIREN 492826524, APE 62.09Z, chez Service Plus 26 rue des Rigoles 75020, créée 2006. Identité site↔entreprise à confirmer."
+
   - nom: RUP
     type: scop
     secteur: communication_ess
     zone: Paris
     taille_estimee: 15
     taille_verifiee: false
-    statut: prioritaire
-    notes: "Pas de développeur identifié dans l'équipe — piste prestation technique (WordPress, automatisation n8n)."
+    statut: ecartee
+    notes: "Pas de développeur identifié dans l'équipe — piste prestation technique (WordPress, automatisation n8n). Écartée le 21/09/2026 (re-ciblage Paris-20e) : hors zone (75011) et type scop."
 
   - nom: Limite
     type: agence_com_engagee
     zone: Ile-de-France
     taille_estimee: null
     taille_verifiee: false
-    statut: prioritaire
+    statut: ecartee
+    notes: "Écartée le 21/09/2026 (re-ciblage agences web Paris-20e uniquement) : hors zone."
 
   - nom: WAA
     type: agence_com_engagee
     zone: Ile-de-France
     taille_estimee: null
     taille_verifiee: false
-    statut: prioritaire
+    statut: ecartee
+    notes: "Écartée le 21/09/2026 (re-ciblage agences web Paris-20e uniquement) : hors zone."
 
   - nom: Econovia
     type: agence_com_engagee
     zone: Ile-de-France
     taille_estimee: null
     taille_verifiee: false
-    statut: prioritaire
+    statut: ecartee
+    notes: "Écartée le 21/09/2026 (re-ciblage Paris-20e uniquement) : hors zone (Nogent-sur-Marne 94)."
 
   - nom: CommuniKey
     type: agence_com_engagee
     zone: Ile-de-France
     taille_estimee: null
     taille_verifiee: false
-    statut: prioritaire
+    statut: ecartee
+    notes: "Écartée le 21/09/2026 (re-ciblage agences web Paris-20e uniquement) : hors zone."
 
   - nom: Initiale
     type: agence_com_engagee
     zone: Ile-de-France
     taille_estimee: null
     taille_verifiee: false
-    statut: prioritaire
+    statut: ecartee
+    notes: "Écartée le 21/09/2026 (re-ciblage agences web Paris-20e uniquement) : hors zone."
 
   - nom: "Agence 3e étage"
     type: agence_com_engagee
     zone: Ile-de-France
     taille_estimee: null
     taille_verifiee: false
-    statut: prioritaire
+    statut: ecartee
+    notes: "Écartée le 21/09/2026 (re-ciblage agences web Paris-20e uniquement) : hors zone."
 
   - nom: "Agence Jaam"
     type: agence_com_engagee
@@ -90,23 +122,23 @@ companies:
     taille_estimee: null
     taille_verifiee: false
     statut: a_qualifier
-    notes: "Ajoutée le 18/09/2026, URL relevée en clair et vérifiée (200). Type de structure et taille non confirmés."
+    notes: "Ajoutée le 18/09/2026, URL relevée en clair et vérifiée (200). Type de structure et taille non confirmés. Re-ciblage 21/09/2026 : arrondissement à confirmer — si hors Paris-20e, écarter."
 
   - nom: Sidièse
     type: agence_com_engagee
     zone: Ile-de-France
     taille_estimee: null
     taille_verifiee: false
-    statut: secondaire
-    notes: "Jugée trop corporate — priorité plus basse."
+    statut: ecartee
+    notes: "Jugée trop corporate — priorité plus basse. Écartée le 21/09/2026 (re-ciblage Paris-20e) : hors zone."
 
   - nom: Adrénaline
     type: agence_com_engagee
     zone: Ile-de-France
     taille_estimee: null
     taille_verifiee: false
-    statut: secondaire
-    notes: "Jugée trop corporate — priorité plus basse."
+    statut: ecartee
+    notes: "Jugée trop corporate — priorité plus basse. Écartée le 21/09/2026 (re-ciblage Paris-20e) : hors zone."
 
   - nom: "Agence 148"
     type: agence_com_engagee
@@ -114,8 +146,8 @@ companies:
     zone: "Paris 18e"
     taille_estimee: null
     taille_verifiee: false
-    statut: secondaire
-    notes: "A déjà des développeurs en interne ; seule offre ouverte connue = SEO freelance, pas dev."
+    statut: ecartee
+    notes: "A déjà des développeurs en interne ; seule offre ouverte connue = SEO freelance, pas dev. Écartée le 21/09/2026 (re-ciblage Paris-20e) : zone 18e."
 
   - nom: "Ess'Team"
     type: agence_com_engagee
@@ -130,8 +162,8 @@ companies:
     zone: "Paris (multi-sites : Lille, Nantes, Lyon)"
     taille_estimee: null
     taille_verifiee: false
-    statut: a_qualifier
-    notes: "SCOP multi-villes avec équipe Symfony/API Platform/React établie — probablement au-dessus du seuil de 15 pers., à vérifier avant intégration à la liste prioritaire."
+    statut: ecartee
+    notes: "SCOP multi-villes avec équipe Symfony/API Platform/React établie — probablement au-dessus du seuil de 15 pers., à vérifier avant intégration à la liste prioritaire. Écartée le 21/09/2026 : hors nouveau périmètre (agences web Paris-20e)."
 
   - nom: TelesCoop
     type: scop
@@ -139,13 +171,13 @@ companies:
     zone: "Paris 10e (full remote)"
     taille_estimee: null
     taille_verifiee: false
-    statut: a_qualifier
-    notes: "Priorisée sur Webu (Grenoble) et La Coopérative des Internets (Lyon) pour raisons géographiques — à requalifier ici car zone/taille non confirmées."
+    statut: ecartee
+    notes: "Priorisée sur Webu (Grenoble) et La Coopérative des Internets (Lyon) pour raisons géographiques — à requalifier ici car zone/taille non confirmées. Écartée le 21/09/2026 : hors nouveau périmètre (agences web Paris-20e)."
   - nom: "Livementor"
     type: agence_com_engagee
     zone: Ile-de-France
     taille_estimee: null
     taille_verifiee: false
-    statut: a_qualifier
-    notes: "Ajoutée le 2026-09-19 via bouton front (découverte Étape 0). URL: https://livementor.com. Type et taille non confirmés."
+    statut: ecartee
+    notes: "Ajoutée le 2026-09-19 via bouton front (découverte Étape 0). URL: https://livementor.com. Type et taille non confirmés. Écartée le 21/09/2026 (re-ciblage Paris-20e) : hors zone et organisme de formation, pas une agence."
 
