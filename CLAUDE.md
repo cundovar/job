@@ -53,14 +53,27 @@ front/ server/   interface de validation (Vite/React + Express)
   `front/public/data/agencies/latest.json`. Le serveur Node ne le réécrit plus
   au démarrage. Schéma : `docs/AGENCIES_SCHEMA.md`.
 - **Une position approximative n'est pas une adresse.** Le champ `how` dit d'où
-  vient la position (`adresse`, `contact/legales`, `ville/arr (~centre)`, vide).
-  Seul un `how` valant adresse compte « dans le rayon ». Ne jamais déduire un
-  code postal d'une adresse absente.
+  vient la position (`adresse`, `contact/legales`, `siège (registre)`,
+  `ville/arr (~centre)`, vide). Seul un `how` valant adresse compte « dans le
+  rayon ». Ne jamais déduire un code postal d'une adresse absente.
 - **Une zone sans résultat lève une erreur nommant les zones connues**, jamais
   une liste vide : un vide se relit comme « il n'y a rien », et c'est ce qui a
   conduit un agent à inventer deux agences.
-- `config/companies.csv` (8 colonnes, versionné) porte les adresses relevées à
+- `config/companies.csv` (9 colonnes, versionné) porte les adresses relevées à
   la main. Une ligne sans `site` est ignorée par le prospecteur, volontairement.
+  La colonne `siren` est la voie par laquelle un humain confirme le lien entre
+  un site et une immatriculation.
+- **Le registre public (`tools/agency_registry.py`) fournit des candidats et des
+  adresses légales, jamais un verdict d'activité.** Un code APE `62.01Z` couvre
+  une agence web comme une ESN ou un freelance en régie. Le verdict vient de ce
+  que la structure écrit sur elle-même (`classify_self_description`), qui cite
+  toujours son extrait. Les quatre catégories sont `agence`, `formation`,
+  `incertain`, `ecarte` — une donnée manquante donne `incertain`, jamais
+  `ecarte`, et un formateur n'est jamais écarté pour n'être pas une agence.
+- **`identity_match` est à l'identité ce que `how` est à l'adresse.** Un
+  rapprochement par nom seul (`nom normalisé (incertain)`) ne fait jamais monter
+  le SIREN ni le siège du registre dans la fiche : ils attendent dans
+  `identity_candidates`.
 
 ## Chemins et ports
 

@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 ---
 
 # Instruction: Découverte hybride, adresses officielles et barème fiable

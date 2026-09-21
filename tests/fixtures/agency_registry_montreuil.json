@@ -1,0 +1,120 @@
+{
+  "_source": "https://recherche-entreprises.api.gouv.fr/search?code_postal=93100&activite_principale=62.01Z,85.59A",
+  "_note": "Réponse figée et réduite de l'API Recherche d'Entreprises. Raisons sociales et SIREN neutralisés : la fixture sert à figer le contrat de l'API, pas à publier un registre. Deux pages pour couvrir la pagination ; un établissement radié et un non-diffusible pour couvrir les cas limites.",
+  "pages": [
+    {
+      "results": [
+        {
+          "siren": "900000001",
+          "nom_complet": "STUDIO PYRENEES",
+          "nom_raison_sociale": "STUDIO PYRENEES",
+          "activite_principale": "62.01Z",
+          "libelle_activite_principale": "Programmation informatique",
+          "nature_juridique": "5710",
+          "etat_administratif": "A",
+          "date_creation": "2016-04-12",
+          "tranche_effectif_salarie": "02",
+          "siege": {
+            "siret": "90000000100017",
+            "activite_principale": "62.01Z",
+            "etat_administratif": "A",
+            "est_siege": true,
+            "adresse": "14 RUE DE PARIS 93100 MONTREUIL",
+            "geo_adresse": "14 Rue de Paris 93100 Montreuil",
+            "code_postal": "93100",
+            "commune": "93048",
+            "libelle_commune": "MONTREUIL",
+            "departement": "93",
+            "latitude": "48.86213",
+            "longitude": "2.44197"
+          }
+        },
+        {
+          "siren": "900000002",
+          "nom_complet": "INFORMATION NON-DIFFUSIBLE",
+          "nom_raison_sociale": "INFORMATION NON-DIFFUSIBLE",
+          "activite_principale": "62.01Z",
+          "libelle_activite_principale": "Programmation informatique",
+          "nature_juridique": "1000",
+          "etat_administratif": "A",
+          "date_creation": "2021-09-01",
+          "siege": {
+            "siret": "90000000200013",
+            "activite_principale": "62.01Z",
+            "etat_administratif": "A",
+            "est_siege": true,
+            "adresse": null,
+            "geo_adresse": null,
+            "code_postal": null,
+            "commune": "93048",
+            "libelle_commune": "MONTREUIL",
+            "departement": "93",
+            "latitude": null,
+            "longitude": null
+          }
+        },
+        {
+          "siren": "900000003",
+          "nom_complet": "ANCIENNE AGENCE RADIEE",
+          "nom_raison_sociale": "ANCIENNE AGENCE RADIEE",
+          "activite_principale": "62.01Z",
+          "libelle_activite_principale": "Programmation informatique",
+          "nature_juridique": "5499",
+          "etat_administratif": "C",
+          "date_creation": "2009-02-02",
+          "siege": {
+            "siret": "90000000300011",
+            "activite_principale": "62.01Z",
+            "etat_administratif": "C",
+            "est_siege": true,
+            "adresse": "2 RUE DU CAPITAINE DREYFUS 93100 MONTREUIL",
+            "geo_adresse": "2 Rue du Capitaine Dreyfus 93100 Montreuil",
+            "code_postal": "93100",
+            "commune": "93048",
+            "libelle_commune": "MONTREUIL",
+            "departement": "93",
+            "latitude": "48.86011",
+            "longitude": "2.44100"
+          }
+        }
+      ],
+      "total_results": 4,
+      "page": 1,
+      "per_page": 3,
+      "total_pages": 2
+    },
+    {
+      "results": [
+        {
+          "siren": "900000004",
+          "nom_complet": "ATELIER FORMATION NUMERIQUE",
+          "nom_raison_sociale": "ATELIER FORMATION NUMERIQUE",
+          "activite_principale": "85.59A",
+          "libelle_activite_principale": "Formation continue d'adultes",
+          "nature_juridique": "9220",
+          "etat_administratif": "A",
+          "date_creation": "2018-11-20",
+          "tranche_effectif_salarie": "11",
+          "siege": {
+            "siret": "90000000400019",
+            "activite_principale": "85.59A",
+            "etat_administratif": "A",
+            "est_siege": true,
+            "adresse": "9 RUE DE LA REVOLUTION 93100 MONTREUIL",
+            "geo_adresse": "9 Rue de la Révolution 93100 Montreuil",
+            "code_postal": "93100",
+            "commune": "93048",
+            "libelle_commune": "MONTREUIL",
+            "departement": "93",
+            "latitude": "48.85932",
+            "longitude": "2.43854"
+          }
+        }
+      ],
+      "total_results": 4,
+      "page": 2,
+      "per_page": 3,
+      "total_pages": 2
+    }
+  ]
+}

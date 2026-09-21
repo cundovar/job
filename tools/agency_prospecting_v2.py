@@ -3,11 +3,22 @@
 
 Pipeline:
 1) Collecte large: moteurs + pages annuaires connues utilisées comme sources de liens.
-2) Extraction des domaines de vraies agences (les annuaires ne sont pas gardés comme résultats).
-3) Crawl léger de plusieurs pages utiles par site.
-4) Scoring WordPress/React/headless/contact/IDF + zone géographique (--zone).
-5) Stockage page_texts (pour analyse agent) + sorties Markdown + JSON +
+2) Candidats du registre public (Sirene/RNE) sur les codes postaux de la zone.
+3) Extraction des domaines de vraies agences (les annuaires ne sont pas gardés comme résultats).
+4) Crawl léger de plusieurs pages utiles par site.
+5) Scoring plafonné par famille de signaux + zone géographique (--zone), puis
+   verdict d'activité rendu par le Vérificateur sur l'auto-description du site.
+6) Fusion registre / crawl / CSV par SIRET, SIREN, domaine puis nom.
+7) Stockage page_texts (pour analyse agent) + sorties Markdown + JSON +
    front/public/data/agencies/latest.json.
+
+Deux sources, deux rôles qui ne se confondent pas :
+
+- le **web** dit ce qu'une structure fait, parce qu'elle l'écrit elle-même ;
+- le **registre** dit qui est immatriculé et où est le siège, jamais l'activité.
+
+Un code APE n'a donc jamais le droit de produire une catégorie, et un nom
+proche d'un domaine n'a jamais le droit de produire une propriété de site.
 """
 from __future__ import annotations
 
@@ -36,6 +47,25 @@ DATA_DIR = ROOT / 'data'
 FRONT_DIR = ROOT / 'front/public/data/agencies'
 DEFAULT_OUT_DIR = ROOT / 'output' / 'agencies'
 COMPANIES_CSV = ROOT / 'config' / 'companies.csv'
+GEOCODE_CACHE = DATA_DIR / 'geocode_cache.json'
+
+# `tools/` n'est pas un package et ce fichier est aussi chargé par `importlib`
+# depuis les tests : le sys.path du processus appelant ne contient ni la racine
+# ni `tools/`. On les ajoute explicitement plutôt que de dépendre du cwd.
+for _import_root in (str(ROOT), str(ROOT / 'tools')):
+    if _import_root not in sys.path:
+        sys.path.insert(0, _import_root)
+
+from agency_registry import (  # noqa: E402  (dépend du sys.path ci-dessus)
+    NAF_AGENCE,
+    NAF_FORMATION,
+    RegistryClient,
+    RegistryError,
+    postal_codes_of,
+    search_zone_candidates,
+)
+from company_analysis.duplicate import normalize_name  # noqa: E402
+from company_analysis.verifier import classify_self_description  # noqa: E402
 
 # Distance depuis l'adresse de référence de Cundo (point fixe, choisi par lui).
 # Adresse relevée sur le site de chaque agence — jamais déduite, jamais devinée.
@@ -212,16 +242,42 @@ ZONE_QUERIES = {
 }
 
 
+_TERM_PATTERNS: dict[str, re.Pattern] = {}
+
+
+def term_pattern(term: str) -> re.Pattern:
+    """Motif borné pour un terme de barème ou de zone.
+
+    La recherche en sous-chaîne rapprochait des choses sans rapport : « nation »
+    se déclenchait sur « international », « api » sur « rapide », « 75020 » sur
+    « 750201 ». Chaque faux positif ajoutait des points, et le score cessait de
+    vouloir dire quelque chose.
+
+    Les bornes ne sont pas `\\b` : un terme peut commencer ou finir par un
+    caractère non-mot (« next.js », « av. », « sur-mesure »). On exige donc
+    l'absence de caractère de mot juste avant et juste après.
+    """
+    pattern = _TERM_PATTERNS.get(term)
+    if pattern is None:
+        pattern = re.compile(rf'(?<!\w){re.escape(term)}(?!\w)', re.I)
+        _TERM_PATTERNS[term] = pattern
+    return pattern
+
+
+def has_term(blob: str, term: str) -> bool:
+    return term_pattern(term).search(blob) is not None
+
+
 def zone_of(blob: str, zone_key: str) -> tuple[str, str]:
     """Renvoie (tier1|tier2|none, terme trouvé) pour le blob texte donné."""
     zone = ZONES.get(zone_key)
     if not zone:
         return 'none', ''
     for term in zone['tier1']:
-        if term in blob:
+        if has_term(blob, term):
             return 'tier1', term
     for term in zone['tier2']:
-        if term in blob:
+        if has_term(blob, term):
             return 'tier2', term
     return 'none', ''
 
@@ -268,6 +324,36 @@ NEGATIVE = {
     'esn': -12, 'ssii': -15, 'cybersécurité': -8, 'cybersecurite': -8,
     'comparateur': -20, 'annuaire': -25,
 }
+
+# Plafonds par famille. Sans eux, dix synonymes de « formation » sur une même
+# page suffisaient à atteindre 100 : tout le haut du classement se valait, et le
+# score ne présélectionnait plus rien. Un signal répété n'apporte pas dix fois
+# la même information.
+FAMILY_CAPS = {'stack': 35, 'agence': 25, 'formation': 25}
+ZONE_CAP = 25
+CONTACT_CAP = 15
+
+# Produits en libre-service et places de marché. Ce ne sont pas des employeurs
+# du type recherché : on y achète un abonnement, on n'y candidate pas.
+PLATFORM_HOSTS = {
+    'webflow.com', 'wix.com', 'squarespace.com', 'shopify.com', 'shopify.fr',
+    'wordpress.com', 'jimdo.com', 'strikingly.com', 'framer.com', 'canva.com',
+    'hubspot.com', 'hubspot.fr', 'mailchimp.com', 'salesforce.com',
+    'udemy.com', 'coursera.org', 'openclassrooms.com', 'livementor.com',
+    'malt.fr', 'codeur.com', 'fiverr.com', 'upwork.com', 'comeup.com',
+}
+
+# Il en faut **deux** pour écarter : une agence qui parle de la plateforme d'un
+# client emploie légitimement ces mots. Un faux écart coûte plus cher qu'un
+# `incertain`, puisqu'il retire silencieusement une cible du champ de vision.
+PLATFORM_TEXT_PATTERNS = [
+    'essai gratuit', 'commencez gratuitement', 'start for free', 'sans engagement',
+    'sans coder', 'no-code', 'nocode', 'créez votre site en quelques minutes',
+    'plans et tarifs', 'abonnement mensuel', 'par mois et par utilisateur',
+    'plateforme saas', 'notre plateforme tout-en-un', 'inscrivez-vous gratuitement',
+    'trouvez un prestataire', 'trouvez un freelance', 'mettons en relation',
+]
+MIN_PLATFORM_SIGNALS = 2
 CONTACT_HINTS = ['contact', 'recrutement', 'jobs', 'carriere', 'carrière', 'nous-rejoindre', 'nous rejoindre']
 CRAWL_PATHS = [
     '/', '/agence', '/a-propos', '/services', '/realisations', '/portfolio',
@@ -361,6 +447,47 @@ def geocode_ban(q: str):
     return None, None, ''
 
 
+def normalized_address(address: str) -> str:
+    return re.sub(r'\s+', ' ', str(address or '')).strip().casefold()
+
+
+def load_geocode_cache(path: Path = GEOCODE_CACHE) -> dict[str, dict]:
+    """Coordonnées déjà résolues, indexées par adresse normalisée."""
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_geocode_cache(cache: dict, path: Path = GEOCODE_CACHE) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(cache, ensure_ascii=False, indent=2, sort_keys=True), encoding='utf-8'
+    )
+
+
+def geocode_cached(address: str, cache: dict) -> tuple[float | None, float | None, str]:
+    """Géocode une adresse une fois, ici et dans les runs suivants.
+
+    Seuls les succès sont mémorisés. Mémoriser un échec économiserait un appel,
+    mais une coupure réseau d'une minute figerait pour toujours des adresses
+    parfaitement géocodables en « position inconnue ».
+    """
+    key = normalized_address(address)
+    if not key:
+        return None, None, ''
+    hit = cache.get(key)
+    if isinstance(hit, dict):
+        return hit.get('lat'), hit.get('lon'), hit.get('label') or ''
+    lat, lon, label = geocode(address)
+    if lat is None:
+        lat, lon, label = geocode_ban(address)
+    if lat is not None:
+        cache[key] = {'lat': lat, 'lon': lon, 'label': label}
+    return lat, lon, label
+
+
 def haversine(a, b) -> float:
     la1, lo1, la2, lo2 = map(math.radians, [a[0], a[1], b[0], b[1]])
     h = math.sin((la2 - la1) / 2) ** 2 + math.cos(la1) * math.cos(la2) * math.sin((lo2 - lo1) / 2) ** 2
@@ -380,12 +507,146 @@ def postal_code_from_address(address: str | None) -> str | None:
     return match.group(1) if match else None
 
 
-def _agency_key(agency: dict) -> str:
-    host = host_of(str(agency.get('website') or agency.get('site') or ''))
+ORIGIN_CSV = 'csv'
+ORIGIN_REGISTRY = 'registre'
+ORIGIN_WEB = 'web'
+
+UNCERTAIN_IDENTITY = 'nom normalisé (incertain)'
+CERTAIN_IDENTITY = ('siret', 'siren', 'domaine')
+IDENTITY_STRENGTH = {'': 0, UNCERTAIN_IDENTITY: 1, 'domaine': 2, 'siren': 3, 'siret': 4}
+
+
+def identity_keys(record: dict) -> list[tuple[str, str]]:
+    """Clés d'identité d'une fiche, de la plus sûre à la moins sûre.
+
+    Les trois premières sont des identifiants : un SIRET, un SIREN et un domaine
+    désignent une structure et une seule. La quatrième est une ressemblance —
+    deux « Studio Bleu » normalisés pareil peuvent être deux sociétés.
+    """
+    keys: list[tuple[str, str]] = []
+    siret = str(record.get('siret') or '').strip()
+    siren = str(record.get('siren') or '').strip()
+    host = host_of(str(record.get('website') or ''))
+    name = normalize_name(record.get('name') or '')
+    if siret:
+        keys.append(('siret', f'siret:{siret}'))
+    if siren:
+        keys.append(('siren', f'siren:{siren}'))
     if host:
-        return f'host:{host}'
-    name = str(agency.get('name') or agency.get('nom') or '').strip().casefold()
-    return f'name:{name}'
+        keys.append(('domaine', f'host:{host}'))
+    if name:
+        keys.append((UNCERTAIN_IDENTITY, f'name:{name}'))
+    return keys
+
+
+def _stronger(left: str, right: str) -> str:
+    return left if IDENTITY_STRENGTH.get(left, 0) >= IDENTITY_STRENGTH.get(right, 0) else right
+
+
+def merge_records(records: list[dict]) -> list[dict]:
+    """Réunit les fiches qui désignent la même structure, sans rien attribuer d'office.
+
+    Ordre de dédoublonnage : SIRET, SIREN, domaine, puis nom normalisé. Un
+    rapprochement par nom seul produit bien **une seule fiche**, mais il est
+    marqué `identity_match: 'nom normalisé (incertain)'`, et dans ce cas
+    l'identité administrative du registre (SIREN, SIRET, siège) reste dans
+    `identity_candidates` au lieu de monter dans la fiche : sans cela, un
+    homonyme suffirait à publier le site d'une société sous le SIREN d'une
+    autre, et l'adresse d'un siège deviendrait celle d'une agence.
+
+    Quand deux clés d'une même fiche pointent vers deux groupes différents,
+    c'est un conflit d'identité : on le nomme dans `identity_conflicts` au lieu
+    de fusionner les deux groupes, parce que fusionner serait trancher.
+    """
+    index: dict[str, int] = {}
+    groups: list[dict] = []
+
+    for record in records:
+        keys = identity_keys(record)
+        hits: dict[int, str] = {}
+        for kind, key in keys:
+            slot = index.get(key)
+            if slot is not None and slot not in hits:
+                hits[slot] = kind
+
+        if not hits:
+            groups.append({'members': [record], 'match': '', 'conflicts': []})
+            target = len(groups) - 1
+        else:
+            target = next(iter(hits))  # clés parcourues de la plus sûre à la moins sûre
+            group = groups[target]
+            group['members'].append(record)
+            group['match'] = _stronger(group['match'], hits[target])
+            for other in list(hits)[1:]:
+                group['conflicts'].append({
+                    'via': hits[other],
+                    'autre': str(groups[other]['members'][0].get('name') or ''),
+                })
+        for _, key in keys:
+            index.setdefault(key, target)
+
+    return [compose_record(group) for group in groups]
+
+
+def compose_record(group: dict) -> dict:
+    """Assemble une fiche unique à partir de ses membres, source par source.
+
+    Priorité : le CSV versionné d'abord (c'est la voie de correction humaine),
+    le registre pour l'adresse légale, le site pour l'adresse publiée et tout
+    ce qui vient du crawl.
+    """
+    members = group['members']
+    match = group['match']
+    by_origin = {origin: [m for m in members if m.get('origin') == origin]
+                 for origin in (ORIGIN_CSV, ORIGIN_REGISTRY, ORIGIN_WEB)}
+    csv_rec = next(iter(by_origin[ORIGIN_CSV]), None)
+    web_rec = next(iter(by_origin[ORIGIN_WEB]), None)
+    registry_recs = by_origin[ORIGIN_REGISTRY]
+    registry_rec = next(iter(registry_recs), None)
+
+    merged = dict(web_rec or csv_rec or registry_rec or {})
+    if csv_rec:
+        merged['name'] = csv_rec['name']
+        if csv_rec.get('website'):
+            merged['website'] = csv_rec['website']
+        if csv_rec.get('address'):
+            merged['address'] = csv_rec['address']
+            merged['postal_code'] = csv_rec.get('postal_code')
+            merged['address_source'] = csv_rec['address_source']
+
+    sources = set()
+    for member in members:
+        sources.update(member.get('sources') or [])
+    merged['sources'] = sorted(sources)
+    merged['origins'] = sorted({str(m.get('origin') or ORIGIN_WEB) for m in members})
+    merged['identity_match'] = match
+    merged['identity_conflicts'] = group['conflicts']
+    merged.setdefault('website', None)
+
+    # Le registre ne monte dans la fiche que si le rapprochement est un
+    # identifiant, ou s'il n'y a rien d'autre dans le groupe à qui l'attribuer.
+    promote = registry_rec is not None and (match in CERTAIN_IDENTITY or len(members) == 1)
+    merged['identity_candidates'] = []
+    if registry_rec and not promote:
+        merged['identity_candidates'] = [
+            {
+                'name': rec.get('name'),
+                'siren': rec.get('siren'),
+                'siret': rec.get('siret'),
+                'legal_address': rec.get('legal_address'),
+                'source': 'registre — rapprochement par nom, non confirmé',
+            }
+            for rec in registry_recs
+        ]
+    # Un SIREN saisi à la main dans le CSV est une affirmation humaine : il prime
+    # sur le registre et survit à un rapprochement incertain.
+    merged['siren'] = (csv_rec or {}).get('siren') or (registry_rec.get('siren') if promote else None)
+    merged['siret'] = registry_rec.get('siret') if promote else None
+    merged['legal_address'] = registry_rec.get('legal_address') if promote else None
+    merged['legal_address_source'] = registry_rec.get('legal_address_source') if promote else None
+    if promote and registry_rec.get('why_candidate'):
+        merged['registry_note'] = registry_rec['why_candidate']
+    return merged
 
 
 def load_curated_agencies(zone_key: str, path: Path = COMPANIES_CSV) -> list[dict]:
@@ -409,6 +670,10 @@ def load_curated_agencies(zone_key: str, path: Path = COMPANIES_CSV) -> list[dic
         curated.append({
             'name': name,
             'website': (row.get('site') or '').strip() or None,
+            # Rempli à la main quand quelqu'un a vérifié l'immatriculation : c'est
+            # la seule façon d'affirmer qu'un site et un SIREN vont ensemble.
+            'siren': (row.get('siren') or '').strip() or None,
+            'origin': ORIGIN_CSV,
             'score': 0,
             'raw_score': 0,
             'stack': [],
@@ -421,6 +686,8 @@ def load_curated_agencies(zone_key: str, path: Path = COMPANIES_CSV) -> list[dic
             'zone_match': zone_match,
             'zone_term': zone_term,
             'category': 'agence',
+            'category_reason': 'retenue à la main dans config/companies.csv',
+            'category_evidence': [],
             'page_texts': [],
             'address': address,
             'postal_code': postal_code,
@@ -430,21 +697,30 @@ def load_curated_agencies(zone_key: str, path: Path = COMPANIES_CSV) -> list[dic
     return curated
 
 
+def excluded_hosts_from_csv(path: Path = COMPANIES_CSV) -> dict[str, str]:
+    """Hôtes qu'un humain a explicitement écartés dans le CSV versionné.
+
+    Une exclusion décidée à la main ne doit pas être redécouverte à chaque run :
+    sans cela, la même cible remonte, est réévaluée, et finit par repasser.
+    """
+    if not path.exists():
+        return {}
+    with path.open(encoding='utf-8', newline='') as handle:
+        rows = list(csv.DictReader(handle))
+    excluded = {}
+    for row in rows:
+        if (row.get('statut') or '').strip() != 'ecartee':
+            continue
+        host = host_of((row.get('site') or '').strip())
+        if host:
+            excluded[host] = (row.get('nom') or '').strip()
+    return excluded
+
+
 def merge_curated_agencies(results: list[dict], zone_key: str, path: Path = COMPANIES_CSV) -> list[dict]:
     """Fusionne le crawl avec le CSV, en donnant priorité aux relevés manuels."""
-    merged = {_agency_key(agency): agency for agency in results}
-    for curated in load_curated_agencies(zone_key, path):
-        key = _agency_key(curated)
-        existing = merged.get(key)
-        if existing is None:
-            merged[key] = curated
-            continue
-        if curated.get('address'):
-            existing['address'] = curated['address']
-            existing['postal_code'] = curated['postal_code']
-            existing['address_source'] = curated['address_source']
-        existing['sources'] = sorted(set(existing.get('sources', [])) | {'config/companies.csv'})
-    return list(merged.values())
+    crawled = [{**agency, 'origin': agency.get('origin', ORIGIN_WEB)} for agency in results]
+    return merge_records(crawled + load_curated_agencies(zone_key, path))
 
 
 def fmt_distance(m) -> str:
@@ -453,17 +729,37 @@ def fmt_distance(m) -> str:
     return f'{m} m' if m < 1000 else f'{m / 1000:.1f}'.replace('.', ',') + ' km'
 
 
-def enrich_with_distances(results: list[dict]) -> str:
+LEGAL_ADDRESS_LABEL = 'siège déclaré au registre'
+
+
+def _set_position(agency: dict, origin: tuple, address: str, source: str, cache: dict) -> bool:
+    """Pose l'adresse et la distance si, et seulement si, le géocodage aboutit."""
+    lat, lon, _ = geocode_cached(address + ', France', cache)
+    if lat is None:
+        return False
+    agency['address'] = address
+    agency['postal_code'] = postal_code_from_address(address)
+    agency['address_source'] = source
+    agency['distance_m'] = round(haversine(origin, (lat, lon)))
+    return True
+
+
+def enrich_with_distances(results: list[dict], cache: dict | None = None) -> str:
     """Ajoute address / address_source / distance_m à chaque agence.
 
-    Adresse relevée sur le site de l'agence (pages crawlées, puis /contact et
-    /mentions-legales en 2e passe) — jamais déduite. Sans adresse publiée :
-    distance_m reste None. Repli ~centre de ville/arrondissement flaggé
-    approximatif. Renvoie les coords origine ('' si géocodage impossible).
+    Cinq origines possibles, dans cet ordre de confiance : le relevé manuel du
+    CSV, l'adresse publiée sur les pages crawlées, celle de /contact ou des
+    mentions légales, le siège déclaré au registre, puis — en dernier recours et
+    clairement marqué — le centre de la commune. Rien n'est jamais déduit d'un
+    code postal seul. Sans aucune de ces cinq, `distance_m` reste `None`.
+
+    Le géocodage passe par un cache disque : deux runs sur les mêmes adresses ne
+    rappellent ni Nominatim ni la BAN. Renvoie les coords origine.
     """
-    o_lat, o_lon, o_disp = geocode(ORIGIN_ADDRESS)
+    cache = load_geocode_cache() if cache is None else cache
+    o_lat, o_lon, o_disp = geocode_cached(ORIGIN_ADDRESS, cache)
     if o_lat is None:
-        o_lat, o_lon, o_disp = geocode_ban(ORIGIN_BAN_QUERY)
+        o_lat, o_lon, o_disp = geocode_cached(ORIGIN_BAN_QUERY, cache)
     if o_lat is None:
         o_lat, o_lon, o_disp = ORIGIN_FALLBACK
         print(f"WARN: géocodage origine en échec — point BAN enregistré utilisé ({o_lat}, {o_lon})")
@@ -474,8 +770,9 @@ def enrich_with_distances(results: list[dict]) -> str:
         a.setdefault('postal_code', None)
         a.setdefault('address_source', None)
         a['distance_m'] = None
+
         if a['address']:
-            lat, lon, _ = geocode(a['address'] + ', France')
+            lat, lon, _ = geocode_cached(a['address'] + ', France', cache)
             if lat is not None:
                 a['postal_code'] = a.get('postal_code') or postal_code_from_address(a['address'])
                 a['distance_m'] = round(haversine(origin, (lat, lon)))
@@ -483,21 +780,12 @@ def enrich_with_distances(results: list[dict]) -> str:
             # le crawl ne doit pas remplacer une donnée versionnée par une
             # extraction automatique moins fiable.
             continue
+
         blob = (a.get('snippet') or '') + ' ' + ' '.join(p.get('text', '') for p in (a.get('page_texts') or []))
         found = find_address(blob)
-        if found:
-            lat, lon, _ = geocode(found + ', France')
-            if lat is not None:
-                a['address'] = found
-                a['postal_code'] = postal_code_from_address(found)
-                a['address_source'] = 'site (pages crawlées)'
-                a['distance_m'] = round(haversine(origin, (lat, lon)))
-                continue
-        approx = next((k for k in TOWNS if k in blob.lower()), None)
-        if approx:
-            a['address_source'] = f'~centre {approx} (approximatif)'
-            a['distance_m'] = round(haversine(origin, TOWNS[approx]))
+        if found and _set_position(a, origin, found, 'site (pages crawlées)', cache):
             continue
+
         host = host_of(a.get('website') or '')  # passe 2 : /contact souvent hors crawl
         for path in CONTACT_PATHS_EXTRA:
             if not host:
@@ -507,15 +795,20 @@ def enrich_with_distances(results: list[dict]) -> str:
             except Exception:
                 continue
             found = find_address(txt)
-            if found:
-                lat, lon, _ = geocode(found + ', France')
-                if lat is not None:
-                    a['address'] = found
-                    a['postal_code'] = postal_code_from_address(found)
-                    a['address_source'] = f'site ({path})'
-                    a['distance_m'] = round(haversine(origin, (lat, lon)))
-                    break
+            if found and _set_position(a, origin, found, f'site ({path})', cache):
+                break
             time.sleep(0.2)
+        if a['distance_m'] is not None:
+            continue
+
+        legal = a.get('legal_address')
+        if legal and _set_position(a, origin, legal, f'{LEGAL_ADDRESS_LABEL} (Sirene/RNE)', cache):
+            continue
+
+        approx = next((k for k in TOWNS if k in blob.lower()), None)
+        if approx:
+            a['address_source'] = f'~centre {approx} (approximatif)'
+            a['distance_m'] = round(haversine(origin, TOWNS[approx]))
     return f'{o_lat:.5f},{o_lon:.5f}'
 
 
@@ -531,6 +824,8 @@ def address_how(agency: dict) -> str:
         return ''
     if source.startswith('~centre'):
         return 'ville/arr (~centre)'
+    if source.startswith(LEGAL_ADDRESS_LABEL):
+        return 'siège (registre)'
     if source.startswith('site (') and source != 'site (pages crawlées)':
         return 'contact/legales'
     return 'adresse'
@@ -565,6 +860,82 @@ def partition_by_radius(results: list[dict], radius_m: int) -> dict:
         'outside': outside,
         'unknown': unknown,
     }
+
+
+def registry_record(candidate: dict, zone_key: str) -> dict:
+    """Met un candidat du registre dans le format du pipeline, sans lui donner de verdict.
+
+    `category` vaut `incertain` et pas autre chose : le registre n'a pas dit ce
+    que fait cette structure, et un 62.01Z traduit en « agence » serait
+    exactement l'invention que la chaîne existe pour empêcher. Le site reste
+    `None` : le registre n'en publie aucun, et en deviner un à partir du nom
+    reviendrait à attribuer un domaine.
+    """
+    blob = ' '.join(
+        str(candidate.get(key) or '') for key in ('legal_address', 'commune_label', 'postal_code')
+    ).lower()
+    zone_match, zone_term = zone_of(blob, zone_key)
+    return {
+        'name': str(candidate.get('name') or '')[:160],
+        'website': None,
+        'siren': candidate.get('siren'),
+        'siret': candidate.get('siret'),
+        'origin': ORIGIN_REGISTRY,
+        'score': 0,
+        'raw_score': 0,
+        'stack': [],
+        'emails': [],
+        'contact_urls': [],
+        'reasons': [candidate.get('why_candidate', '')],
+        'signals': {'positive': [], 'negative': [], 'exclusion': []},
+        'family_scores': {'stack': 0, 'agence': 0, 'formation': 0},
+        'sources': list(candidate.get('sources') or []),
+        'fetched_pages': [],
+        'snippet': '',
+        'page_texts': [],
+        'zone_match': zone_match,
+        'zone_term': zone_term,
+        'category': 'incertain',
+        'category_reason': candidate.get('why_candidate', ''),
+        'category_evidence': [],
+        'activity_code': candidate.get('activity_code'),
+        'address': None,
+        'postal_code': None,
+        'address_source': None,
+        'distance_m': None,
+        'legal_address': candidate.get('legal_address'),
+        'legal_address_source': candidate.get('legal_address_source'),
+    }
+
+
+def registry_candidates(zone_key: str, client: RegistryClient | None = None) -> tuple[list[dict], list[str]]:
+    """Candidats du registre sur les codes postaux de la zone, plus les avertissements.
+
+    Deux silences volontaires, tous deux expliqués au lieu d'être subis :
+
+    - une zone dont les termes ne contiennent aucun code postal explicite
+      (« ile-de-france ») n'est pas interrogée : deviner ses communes
+      reviendrait à choisir le périmètre de la recherche à la place de
+      l'utilisateur ;
+    - une panne du registre ne vide pas le résultat. Le crawl web continue seul
+      et l'avertissement remonte jusqu'au payload, parce qu'une liste courte
+      sans explication se relit comme « il n'y a rien ici ».
+    """
+    zone = ZONES.get(zone_key) or {}
+    codes = postal_codes_of(list(zone.get('tier1', [])))
+    if not codes:
+        return [], [
+            f"registre non interrogé : la zone « {zone_key} » ne porte aucun code postal explicite"
+        ]
+    try:
+        raw = search_zone_candidates(
+            postal_codes=codes,
+            naf_codes=NAF_AGENCE + NAF_FORMATION,
+            client=client or RegistryClient(),
+        )
+    except RegistryError as exc:
+        return [], [f"registre indisponible ({exc}) — le crawl web continue seul"]
+    return [registry_record(candidate, zone_key) for candidate in raw], []
 
 
 def parse_links(page: str, base: str) -> list[tuple[str, str]]:
@@ -694,14 +1065,40 @@ def extract_agency_links_from_directory(url: str) -> list[tuple[str,str,str]]:
     return list(dedup.values())
 
 
-def crawl_site(base: str) -> tuple[str, list[tuple[str,str]], list[str], list[dict]]:
-    texts=[]; all_links=[]; fetched=[]; pages=[]
+TITLE_RE = re.compile(r'<title[^>]*>(.*?)</title>', re.I | re.S)
+META_DESCRIPTION_RE = re.compile(
+    r'<meta[^>]+name=["\']description["\'][^>]+content=["\'](.*?)["\']', re.I | re.S
+)
+HEADING_RE = re.compile(r'<h[12][^>]*>(.*?)</h[12]>', re.I | re.S)
+
+
+def self_description_of(page: str) -> list[str]:
+    """Ce que la page dit d'elle-même : title, meta description, h1/h2.
+
+    C'est la seule matière que le Vérificateur a le droit d'utiliser pour
+    trancher l'activité. Contrairement au texte intégral, elle ne contient pas
+    les mots des clients, des études de cas ou du pied de page — là où « agence
+    web » apparaît sur des sites qui n'en sont pas une.
+    """
+    parts: list[str] = []
+    for pattern in (TITLE_RE, META_DESCRIPTION_RE):
+        match = pattern.search(page)
+        if match:
+            parts.append(strip_text(match.group(1)))
+    parts += [strip_text(m.group(1)) for m in list(HEADING_RE.finditer(page))[:6]]
+    return [part for part in parts if part]
+
+
+def crawl_site(base: str) -> tuple[str, list[tuple[str,str]], list[str], list[dict], list[str]]:
+    texts=[]; all_links=[]; fetched=[]; pages=[]; description: list[str] = []
     for path in CRAWL_PATHS:
         url = urljoin(base, path.lstrip('/')) if path != '/' else base
         try:
             page=fetch(url, timeout=8, max_bytes=500_000)
         except Exception:
             continue
+        if not description:
+            description = self_description_of(page)
         text=strip_text(page)
         if text:
             texts.append(text[:25000]); fetched.append(url)
@@ -710,61 +1107,153 @@ def crawl_site(base: str) -> tuple[str, list[tuple[str,str]], list[str], list[di
         if len(fetched) >= 4:
             break
         time.sleep(0.15)
-    return ' '.join(texts), all_links, fetched, pages
+    return ' '.join(texts), all_links, fetched, pages, description
 
 
-def score_candidate(name: str, base: str, text: str, links: list[tuple[str,str]], zone_key: str = '') -> dict:
-    blob=(name+' '+base+' '+text).lower()
-    score=0; reasons=[]; agency_score=0; formation_score=0
-    for term, pts in STACK_POINTS.items():
-        if term in blob:
-            score += pts; reasons.append(f'+{pts} {term}')
-    for term, pts in AGENCY_POINTS.items():
-        if term in blob:
-            score += pts; agency_score += pts; reasons.append(f'+{pts} {term}')
-    for term, pts in FORMATION_POINTS.items():
-        if term in blob:
-            score += pts; formation_score += pts; reasons.append(f'+{pts} formation {term}')
+def _family_score(blob: str, points: dict[str, int], cap: int, label: str) -> tuple[int, list[str]]:
+    """Somme plafonnée d'une famille de signaux, avec le détail de ce qui a compté."""
+    matched = [(term, pts) for term, pts in points.items() if has_term(blob, term)]
+    total = sum(pts for _, pts in matched)
+    capped = min(total, cap)
+    signals = [f'+{pts} {label}:{term}' for term, pts in matched]
+    if total > capped:
+        signals.append(f'plafond {label} : {total} ramené à {capped}')
+    return capped, signals
+
+
+def exclusion_reasons(host: str, name: str, text: str, excluded_hosts: dict[str, str] | None = None) -> list[str]:
+    """Motifs d'écartement d'une cible, chacun nommé.
+
+    Trois familles, et seulement trois : un annuaire, un produit en libre-service
+    ou une exclusion décidée à la main dans le CSV versionné. Ne pas être une
+    agence n'en fait pas partie : un organisme de formation vérifié reste une
+    cible, et l'écarter au motif qu'il ne se décrit pas comme une agence ferait
+    disparaître Access42 ou Simplon du champ.
+    """
+    blob = f'{host} {name} {text[:20000]}'.lower()
+    reasons: list[str] = []
+    if host in PLATFORM_HOSTS:
+        reasons.append(f'produit en libre-service / place de marché connue ({host})')
+    manual = (excluded_hosts or {}).get(host)
+    if manual:
+        reasons.append(f'écartée à la main dans config/companies.csv ({manual})')
+    if is_directory(host, name, text):
+        reasons.append('annuaire ou comparateur')
+    platform_hits = [pattern for pattern in PLATFORM_TEXT_PATTERNS if pattern in blob]
+    if len(platform_hits) >= MIN_PLATFORM_SIGNALS:
+        reasons.append('libre-service : ' + ', '.join(platform_hits[:4]))
+    return reasons
+
+
+def score_candidate(
+    name: str,
+    base: str,
+    text: str,
+    links: list[tuple[str, str]],
+    zone_key: str = '',
+    self_description: list[str] | None = None,
+    excluded_hosts: dict[str, str] | None = None,
+) -> dict:
+    """Présélection déterministe, puis verdict d'activité rendu par le Vérificateur.
+
+    Le score n'est pas un jugement : c'est un tri. Le verdict, lui, vient de
+    `classify_self_description`, c'est-à-dire des mots que la structure emploie
+    pour se décrire — jamais d'un code APE, jamais d'un score élevé.
+    """
+    blob = (name + ' ' + base + ' ' + text).lower()
+    positive: list[str] = []
+    stack_score, stack_signals = _family_score(blob, STACK_POINTS, FAMILY_CAPS['stack'], 'stack')
+    agency_score, agency_signals = _family_score(blob, AGENCY_POINTS, FAMILY_CAPS['agence'], 'agence')
+    formation_score, formation_signals = _family_score(blob, FORMATION_POINTS, FAMILY_CAPS['formation'], 'formation')
+    positive += stack_signals + agency_signals + formation_signals
+    score = stack_score + agency_score + formation_score
+
     zone_match, zone_term = 'none', ''
     if zone_key:
         zone_match, zone_term = zone_of(blob, zone_key)
         if zone_match == 'tier1':
-            score += 25; reasons.append(f'+25 zone {zone_term}')
+            score += ZONE_CAP
+            positive.append(f'+{ZONE_CAP} zone:{zone_term}')
         elif zone_match == 'tier2':
-            score += 10; reasons.append(f'+10 zone-large {zone_term}')
+            score += ZONE_CAP // 2
+            positive.append(f'+{ZONE_CAP // 2} zone-large:{zone_term}')
+
+    negative = []
     for term, pts in NEGATIVE.items():
-        if term in blob:
-            score += pts; reasons.append(f'{pts} {term}')
-    emails=sorted(set(re.findall(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', text)))[:5]
-    contact_urls=[]
-    for href,label in links:
-        low=(href+' '+label).lower()
-        if href.startswith('mailto:') or any(h in low for h in CONTACT_HINTS):
+        if has_term(blob, term):
+            score += pts
+            negative.append(f'{pts} {term}')
+
+    emails = sorted(set(re.findall(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', text)))[:5]
+    contact_urls = []
+    for href, label in links:
+        low = (href + ' ' + label).lower()
+        if href.startswith('mailto:') or any(hint in low for hint in CONTACT_HINTS):
             contact_urls.append(href)
-    # Dédupe contacts
-    seen=set(); contact_urls=[x for x in contact_urls if not (x in seen or seen.add(x))][:6]
-    if emails:
-        score += 8; reasons.append('+8 email visible')
-    if contact_urls:
-        score += 10; reasons.append('+10 contact/recrutement visible')
-    stack=[]
-    for term in ['WordPress','WooCommerce','React','Next.js','Headless','Jamstack','PHP','Symfony','Vue','Nuxt','Drupal','Shopify','Webflow','RGAA','WCAG']:
-        if term.lower() in blob:
-            stack.append(term)
-    # vrai site agence ?
-    agency_signal = any(k in blob for k in AGENCY_POINTS) or any(k in blob for k in ['notre agence','notre studio','nos clients','nos réalisations','nos realisations'])
-    if agency_signal:
-        agency_score += 12
-    formation_org = formation_score >= 40 and formation_score >= agency_score
-    directory_signal = is_directory(host_of(base), name, text)
-    category = 'formation' if formation_org else 'agence'
+    seen = set()
+    contact_urls = [x for x in contact_urls if not (x in seen or seen.add(x))][:6]
+    contact_score = min(CONTACT_CAP, (8 if emails else 0) + (10 if contact_urls else 0))
+    if contact_score:
+        score += contact_score
+        positive.append(f'+{contact_score} contact joignable (plafonné à {CONTACT_CAP})')
+
+    stack = [
+        term
+        for term in ['WordPress', 'WooCommerce', 'React', 'Next.js', 'Headless', 'Jamstack',
+                     'PHP', 'Symfony', 'Vue', 'Nuxt', 'Drupal', 'Shopify', 'Webflow', 'RGAA', 'WCAG']
+        if has_term(blob, term.lower())
+    ]
+
+    exclusions = exclusion_reasons(host_of(base), name, text, excluded_hosts)
+    # Le Vérificateur ne lit que l'auto-description ; à défaut, le texte crawlé,
+    # qui reste ce que la structure a écrit sur elle-même.
+    verdict = classify_self_description(list(self_description or []) or [name, text[:4000]])
+    if exclusions:
+        category, category_reason = 'ecarte', ' ; '.join(exclusions)
+        category_evidence: list[str] = []
+    else:
+        category = verdict['category']
+        category_reason = verdict['reason']
+        category_evidence = verdict['evidence']
+
     return {
-        'score': max(0, min(100, score)), 'raw_score': score, 'reasons': reasons[:16],
-        'emails': emails, 'contact_urls': contact_urls, 'stack': stack,
-        'agency_signal': agency_signal, 'formation_org': formation_org, 'category': category,
-        'directory_signal': directory_signal,
-        'zone_match': zone_match, 'zone_term': zone_term,
+        'score': max(0, min(100, score)),
+        'raw_score': score,
+        'reasons': (positive + negative)[:16],
+        'signals': {'positive': positive, 'negative': negative, 'exclusion': exclusions},
+        'family_scores': {'stack': stack_score, 'agence': agency_score, 'formation': formation_score},
+        'emails': emails,
+        'contact_urls': contact_urls,
+        'stack': stack,
+        'agency_signal': category == 'agence',
+        'formation_org': category == 'formation',
+        'category': category,
+        'category_reason': category_reason,
+        'category_evidence': category_evidence,
+        'directory_signal': bool(exclusions),
+        'zone_match': zone_match,
+        'zone_term': zone_term,
     }
+
+
+# Une piste qui ne tranche pas doit mériter sa place ; une piste qui a tranché
+# l'a déjà méritée.
+UNCERTAIN_KEEP_SCORE = 50
+
+
+def keeps_candidate(scored: dict) -> bool:
+    """Le verdict décide de garder, le score ne décide que du rang.
+
+    Un organisme de formation emploie peu du vocabulaire sur lequel le barème
+    est calibré. Lui appliquer le même seuil qu'à une piste non qualifiée
+    reviendrait à écarter un formateur *parce qu'il n'est pas une agence* —
+    exactement ce que la cible « formateur » interdit.
+    """
+    if scored['category'] == 'ecarte':
+        return False
+    if scored['category'] == 'incertain':
+        return scored['score'] >= UNCERTAIN_KEEP_SCORE
+    return True
 
 
 def run():
@@ -825,44 +1314,59 @@ def run():
             by_host[h]={'base':base,'name':clean_label(label, base),'sources':set()}
         by_host[h]['sources'].add(source)
 
-    results=[]; scanned=0
+    excluded_hosts = excluded_hosts_from_csv()
+    results=[]; scanned=0; ecartes=[]
     for h,c in list(by_host.items())[:75]:
         scanned += 1
-        text,links,fetched,pages=crawl_site(c['base'])
+        text,links,fetched,pages,description=crawl_site(c['base'])
         if not text:
             # still keep known if it has name signal? no, avoid empty except previous wordpress-paris 403
             if c['base'] != 'https://www.wordpress-paris.com/':
                 continue
-        scored=score_candidate(c['name'], c['base'], text, links, zone_key)
-        if scored['directory_signal']:
+        scored=score_candidate(c['name'], c['base'], text, links, zone_key, description, excluded_hosts)
+        if scored['category'] == 'ecarte':
+            # Un écarté reste nommé avec son motif : une cible qui disparaît sans
+            # trace se fait redécouvrir au run suivant, puis réévaluer, puis
+            # parfois repasser.
+            ecartes.append({'name': c['name'][:160], 'website': c['base'], 'motif': scored['category_reason']})
             continue
-        # Criteria: must look like an agency/studio OR an organisme de formation, AND score enough.
-        if not (scored['agency_signal'] or scored['formation_org']) and scored['score'] < 50:
-            continue
-        if scored['score'] < 35:
+        if not keeps_candidate(scored):
             continue
         results.append({
             'name': c['name'][:160],
             'website': c['base'],
+            'origin': ORIGIN_WEB,
             'score': scored['score'],
             'raw_score': scored['raw_score'],
             'stack': scored['stack'],
             'emails': scored['emails'],
             'contact_urls': scored['contact_urls'],
             'reasons': scored['reasons'],
+            'signals': scored['signals'],
+            'family_scores': scored['family_scores'],
             'sources': sorted(c['sources'])[:6],
             'fetched_pages': fetched[:7],
             'snippet': text[:700],
             'zone_match': scored['zone_match'],
             'zone_term': scored['zone_term'],
             'category': scored['category'],
+            'category_reason': scored['category_reason'],
+            'category_evidence': scored['category_evidence'],
             'page_texts': pages[:4],
         })
         time.sleep(0.2)
 
-    # Le CSV versionné et le crawl alimentent le même payload. Une adresse relevée
-    # à la main prévaut sur une extraction automatique du même domaine.
-    results = merge_curated_agencies(results, zone_key)
+    # Le registre apporte des candidats locaux que les moteurs ne montrent pas.
+    # Il n'apporte ni verdict d'activité ni site : ces deux-là restent au crawl.
+    registry_rows, registry_warnings = ([], ['registre désactivé (--no-registry)'])
+    if '--no-registry' not in args:
+        registry_rows, registry_warnings = registry_candidates(zone_key)
+    for warning in registry_warnings:
+        print(f'WARN: {warning}', file=sys.stderr)
+
+    # Registre, crawl et CSV versionné alimentent le même payload. Une adresse
+    # relevée à la main prévaut sur une extraction automatique du même domaine.
+    results = merge_curated_agencies(results + registry_rows, zone_key)
 
     # Zone : tier1 d'abord, puis tier2 ; les hors-zone sont écartés si la zone
     # a déjà produit assez de résultats (>= 10), sinon gardés en réserve.
@@ -891,7 +1395,11 @@ def run():
             agency.setdefault('distance_m', None)
             agency['how'] = address_how(agency)
     else:
-        origin_coords = enrich_with_distances(results)
+        # Le cache est chargé une fois, partagé par toute la passe, puis réécrit :
+        # deux runs sur les mêmes adresses ne redemandent rien au géocodeur.
+        geocode_cache = load_geocode_cache()
+        origin_coords = enrich_with_distances(results, geocode_cache)
+        save_geocode_cache(geocode_cache)
         for agency in results:
             agency['how'] = address_how(agency)
     radius_report = None
@@ -939,6 +1447,18 @@ def run():
         },
         'hors_zone_ecartes_details': dropped_hors_zone,
         'radius': radius_report,
+        # Ce que le registre a apporté, et ce qui l'a empêché d'apporter quoi que
+        # ce soit. Un compteur à 0 sans avertissement ne se distinguerait pas
+        # d'une zone réellement vide.
+        'registry': {
+            'candidates': len(registry_rows),
+            'warnings': registry_warnings,
+        },
+        'origin_stats': {
+            origin: sum(1 for r in results if origin in r.get('origins', []))
+            for origin in (ORIGIN_CSV, ORIGIN_REGISTRY, ORIGIN_WEB)
+        },
+        'ecartes': ecartes,
         'agencies': results,
     }
     json_path=out_dir/f'agences-web-v2-{ts}.json'
@@ -950,8 +1470,12 @@ def run():
     lines=[
         f'# 🏢 Prospection agences web V2 — {datetime.now().strftime("%d/%m/%Y %H:%M")}', '',
         f'- Seeds collectés : {len(seeds)}', f'- Domaines scannés : {scanned}', f'- Agences/studios retenus : {len(results)}',
-        f'- Zone : {zone["label"]}', '',
+        f'- Zone : {zone["label"]}',
+        f'- Candidats du registre : {len(registry_rows)}',
+        '',
     ]
+    if registry_warnings:
+        lines += ['> Registre : ' + ' · '.join(registry_warnings), '']
     if radius_report:
         lines += [
             f'- Rayon : {radius_report["radius_m"]} m depuis {radius_report["origin_query"]}',
@@ -970,11 +1494,17 @@ def run():
             f'- Contacts/recrutement : {", ".join(r["contact_urls"][:3]) if r["contact_urls"] else "non détecté"}',
             f'- Sources : {", ".join(r["sources"])}',
             f'- Pages lues : {", ".join(r["fetched_pages"][:4]) if r["fetched_pages"] else "aucune"}',
-            f'- Type : {r.get("category","agence")}',
+            f'- Type : {r.get("category","agence")} — {r.get("category_reason") or "motif non renseigné"}',
+            f'- Identité : {r.get("identity_match") or "aucun identifiant"}'
+            f' (SIREN {r.get("siren") or "inconnu"}, sources {", ".join(r.get("origins", [])) or "n/a"})',
             f'- Distance : {fmt_distance(r.get("distance_m"))} — adresse : {r.get("address") or "non publiée sur le site"} ({r.get("address_source") or "n/a"})',
             f'- Raisons : {"; ".join(r["reasons"][:9]) if r["reasons"] else "à qualifier"}',
             f'- Zone : {r["zone_match"]} ({r["zone_term"]})' if r['zone_match'] != 'none' else '- Zone : hors zone (réserve)',
         ]
+    if ecartes:
+        lines += ['', '## Écartés à la qualification', '']
+        for r in ecartes:
+            lines.append(f'- {r["name"]} — {r["website"]} ({r["motif"]})')
     if dropped_hors_zone:
         lines += ['', '## Écartés hors zone', '']
         for r in dropped_hors_zone:
