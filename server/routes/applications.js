@@ -85,8 +85,19 @@ function cvStatus(id) {
       assessment = null;
     }
   }
+  // Étape courante publiée par le pipeline : sans elle l'interface ne peut
+  // afficher qu'un « en cours » indifférencié.
+  let progress = null;
+  const progressPath = path.join(cvDir, 'cv_progress.json');
+  if (fs.existsSync(progressPath)) {
+    try {
+      progress = JSON.parse(fs.readFileSync(progressPath, 'utf-8'));
+    } catch {
+      progress = null;
+    }
+  }
   const publication = resolveCvPublication(files, assessment, review);
-  return { exists: fs.existsSync(cvDir), files, review, assessment, ...publication };
+  return { exists: fs.existsSync(cvDir), files, review, assessment, progress, ...publication };
 }
 
 function readApplicationMetadata(id) {

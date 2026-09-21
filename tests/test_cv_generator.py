@@ -1299,3 +1299,58 @@ def test_publication_block_reports_why_and_how_many_rounds(tmp_path, careco_mast
     assert publication["truth_verdict"] == "accepted"
     assert publication["blocking_issues"] == []
     assert result["published"] is True
+
+
+def test_progress_file_follows_each_construction_step(tmp_path, careco_master):
+    """L'interface doit pouvoir dire où en est la chaîne, pas juste « en cours »."""
+    steps = []
+
+    class RecordingClient(CarecoAgentClient):
+        def complete_json(self, *, agent_name, system_prompt, payload):
+            path = tmp_path / "cv" / "cv_progress.json"
+            if path.exists():
+                steps.append(json.loads(path.read_text(encoding="utf-8"))["step"])
+            return super().complete_json(
+                agent_name=agent_name, system_prompt=system_prompt, payload=payload
+            )
+
+    prepare_custom_cv(
+        CARECO["job"],
+        application_dir=tmp_path,
+        master_path=careco_master,
+        llm_client=RecordingClient(),
+    )
+
+    assert steps == ["analysis", "writing", "verification", "judgement"]
+    final = json.loads((tmp_path / "cv" / "cv_progress.json").read_text(encoding="utf-8"))
+    assert final["step"] == "done"
+    assert final["status"] == "ready"
+    assert final["revision_round"] == 0
+
+
+def test_progress_counts_each_revision_round(tmp_path, careco_master):
+    """Une correction en cours est visible, avec son numéro et sa limite."""
+    rounds = []
+
+    class RecordingClient(InventingAgentClient):
+        def complete_json(self, *, agent_name, system_prompt, payload):
+            path = tmp_path / "cv" / "cv_progress.json"
+            if agent_name == "cv_style_reviser" and path.exists():
+                rounds.append(json.loads(path.read_text(encoding="utf-8"))["revision_round"])
+            return super().complete_json(
+                agent_name=agent_name, system_prompt=system_prompt, payload=payload
+            )
+
+    prepare_custom_cv(
+        CARECO["job"],
+        application_dir=tmp_path,
+        master_path=careco_master,
+        llm_client=RecordingClient(),
+    )
+
+    assert rounds == [1, 2, 3]
+    final = json.loads((tmp_path / "cv" / "cv_progress.json").read_text(encoding="utf-8"))
+    assert final["step"] == "done"
+    assert final["status"] == "blocked"
+    assert final["revision_round"] == 3
+    assert final["revision_limit"] == 3

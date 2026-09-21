@@ -282,6 +282,19 @@ h3 > .lucide {
   background: var(--surface-raised);
   font-size: 0.9em;
 }
+.manual-cv-revision {
+  margin: 0 0 var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
+  border-left: 3px solid var(--warn-border);
+  background: var(--warn-bg);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+}
+.manual-cv-step-detail {
+  color: var(--text-muted);
+  font-style: normal;
+}
+
 .cv-publication-rounds,
 .cv-publication-hint,
 .cv-library-reason {

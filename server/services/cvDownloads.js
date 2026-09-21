@@ -13,6 +13,7 @@ const CV_DOWNLOAD_VARIANTS = {
   'cv_review_preview_ats.pdf': 'A-CORRIGER-ATS',
   'cv_review_preview_ats.html': 'A-CORRIGER-ATS-HTML',
   'cv_content.json': 'contenu',
+  'cv_progress.json': 'progression',
   'cv_truth_check.json': 'controle-verite',
   'cv_review.json': 'contrôle',
   'cv_final_review.json': 'contrôle-final',

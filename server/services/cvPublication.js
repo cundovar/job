@@ -19,6 +19,7 @@ export const DIAGNOSTIC_CV_FILES = [
   'cv_truth_check.json',
   'cv_final_review.json',
   'cv_content.json',
+  'cv_progress.json',
   'cv_agent_trace.json',
   'cv_assessment.json',
 ];

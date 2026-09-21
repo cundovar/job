@@ -57,12 +57,33 @@ function downloadUrl(id, file) {
   return `/api/applications/${encodeURIComponent(id)}/cv/download/${file}`
 }
 
+// Étapes réellement parcourues par le pipeline, dans l'ordre. Les libellés
+// viennent de `cv_progress.json` ; cette liste ne sert qu'à dessiner la colonne
+// et à savoir ce qui est déjà franchi.
+const BUILD_STEPS = [
+  { id: 'dossier', label: "Dossier et données de l'annonce" },
+  { id: 'analysis', label: "Analyse de l'annonce et du profil" },
+  { id: 'writing', label: 'Rédaction du CV par l’agent' },
+  { id: 'verification', label: 'Vérification des preuves citées' },
+  { id: 'judgement', label: 'Jugement de pertinence et ATS' },
+  { id: 'export', label: 'Mise en page et export' },
+]
+
 function generationLabel(stage) {
   if (stage === 'preparing') return 'Création du dossier de candidature…'
   if (stage === 'queued') return 'CV placé dans la file de génération…'
   if (stage === 'running') return 'Les agents IA construisent et vérifient le CV…'
   if (stage === 'completed') return 'CV personnalisé terminé.'
   return ''
+}
+
+// Le pipeline ne publie pas l'étape « dossier » : elle est franchie dès que la
+// candidature existe, donc dès que la génération démarre.
+function currentStepId(stage, progress) {
+  if (stage === 'preparing') return 'dossier'
+  if (stage === 'completed' || progress?.step === 'done') return null
+  if (stage === 'queued' || !progress?.step) return 'dossier'
+  return progress.step
 }
 
 function loadLastResult() {
@@ -78,10 +99,16 @@ function loadLastResult() {
 export default function ManualCvView({ onOpenCandidatures }) {
   const [form, setForm] = useState(initialForm)
   const [stage, setStage] = useState('idle')
+  // Dernier statut reçu pendant le polling : c'est lui qui porte l'étape
+  // courante du pipeline, sans attendre la fin de la génération.
+  const [liveStatus, setLiveStatus] = useState(null)
   const [error, setError] = useState('')
   const [result, setResult] = useState(loadLastResult)
   const controllerRef = useRef(null)
   const isBusy = ['preparing', 'queued', 'running'].includes(stage)
+  const progress = liveStatus?.progress || result?.status?.progress || null
+  const revisionRound = Number(progress?.revision_round) || 0
+  const activeStepId = currentStepId(stage, progress)
   const cvState = cvPublicationStatus(result?.status)
   const cvReady = cvState === 'ready'
   const needsRevision = !cvReady
@@ -164,6 +191,7 @@ export default function ManualCvView({ onOpenCandidatures }) {
       }
 
       setStage(status.generation.state === 'queued' ? 'queued' : 'running')
+      setLiveStatus(status)
       await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
 
       try {
@@ -204,6 +232,7 @@ export default function ManualCvView({ onOpenCandidatures }) {
     controllerRef.current = controller
     setError('')
     setResult(null)
+    setLiveStatus(null)
     setStage('preparing')
 
     const firstLine = description.split(/\r?\n/).map(line => line.trim()).find(Boolean) || ''
@@ -269,6 +298,7 @@ export default function ManualCvView({ onOpenCandidatures }) {
     const controller = new AbortController()
     controllerRef.current = controller
     setError('')
+    setLiveStatus(null)
     setStage('queued')
     try {
       const response = await fetch(
@@ -296,6 +326,7 @@ export default function ManualCvView({ onOpenCandidatures }) {
     controllerRef.current?.abort()
     controllerRef.current = null
     setResult(null)
+    setLiveStatus(null)
     setStage('idle')
     setError('')
     setForm(initialForm)
@@ -411,18 +442,33 @@ export default function ManualCvView({ onOpenCandidatures }) {
           <h2>
             {stage === 'completed' && needsRevision
               ? 'CV généré, mais le juge demande encore des corrections.'
-              : generationLabel(stage)}
+              : progress?.label && isBusy
+                ? `${progress.label}…`
+                : generationLabel(stage)}
           </h2>
+          {revisionRound > 0 && (
+            <p className="manual-cv-revision">
+              Correction {revisionRound} sur {progress?.revision_limit || 3} — le CV repasse
+              devant le vérificateur et le juge.
+            </p>
+          )}
           <ol>
-            <li className={stage !== 'idle' ? 'done' : ''}>
-              <strong>1</strong><span>Dossier et données de l’annonce</span>
-            </li>
-            <li className={['queued', 'running', 'completed'].includes(stage) ? 'done' : ''}>
-              <strong>2</strong><span>Analyse, rédaction, jugement et révision par les agents IA</span>
-            </li>
-            <li className={stage === 'completed' ? 'done' : stage === 'running' ? 'active' : ''}>
-              <strong>3</strong><span>Contrôle Python, mise en page, photo et PDF</span>
-            </li>
+            {BUILD_STEPS.map((step, index) => {
+              const activeIndex = BUILD_STEPS.findIndex(item => item.id === activeStepId)
+              const isDone = activeStepId === null || (activeIndex >= 0 && index < activeIndex)
+              const isActive = step.id === activeStepId
+              return (
+                <li key={step.id} className={isActive ? 'active' : isDone ? 'done' : ''}>
+                  <strong>{index + 1}</strong>
+                  <span>
+                    {step.label}
+                    {isActive && progress?.detail && (
+                      <em className="manual-cv-step-detail"> — {progress.detail}</em>
+                    )}
+                  </span>
+                </li>
+              )
+            })}
           </ol>
         </section>
       )}

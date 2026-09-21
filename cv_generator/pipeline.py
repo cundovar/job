@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -31,6 +32,51 @@ PREVIEW_ARTEFACTS = (
     "cv_review_preview_ats.html",
     "cv_review_preview_ats.pdf",
 )
+
+
+#: Colonne vertébrale de la construction, dans l'ordre. La révision n'y figure
+#: pas : elle boucle sur les étapes 3 et 4 et se compte à part.
+PROGRESS_STEPS = (
+    ("analysis", "Analyse de l'annonce et du profil"),
+    ("writing", "Rédaction du CV par l'agent"),
+    ("verification", "Vérification des preuves citées"),
+    ("judgement", "Jugement de pertinence et ATS"),
+    ("export", "Mise en page et export"),
+)
+
+PROGRESS_FILE = "cv_progress.json"
+
+
+def _write_progress(
+    output_dir: Path,
+    step: str,
+    *,
+    detail: str = "",
+    revision_round: int = 0,
+    status: str | None = None,
+) -> None:
+    """Publie l'étape courante pour que l'interface suive la construction.
+
+    Le pipeline tourne dans un sous-processus : ce fichier est le seul moyen
+    pour le serveur de savoir où en est la chaîne, plutôt que de n'afficher
+    qu'un « en cours » indifférencié.
+    """
+    labels = dict(PROGRESS_STEPS)
+    order = [name for name, _ in PROGRESS_STEPS]
+    save_json(
+        output_dir / PROGRESS_FILE,
+        {
+            "step": step,
+            "label": labels.get(step, "Terminé" if step == "done" else step),
+            "detail": detail,
+            "index": order.index(step) + 1 if step in order else len(order),
+            "total": len(order),
+            "revision_round": revision_round,
+            "revision_limit": MAX_AUTOMATIC_REVISION_ROUNDS,
+            "status": status,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
 
 
 def _trace_item(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -87,11 +133,16 @@ def prepare_custom_cv(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     agents = AICVPipeline(llm_client)
+    _write_progress(output_dir, "analysis")
     plan = agents.analyze(job, master)
+
+    _write_progress(output_dir, "writing", detail=f"Variante : {plan.get('selected_base_variant')}")
     draft = agents.create(job, master, plan)
 
     content = draft
+    _write_progress(output_dir, "verification")
     truth_check = agents.verify(job, master, plan, content)
+    _write_progress(output_dir, "judgement")
     review = agents.review(job, master, plan, content)
     first_review = review
 
@@ -110,8 +161,18 @@ def prepare_custom_cv(
             stopped_because = "validated"
             break
 
+        _write_progress(
+            output_dir,
+            "writing",
+            detail="Correction des problèmes relevés",
+            revision_round=revision_rounds + 1,
+        )
         content = agents.revise(job, master, plan, content, review, truth_check)
+        _write_progress(
+            output_dir, "verification", revision_round=revision_rounds + 1
+        )
         truth_check = agents.verify(job, master, plan, content)
+        _write_progress(output_dir, "judgement", revision_round=revision_rounds + 1)
         review = agents.review(job, master, plan, content)
         revision_rounds += 1
         trace_runs.extend([_trace_item(content), _trace_item(truth_check), _trace_item(review)])
@@ -145,6 +206,7 @@ def prepare_custom_cv(
     blocking_issues = list(truth_check.get("truth_issues", []))
     format_issues = list(truth_check.get("format_issues", []))
 
+    _write_progress(output_dir, "export", revision_round=revision_rounds)
     save_json(output_dir / "cv_adaptation_plan.json", plan)
     save_json(output_dir / "cv_draft.json", draft)
     save_json(output_dir / "cv_review.json", first_review)
@@ -255,6 +317,13 @@ def prepare_custom_cv(
     }
     save_json(output_dir / "cv_agent_trace.json", trace)
     save_json(output_dir / "cv_assessment.json", assessment)
+    _write_progress(
+        output_dir,
+        "done",
+        detail=assessment["overall_status"],
+        revision_round=revision_rounds,
+        status=assessment["overall_status"],
+    )
 
     return {
         "ok": True,
