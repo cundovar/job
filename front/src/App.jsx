@@ -402,7 +402,7 @@ function CandidaturesView({ mission = 'annonce' }) {
   }
 
   const waitForCvGeneration = async (id, signal) => {
-    const deadline = Date.now() + 15 * 60 * 1000
+    const deadline = Date.now() + 30 * 60 * 1000
     let consecutiveFetchErrors = 0
 
     while (Date.now() < deadline) {
@@ -446,7 +446,7 @@ function CandidaturesView({ mission = 'annonce' }) {
       }
     }
 
-    throw new Error('La génération prend plus de 15 minutes. Vérifie son état dans quelques instants.')
+    throw new Error('La génération prend plus de 30 minutes. Vérifie son état dans quelques instants.')
   }
 
   const handlePrepareCv = async (id) => {
