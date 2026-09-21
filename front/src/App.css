@@ -170,6 +170,7 @@ h3 > .lucide {
 .badge-agency,
 .badge-formation,
 .badge-relance-due,
+.cv-publication-badge,
 .optional-badge {
   display: inline-flex;
   align-items: center;
@@ -225,6 +226,68 @@ h3 > .lucide {
   background: var(--accent-soft);
   border-color: var(--accent-border);
   color: var(--accent-hover);
+}
+
+/* Statut de publication du CV : une couleur par état, la même partout. */
+.cv-publication-badge.ready {
+  background: var(--ok-bg);
+  border-color: var(--ok-border);
+  color: var(--ok);
+}
+.cv-publication-badge.review,
+.cv-publication-badge.preparing {
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+  color: var(--warn);
+}
+.cv-publication-badge.blocked {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+.cv-publication-badge.absent {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent-hover);
+}
+
+/* Diagnostic affiché quand le CV n'est pas publiable. */
+.cv-publication-diagnostic {
+  margin-top: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--warn-border);
+  border-radius: var(--r-md);
+  background: var(--warn-bg);
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+.cv-publication-diagnostic strong {
+  display: block;
+  margin-bottom: var(--sp-1);
+}
+.cv-publication-diagnostic strong + strong {
+  margin-top: var(--sp-2);
+}
+.cv-publication-diagnostic ul {
+  margin: 0 0 var(--sp-2);
+  padding-left: 1.2em;
+}
+.cv-publication-diagnostic li {
+  margin-bottom: 0.25em;
+  overflow-wrap: anywhere;
+}
+.cv-publication-diagnostic code {
+  padding: 0 0.25em;
+  border-radius: var(--r-sm);
+  background: var(--surface-raised);
+  font-size: 0.9em;
+}
+.cv-publication-rounds,
+.cv-publication-hint,
+.cv-library-reason {
+  margin: var(--sp-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
 }
 
 /* --- Panneaux ----------------------------------------------- */

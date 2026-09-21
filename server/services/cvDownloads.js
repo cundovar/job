@@ -7,6 +7,13 @@ const CV_DOWNLOAD_VARIANTS = {
   'cv_ats.html': 'ATS-HTML',
   'cv_final.json': 'données',
   'cv_assessment.json': 'évaluation',
+  // Les aperçus portent un nom qui interdit de les confondre avec un CV validé.
+  'cv_review_preview.pdf': 'A-CORRIGER',
+  'cv_review_preview.html': 'A-CORRIGER-HTML',
+  'cv_review_preview_ats.pdf': 'A-CORRIGER-ATS',
+  'cv_review_preview_ats.html': 'A-CORRIGER-ATS-HTML',
+  'cv_content.json': 'contenu',
+  'cv_truth_check.json': 'controle-verite',
   'cv_review.json': 'contrôle',
   'cv_final_review.json': 'contrôle-final',
   'cv_draft.json': 'brouillon',

@@ -43,11 +43,29 @@ function fmtSession(search) {
   return time ? `${label} · ${time}` : label
 }
 
+// Le statut de publication est calculé une seule fois, côté serveur. Le front
+// ne redéduit plus « prêt » depuis la présence d'un fichier : c'était l'origine
+// des trois définitions divergentes d'un CV prêt.
+const CV_STATUS_LABELS = {
+  preparing: 'Génération en cours',
+  ready: 'CV prêt',
+  review: 'À corriger',
+  blocked: 'Bloqué',
+  absent: 'Pas encore généré',
+}
+
+function cvPublicationStatus(status) {
+  if (!status) return 'absent'
+  if (['queued', 'running'].includes(status.generation?.state)) return 'preparing'
+  return status.status || 'absent'
+}
+
 function hasGeneratedCv(status) {
-  return Boolean(
-    status?.files?.['cv_final.pdf'] ||
-    status?.files?.['cv_final.html']
-  )
+  return cvPublicationStatus(status) === 'ready'
+}
+
+function cvExists(status) {
+  return cvPublicationStatus(status) !== 'absent'
 }
 
 function isProbablyHtml(response, text) {
@@ -62,6 +80,20 @@ function cvFileUrl(id, file, status) {
 
 function CvDownloads({ cv }) {
   const status = { files: cv.files }
+  // Hors `ready`, l'API refuse les fichiers finaux : on ne propose pas un lien
+  // qui renverra une erreur, et on oriente vers l'aperçu à corriger.
+  if (cv.status !== 'ready') {
+    return (
+      <div className="cv-library-downloads" aria-label={`Fichiers du CV ${cv.poste || cv.id}`}>
+        {cv.reason && <p className="cv-library-reason">{cv.reason}</p>}
+        {cv.files?.['cv_review_preview.pdf'] && (
+          <a className="download-btn secondary" href={cvFileUrl(cv.id, 'cv_review_preview.pdf', status)} download>
+            <FileDown /> Aperçu à corriger
+          </a>
+        )}
+      </div>
+    )
+  }
   return (
     <div className="cv-library-downloads" aria-label={`Fichiers du CV ${cv.poste || cv.id}`}>
       {cv.files?.['cv_final.pdf'] && <a className="download-btn primary" href={cvFileUrl(cv.id, 'cv_final.pdf', status)} download><FileDown /> PDF design</a>}
@@ -111,7 +143,7 @@ function MesCvView() {
             <div>
               <div className="card-top">
                 <span className={cv.status === 'ready' ? 'badge-postuler' : 'badge-peut-etre'}>
-                  {cv.status === 'ready' ? 'CV prêt' : 'Incomplet'}
+                  {CV_STATUS_LABELS[cv.status] || 'Incomplet'}
                 </span>
               </div>
               <h2>{cv.poste || 'Poste non renseigné'}</h2>
@@ -388,8 +420,10 @@ function CandidaturesView({ mission = 'annonce' }) {
         setCvStatuses(prev => ({ ...prev, [id]: payload }))
 
         if (payload.generation?.state === 'completed') {
-          if (!hasGeneratedCv(payload) || !payload.files?.['cv_final.pdf']) {
-            throw new Error("La génération est terminée mais les fichiers du CV sont incomplets.")
+          // Une génération peut aboutir à un CV « à corriger » : c'est un
+          // résultat légitime, pas un échec technique.
+          if (!cvExists(payload)) {
+            throw new Error("La génération est terminée mais aucun CV n'a été produit.")
           }
           return payload
         }
@@ -435,7 +469,7 @@ function CandidaturesView({ mission = 'annonce' }) {
         ? await waitForCvGeneration(id, controller.signal)
         : payload.status
       setCvStatuses(prev => ({ ...prev, [id]: finalStatus }))
-      if (!hasGeneratedCv(finalStatus) || !finalStatus?.files?.['cv_final.pdf']) {
+      if (!cvExists(finalStatus)) {
         throw new Error('Les fichiers attendus du CV sont absents.')
       }
       setCvFeedback({
@@ -548,6 +582,8 @@ function CandidaturesView({ mission = 'annonce' }) {
     const s = statuts[selected]
     const cvStatus = cvStatuses[selected]
     const cvReady = hasGeneratedCv(cvStatus)
+    const cvState = cvPublicationStatus(cvStatus)
+    const cvBlocksSending = cvState === 'review' || cvState === 'blocked' 
     const cvReview = cvStatus?.review
     const approval = approvals[selected]
     const approvalPending = approvalPendingId === selected
@@ -585,7 +621,7 @@ function CandidaturesView({ mission = 'annonce' }) {
                 type="button"
                 className="approve-btn"
                 onClick={() => handleApproval(selected, true)}
-                disabled={approvalPending || !preuvesSuffisantes}
+                disabled={approvalPending || !preuvesSuffisantes || cvBlocksSending}
               >
                 {approvalPending ? 'Enregistrement…' : <><ShieldCheck /> Approuver l'envoi</>}
               </button>
@@ -618,7 +654,8 @@ function CandidaturesView({ mission = 'annonce' }) {
             <button
               className="postule-btn"
               onClick={e => handleApplied(e, selected)}
-              disabled={pendingId === selected}
+              disabled={pendingId === selected || cvBlocksSending}
+              title={cvBlocksSending ? "Le CV de cette candidature n'est pas validé." : undefined}
             >
               {pendingId === selected ? 'En cours…' : <><CircleCheck /> J'ai postulé</>}
             </button>
@@ -643,7 +680,9 @@ function CandidaturesView({ mission = 'annonce' }) {
         <section className="cv-generator-panel" aria-labelledby="cv-generator-title">
           <div className="cv-generator-heading">
             <h2 id="cv-generator-title"><Target /> CV personnalisé</h2>
-            <span className="optional-badge">Optionnel</span>
+            <span className={`cv-publication-badge ${cvState}`}>
+              {CV_STATUS_LABELS[cvState] || cvState}
+            </span>
           </div>
           <p className="cv-generator-help">
             La lettre est déjà prête. Générez un CV adapté uniquement si vous souhaitez en joindre un à cette candidature.
@@ -670,7 +709,59 @@ function CandidaturesView({ mission = 'annonce' }) {
                 <a className="download-btn" href={cvFileUrl(selected, 'cv_final.json', cvStatus)} download>JSON</a>
               </>
             )}
+            {cvBlocksSending && cvStatus?.files?.['cv_review_preview.pdf'] && (
+              // L'aperçu est téléchargeable sous un nom qui interdit de le
+              // confondre avec un CV validé.
+              <a className="download-btn secondary" href={cvFileUrl(selected, 'cv_review_preview.pdf', cvStatus)} download>
+                <FileDown /> Aperçu à corriger
+              </a>
+            )}
           </div>
+          {cvBlocksSending && (
+            <div className="cv-publication-diagnostic" role="status">
+              <strong>
+                {cvState === 'blocked'
+                  ? "Ce CV est bloqué : un contrôle de vérité a échoué."
+                  : "Ce CV demande une correction avant d'être envoyé."}
+              </strong>
+              {cvStatus?.reason && <p>{cvStatus.reason}</p>}
+              {Number.isInteger(cvStatus?.revision_rounds) && (
+                <p className="cv-publication-rounds">
+                  {cvStatus.revision_rounds === 0
+                    ? 'Aucune correction automatique n\'a été nécessaire.'
+                    : `${cvStatus.revision_rounds} correction(s) automatique(s) déjà tentée(s).`}
+                </p>
+              )}
+              {(cvStatus?.blocking_issues || []).length > 0 && (
+                <>
+                  <strong>Affirmations sans preuve dans le profil maître</strong>
+                  <ul>
+                    {cvStatus.blocking_issues.slice(0, 6).map((item, index) => (
+                      <li key={`blocking-${index}`}>
+                        <code>{item.path}</code> — {item.detail}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {(cvStatus?.format_issues || []).length > 0 && (
+                <>
+                  <strong>Contraintes de mise en page restantes</strong>
+                  <ul>
+                    {cvStatus.format_issues.slice(0, 6).map((item, index) => (
+                      <li key={`format-${index}`}>
+                        <code>{item.path}</code> — {item.detail}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              <p className="cv-publication-hint">
+                Relancez une génération pour tenter une nouvelle correction, ou ajustez le profil maître
+                si la preuve manque réellement.
+              </p>
+            </div>
+          )}
           {!backendOk && <p className="cv-generator-note">Le backend doit être disponible pour générer le CV.</p>}
           {cvFeedback?.id === selected && (
             <div
@@ -686,7 +777,7 @@ function CandidaturesView({ mission = 'annonce' }) {
               )}
             </div>
           )}
-          {cvReady && <CvAssessment assessment={cvStatus?.assessment} finalReview={cvReview} />}
+          {cvExists(cvStatus) && <CvAssessment assessment={cvStatus?.assessment} finalReview={cvReview} />}
         </section>
       </div>
     )

@@ -13,6 +13,11 @@ import { spawn } from 'child_process';
 import { PROJECT_ROOT } from '../config.js';
 import { downloadFilename } from '../services/cvDownloads.js';
 import {
+  CV_FILES,
+  isFinalCvFile,
+  resolveCvPublication,
+} from '../services/cvPublication.js';
+import {
   normalizeDomain,
   validateDomain,
   domainMatchesAgency,
@@ -38,25 +43,13 @@ const AGENCY_TASK_RETENTION_MS = 60 * 60 * 1000;
 // exactement ce que la brique envoi contrôle.
 const APPROVED_STATUS = 'APPROVED';
 const READY_STATUS = 'ready_to_apply';
+// Un CV refusé ne produit plus de fichier final : la fraîcheur se mesure donc
+// sur les artefacts que le pipeline écrit quel que soit son verdict.
 const REQUIRED_FRESH_CV_FILES = [
-  'cv_final.pdf',
-  'cv_ats.pdf',
+  'cv_content.json',
   'cv_agent_trace.json',
   'cv_assessment.json',
 ];
-const CV_FILES = new Set([
-  'cv_adaptation_plan.json',
-  'cv_draft.json',
-  'cv_review.json',
-  'cv_final_review.json',
-  'cv_final.json',
-  'cv_agent_trace.json',
-  'cv_final.html',
-  'cv_final.pdf',
-  'cv_ats.html',
-  'cv_ats.pdf',
-  'cv_assessment.json',
-]);
 
 function applicationDir(id) {
   const base = path.resolve(PROJECT_ROOT, 'output/applications');
@@ -92,7 +85,8 @@ function cvStatus(id) {
       assessment = null;
     }
   }
-  return { exists: fs.existsSync(cvDir), files, review, assessment };
+  const publication = resolveCvPublication(files, assessment, review);
+  return { exists: fs.existsSync(cvDir), files, review, assessment, ...publication };
 }
 
 function readApplicationMetadata(id) {
@@ -145,8 +139,6 @@ function cvCatalogEntry(id, application = {}) {
   const hasAnyFile = Object.values(files).some(Boolean);
   if (!hasAnyFile) return null;
 
-  const hasDesignPdf = files['cv_final.pdf'];
-  const hasAtsPdf = files['cv_ats.pdf'];
   const generatedAt = [
     'cv_final.pdf',
     'cv_ats.pdf',
@@ -165,7 +157,8 @@ function cvCatalogEntry(id, application = {}) {
     entreprise: application.entreprise || metadata.company || '',
     poste: application.poste || metadata.job_title || '',
     date: application.date || String(metadata.created_at || id).slice(0, 10),
-    status: hasDesignPdf && hasAtsPdf ? 'ready' : 'partial',
+    status: status.status,
+    reason: status.reason,
     files,
     generated_at: generatedAt ? new Date(generatedAt).toISOString() : null,
   };
@@ -199,6 +192,23 @@ export default function createApplicationsRouter(repo) {
   const cvTasks = new Map();
   const cvQueue = [];
   let activeCvTask = null;
+
+  // Un dossier sans CV garde le flux d'avant : le CV est optionnel. Un dossier
+  // avec un CV refusé bloque, en disant pourquoi.
+  function cvBlocksSending(id) {
+    let publication;
+    try {
+      publication = cvStatus(id);
+    } catch {
+      return null;
+    }
+    if (publication.status === 'absent' || publication.status === 'ready') return null;
+    return {
+      error: "Le CV de cette candidature n'est pas validé.",
+      cv_status: publication.status,
+      reason: publication.reason,
+    };
+  }
 
   function statusWithTask(id) {
     return {
@@ -602,6 +612,18 @@ export default function createApplicationsRouter(repo) {
       if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
       const file = req.params.file;
       if (!CV_FILES.has(file)) return res.status(400).json({ error: 'Fichier CV non autorisé' });
+      // Un fichier final n'est servi que si le CV est réellement validé : sinon
+      // on distribuerait un CV que le pipeline a refusé.
+      if (isFinalCvFile(file)) {
+        const publication = cvStatus(req.params.id);
+        if (publication.status !== 'ready') {
+          return res.status(409).json({
+            error: "Ce CV n'est pas validé : le téléchargement final est refusé.",
+            cv_status: publication.status,
+            reason: publication.reason,
+          });
+        }
+      }
       const filePath = path.join(applicationDir(req.params.id), 'cv', file);
       if (!fs.existsSync(filePath)) return res.status(404).json({ error: `Fichier introuvable : ${file}` });
       const application = await repo.getById(req.params.id);
@@ -638,6 +660,10 @@ export default function createApplicationsRouter(repo) {
       }
       const dir = applicationDir(req.params.id);
       if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      // Le CV reste optionnel : sans CV généré, rien ne change. Mais un CV
+      // généré et refusé ne doit pas partir avec la candidature.
+      const blocked = approved ? cvBlocksSending(req.params.id) : null;
+      if (blocked) return res.status(409).json(blocked);
       writeApprovalStatus(req.params.id, approved);
       res.json(approvalState(req.params.id));
     } catch (err) {
@@ -649,6 +675,8 @@ export default function createApplicationsRouter(repo) {
   // POST /api/applications/:id/applied — Marque une candidature comme postulée
   router.post('/applications/:id/applied', async (req, res) => {
     try {
+      const blocked = cvBlocksSending(req.params.id);
+      if (blocked) return res.status(409).json(blocked);
       const record = await repo.markApplied(req.params.id);
       res.json(record);
     } catch (err) {
