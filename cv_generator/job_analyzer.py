@@ -74,60 +74,19 @@ def _priority_keywords(job: Dict[str, Any], selected: Dict[str, Any], master: Di
     return compact_items(explicit, limit=14)
 
 
-def _select_experience_mix(
-    plan: List[Dict[str, Any]],
-    catalog: Dict[str, Any],
-    max_experiences: int,
-) -> List[Dict[str, Any]]:
-    """Reserve the last of four slots for one relevant human/creative experience."""
-    if max_experiences < 4:
-        return plan[:max_experiences]
-    complementary = [
-        item
-        for item in plan
-        if catalog.get(item.get("experience_id"), {}).get("cv_role") == "complementary"
-    ]
-    if not complementary:
-        return plan[:max_experiences]
-    core = [item for item in plan if item not in complementary]
-    return core[: max_experiences - 1] + complementary[:1]
-
-
 def _max_experiences(master: Dict[str, Any], variant_id: str) -> int:
     constraints = master.get("layout_constraints", {})
     by_variant = constraints.get("max_experiences_by_variant", {})
     return int(by_variant.get(variant_id, constraints.get("max_experiences", 4)))
 
 
-def _min_experiences(master: Dict[str, Any], variant_id: str) -> int:
-    """Floor of visible experiences, never above the variant ceiling."""
-    floor = int(master.get("layout_constraints", {}).get("min_experiences", 4))
-    return min(floor, _max_experiences(master, variant_id))
-
-
-def _merge_preferred_skills(
-    skills: Dict[str, Any],
-    master: Dict[str, Any],
-    variant_id: str,
-) -> Dict[str, List[str]]:
-    preferred = master.get("adaptation_rules", {}).get("preferred_skills_by_variant", {}).get(variant_id, {})
-    result: Dict[str, List[str]] = {}
-    seen = set()
-    # A configured preference replaces the broad variant catalogue for the
-    # deterministic pre-analysis. The AI still has access to every truthful
-    # skill and may select different ones when the advert warrants it.
-    for source in ((preferred,) if preferred else (skills,)):
-        for section, items in source.items():
-            target = result.setdefault(str(section), [])
-            for item in items if isinstance(items, list) else []:
-                key = normalize(item)
-                if key and key not in seen:
-                    target.append(str(item))
-                    seen.add(key)
-    return {section: items for section, items in result.items() if items}
-
-
 def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Catalogue de suggestions noté, remis tel quel à l'agent analyste.
+
+    Ce n'est plus une sélection : aucun quota, aucun minimum, aucune expérience
+    forcée, aucun emplacement réservé. Python note la proximité entre chaque
+    expérience et l'annonce, puis laisse l'agent retenir ce qu'il juge utile.
+    """
     text = job_text(job)
     catalog = master.get("experience_catalog", {})
     variant_id = selected.get("id", "")
@@ -142,8 +101,7 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
     for exp_id in preferred + refs + list(catalog.keys()):
         if exp_id in catalog and exp_id not in ordered_ids:
             ordered_ids.append(exp_id)
-    plan = []
-    fallback = []
+    suggestions = []
     for exp_id in ordered_ids:
         if exp_id in excluded:
             continue
@@ -152,6 +110,8 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
         trigger_tags = exp.get("selection_triggers", exp.get("tags", []))
         matched_triggers = [tag for tag in trigger_tags if normalize(tag) in text]
         visibility = str(exp.get("visibility") or "default")
+        # La visibilité conditionnelle est une règle du profil maître, pas une
+        # préférence éditoriale : elle reste appliquée.
         if visibility.startswith("only_") and not matched_triggers:
             continue
         score = 0
@@ -163,97 +123,46 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
         if visibility.startswith("only_") and matched_triggers:
             score += 8
         highlights = exp.get("highlights", [])
-        picked = []
-        for item in highlights:
-            item_text = normalize(item)
-            if any(token in text for token in item_text.split() if len(token) > 4):
-                picked.append(item)
-        if not picked:
-            picked = highlights[:3]
-        entry = {
-            "experience_id": exp_id,
-            "priority": score,
-            "selection_role": exp.get("cv_role", "core"),
-            "reason": (
-                f"Expérience alignée avec la variante {variant_id} et les mots-clés de l'annonce."
-                if score > 0
-                else f"Expérience retenue pour compléter le parcours sur la variante {variant_id}."
-            ),
-            "highlights": compact_items(picked, limit=3, max_chars=145),
-        }
-        # Zero-score experiences stay aside: they are only used to reach the
-        # minimum number of experiences a CV must show.
-        (plan if score > 0 else fallback).append(entry)
-    # Relevance determines which experiences are kept. Their presentation is
-    # then always reverse chronological, as recruiters expect on a CV.
-    plan.sort(key=lambda item: item["priority"], reverse=True)
-    max_experiences = _max_experiences(master, variant_id)
-    selected_plan = _select_experience_mix(plan, catalog, max_experiences)
-
-    # Some variants have experiences that are essential evidence for the target role.
-    # Guarantee them after relevance selection, then sort the final mix by date.
-    required_ids = master.get("adaptation_rules", {}).get("required_experiences_by_variant", {}).get(variant_id, [])
-    selected_ids = {item.get("experience_id") for item in selected_plan}
-    plan_by_id = {item.get("experience_id"): item for item in plan}
-    for required_id in required_ids:
-        if required_id in selected_ids or required_id not in catalog:
-            continue
-        required_item = plan_by_id.get(required_id)
-        if required_item is None:
-            exp = catalog[required_id]
-            required_item = {
-                "experience_id": required_id,
-                "priority": 100,
+        matching_indexes = [
+            index
+            for index, item in enumerate(highlights)
+            if any(token in text for token in normalize(item).split() if len(token) > 4)
+        ]
+        suggestions.append(
+            {
+                "experience_id": exp_id,
+                "priority": score,
                 "selection_role": exp.get("cv_role", "core"),
-                "reason": f"Expérience requise pour la variante {variant_id}.",
-                "highlights": compact_items(exp.get("highlights", []), limit=3, max_chars=145),
+                "reason": (
+                    f"Recoupe les mots-clés de l'annonce ({', '.join(matched_tags[:3])})."
+                    if matched_tags
+                    else "Aucun recoupement direct avec l'annonce."
+                ),
+                "matching_highlight_indexes": matching_indexes,
+                "highlights": compact_items(
+                    [highlights[index] for index in matching_indexes] or highlights[:3],
+                    limit=3,
+                    max_chars=145,
+                ),
             }
-        if len(selected_plan) >= max_experiences:
-            replace_index = next(
-                (i for i in range(len(selected_plan) - 1, -1, -1)
-                 if selected_plan[i].get("experience_id") not in required_ids),
-                None,
-            )
-            if replace_index is not None:
-                selected_plan.pop(replace_index)
-        if len(selected_plan) < max_experiences:
-            selected_plan.append(required_item)
-            selected_ids.add(required_id)
-
-    # A CV must show a real career path, never one or two isolated lines. Top up
-    # with the best remaining matches, then with the most recent experiences.
-    fallback.sort(
-        key=lambda item: _period_sort_key(catalog.get(item["experience_id"], {}).get("period")),
-        reverse=True,
-    )
-    for item in [*plan, *fallback]:
-        if len(selected_plan) >= _min_experiences(master, variant_id):
-            break
-        if item["experience_id"] in selected_ids:
-            continue
-        selected_plan.append(item)
-        selected_ids.add(item["experience_id"])
-
-    selected_plan.sort(
-        key=lambda item: _period_sort_key(catalog.get(item["experience_id"], {}).get("period")),
-        reverse=True,
-    )
-    return selected_plan
-
+        )
+    suggestions.sort(key=lambda item: item["priority"], reverse=True)
+    return suggestions
 
 
 def _build_adaptation_strategy(
     job: Dict[str, Any],
     variant_id: str,
-    experience_plan: List[Dict[str, Any]],
     priority_keywords: List[str],
     master: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Build a deterministic, grounded brief consumed by all CV agents."""
+    """Index déterministe des preuves disponibles, sans décision éditoriale.
+
+    Ne choisit plus ni projet, ni regroupement, ni ordre des sections : ces
+    trois décisions reviennent à l'agent analyste.
+    """
     text = job_text(job)
-    selected_ids = [item.get("experience_id") for item in experience_plan]
     evidence_matches = []
-    selected_projects = []
     for evidence_id, evidence in master.get("evidence_catalog", {}).items():
         terms = [
             *evidence.get("technologies", []),
@@ -263,94 +172,52 @@ def _build_adaptation_strategy(
         matched_terms = [term for term in terms if normalize(term) and normalize(term) in text]
         if not matched_terms:
             continue
-        distinctive_terms = {
-            "agents ia", "agent ia", "mcp", "n8n", "python", "scraping",
-            "wordpress", "generation controlee", "correction automatique",
-            "orchestration d agents", "orchestration multi agents",
-        }
-        has_distinctive_match = any(normalize(term) in distinctive_terms for term in matched_terms)
-        project_ids = [
-            project_id
-            for project_id in evidence.get("source_project_ids", [])
-            if project_id in master.get("project_catalog", {})
-        ]
-        experience_ids = [
-            experience_id
-            for experience_id in evidence.get("source_experience_ids", [])
-            if experience_id in master.get("experience_catalog", {})
-        ]
         evidence_matches.append({
             "requirement": matched_terms[0],
             "evidence_id": evidence_id,
-            "project_ids": project_ids,
-            "experience_ids": experience_ids,
+            "project_ids": [
+                project_id
+                for project_id in evidence.get("source_project_ids", [])
+                if project_id in master.get("project_catalog", {})
+            ],
+            "experience_ids": [
+                experience_id
+                for experience_id in evidence.get("source_experience_ids", [])
+                if experience_id in master.get("experience_catalog", {})
+            ],
             "matched_terms": compact_items(matched_terms, limit=6),
         })
-        if variant_id in {"automatisation", "formateur_ia"} and has_distinctive_match:
-            for project_id in project_ids:
-                if project_id not in selected_projects:
-                    selected_projects.append(project_id)
-
-    presentation = {"experience_display_mode": "individual"}
-    for group_id, group in master.get("experience_groups", {}).items():
-        if variant_id not in group.get("allowed_variants", []):
-            continue
-        member_ids = [item for item in selected_ids if item in group.get("member_ids", [])]
-        for alternatives in group.get("mutually_exclusive_sets", []):
-            present = [item for item in member_ids if item in alternatives]
-            member_ids = [item for item in member_ids if item not in alternatives] + present[:1]
-        if len(member_ids) >= int(group.get("min_selected_members", 2)):
-            presentation = {
-                "experience_display_mode": group.get("display_mode", "grouped_missions"),
-                "experience_group_id": group_id,
-                "member_ids": member_ids,
-            }
-            break
-
-    # Projects lead only when the advert is explicitly technical/agentic.
-    # Human-facing mediation and general training must lead with experience.
-    explicit_ai_terms = [
-        "agent ia", "agents ia", "agentic", "mcp", "orchestration",
-        "automatisation", "n8n", "workflow", "harnais",
-    ]
-    ai_first = variant_id == "automatisation" or (
-        variant_id in {"fullstack", "frontend"} and contains_any(text, explicit_ai_terms)
-    )
     return {
         "critical_requirements": [
             {"requirement": keyword, "importance": "high"}
             for keyword in priority_keywords[:6]
         ],
         "evidence_matches": evidence_matches,
-        "presentation_strategy": presentation,
-        "section_order": (
-            ["profile", "skills", "projects", "experiences", "education"]
-            if ai_first else
-            ["profile", "skills", "experiences", "projects", "education"]
-        ),
-        "selected_projects": selected_projects[:2],
+        "suggested_section_order": ["profile", "skills", "experiences", "projects", "education"],
     }
 
 
 def analyze_job_for_cv(job: Dict[str, Any], master: Dict[str, Any]) -> Dict[str, Any]:
+    """Préanalyse consultative : ce que Python constate, jamais ce qu'il impose."""
     selected = _select_variant(job, master)
     variant_id = selected.get("id", "webmaster")
     title_variants = master.get("positioning", {}).get("title_variants", {})
     target_title = title_variants.get(variant_id) or selected.get("title") or "Développeur web / Webmaster"
     keywords = _priority_keywords(job, selected, master)
-    experience_plan = _experience_plan(job, selected, master)
-    strategy = _build_adaptation_strategy(job, variant_id, experience_plan, keywords, master)
-    # These are suggestions for the AI analyzer, not content that Python may
-    # force back into the final CV.
-    selected_skills = _merge_preferred_skills(selected.get("skills", {}), master, variant_id)
+    strategy = _build_adaptation_strategy(job, variant_id, keywords, master)
     text = job_text(job)
     skills_to_reduce = []
     for skill, confidence in master.get("skills_confidence", {}).items():
         if confidence in {"bases", "notions", "notions à pratique selon projet"} and normalize(skill) not in text:
             skills_to_reduce.append(skill)
+    # Les consignes éditoriales viennent du profil maître, plus d'une liste de
+    # variantes codée dans ce fichier.
+    guidance = master.get("adaptation_rules", {}).get("editorial_guidance_by_variant", {}).get(variant_id, {})
     warnings = []
-    if variant_id in {"webmaster", "wordpress", "formateur_developpement_web", "formateur_ia", "accessibilite"}:
-        warnings.append("Ne pas présenter Cundo comme développeur full-stack pur : adapter l'accroche au poste.")
+    if isinstance(guidance, dict):
+        for key in ("experience_policy", "project_policy", "public_proof"):
+            if guidance.get(key):
+                warnings.append(str(guidance[key]))
     if contains_any(text, ["expert", "senior", "bac+5", "lead"]):
         warnings.append("Vérifier que le CV ne survend pas le niveau réel demandé par l'annonce.")
     return {
@@ -359,9 +226,9 @@ def analyze_job_for_cv(job: Dict[str, Any], master: Dict[str, Any]) -> Dict[str,
         "target_title": target_title,
         "positioning": master.get("positioning", {}).get("summary_variants", {}).get(variant_id, selected.get("profile", "")),
         "priority_keywords": keywords,
-        "experience_plan": experience_plan,
+        "experience_suggestions": _experience_plan(job, selected, master),
         **strategy,
-        "skills_to_emphasize": selected_skills,
+        "available_skills": flatten_skills(selected.get("skills", {})),
         "skills_to_reduce": compact_items(skills_to_reduce, limit=8),
-        "warnings": warnings,
+        "warnings": compact_items(warnings, limit=8),
     }

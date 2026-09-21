@@ -137,6 +137,12 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
         status = "needs_minor_revision"
     return {
         "agent": "cv_quality_checker",
+        # Seule une erreur de vérité autorise Python à imposer une révision.
+        # Les mots-clés manquants et les preuves jugées insuffisantes sont des
+        # signalements remis au juge IA, qui reste maître de la pertinence.
+        "truth_blocking": not validation["truthful"],
+        "truth_issues": validation["truth_issues"],
+        "format_issues": validation["format_issues"],
         "quality_score": quality_score,
         "ats_score": ats_score,
         "status": status,

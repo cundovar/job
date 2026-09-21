@@ -1,5 +1,6 @@
 import io
 import json
+from pathlib import Path
 
 import pytest
 
@@ -16,8 +17,9 @@ from cv_generator.ai_agents import (
     AgentResult,
     CVLLMClient,
     _merge_review,
-    _sanitize_cv_content,
-    _sanitize_plan,
+    _assemble_cv_content,
+    _standing_preference_clause,
+    _validate_plan,
 )
 from cv_generator.exporters import (
     DEFAULT_PORTRAIT,
@@ -30,9 +32,9 @@ from cv_generator.exporters import (
 from cv_generator.ats_exporter import cv_to_ats_html, cv_to_ats_pdf
 from cv_generator.cv_assessment import evaluate_truthfulness
 from cv_generator.cv_quality_checker import review_cv
-from cv_generator.cv_creator import create_cv_draft
+from cv_generator.cv_creator import build_structural_shell
 from cv_generator.layout import sparse_main_vertical_offset, title_requires_wrap, wrap_tracked_title
-from cv_generator.job_analyzer import _experience_plan, analyze_job_for_cv
+from cv_generator.job_analyzer import analyze_job_for_cv
 from cv_generator.pipeline import _apply_final_review_status, _trace_item
 from cv_generator.utils import load_json
 
@@ -423,58 +425,6 @@ def test_pipeline_stops_automatic_corrections_at_the_safety_limit(tmp_path):
     assert client.calls.count("cv_quality_checker") == 4
 
 
-def test_pipeline_adds_grounded_public_work_before_presenting_hybrid_trainer_cv(tmp_path):
-    client = HybridTrainerCorrectionClient()
-
-    result = prepare_custom_cv(
-        HYBRID_TRAINER_JOB,
-        application_dir=tmp_path,
-        master_path="data/cv_master_profile.json",
-        llm_client=client,
-    )
-    final_cv = json.loads((tmp_path / "cv" / "cv_final.json").read_text(encoding="utf-8"))
-    final_review = json.loads((tmp_path / "cv" / "cv_final_review.json").read_text(encoding="utf-8"))
-    trace = json.loads((tmp_path / "cv" / "cv_agent_trace.json").read_text(encoding="utf-8"))
-
-    assert result["ok"] is True
-    assert trace["automatic_revision_rounds"] == 1
-    assert [item["id"] for item in final_cv["cv"]["experiences"]] == [
-        "qualiscope_backend",
-        "helene_massage_ayurveda",
-        "pole_s",
-        "konexio_formateur_benevole",
-        "mairie_chelles",
-    ]
-    helene = next(item for item in final_cv["cv"]["experiences"] if item["id"] == "helene_massage_ayurveda")
-    assert helene["links"] == ["https://massagesdhelene.com/"]
-    assert final_cv["cv"]["projects"][0]["technologies"] == [
-        "Symfony 6.4",
-        "API Platform",
-        "Doctrine ORM",
-        "Vue.js 3",
-        "Docker",
-    ]
-    assert final_review["status"] == "validated"
-    assert next(
-        item for item in final_review["evidence_coverage"] if item["pillar"] == "public_proof"
-    )["status"] == "covered"
-    assert any("evidence_coverage" in run for run in trace["runs"])
-    skills = {item for section in final_cv["cv"]["skills"] for item in section["items"]}
-    assert {"Java", "C++", "R"}.isdisjoint(skills)
-    assert "formation en ligne" not in final_cv["cv"]["profile"].lower()
-    assert "formation à distance" not in final_cv["cv"]["profile"].lower()
-    assert [item["title"] for item in final_cv["cv"]["education"]] == [
-        "Titre Professionnel Concepteur Développeur d'Applications",
-        "Développeur Web et Web Mobile",
-    ]
-    pdf = PdfReader(tmp_path / "cv" / "cv_final.pdf")
-    assert len(pdf.pages) == 1
-    pdf_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-    assert "massagesdhelene.com" in pdf_text
-    assert "ANIMATEUR PÉRISCOLAIRE" in pdf_text
-    assert len(PdfReader(tmp_path / "cv" / "cv_ats.pdf").pages) == 1
-
-
 def test_pdf_and_html_use_the_real_portrait(tmp_path):
     final_cv = {
         "cv": {
@@ -551,32 +501,6 @@ def test_grouped_experience_renders_all_links_in_every_export(tmp_path):
         assert "massagesdhelene.com" in text
 
 
-def test_nontechnical_variants_hide_technical_contact_links():
-    master = load_json("data/cv_master_profile.json")
-    job = {"title": "Agent d'accueil", "description": "Accueil du public."}
-
-    for variant_id in ("accueil", "logistique", "surveillance"):
-        draft = create_cv_draft(job, master, {
-            "selected_base_variant": variant_id,
-            "target_title": "Poste ciblé",
-            "experience_plan": [],
-            "skills_to_emphasize": {},
-        })
-        assert draft["cv"]["contact"] == {
-            "email": "varas.cundo@gmail.com",
-            "phone": "06 23 84 84 45",
-        }
-
-    technical_draft = create_cv_draft(job, master, {
-        "selected_base_variant": "fullstack",
-        "target_title": "Développeur web",
-        "experience_plan": [],
-        "skills_to_emphasize": {},
-    })
-    assert technical_draft["cv"]["contact"]["portfolio"] == "https://varascundo.com/"
-    assert technical_draft["cv"]["contact"]["github"] == "https://github.com/cundovar"
-
-
 def test_identity_block_is_centered_on_portrait():
     top = 812.0
     portrait_center = top - PDF_PORTRAIT_DIAMETER / 2
@@ -621,31 +545,6 @@ def test_quality_checker_flags_long_identity_title():
     assert any(problem["section"] == "header" for problem in review["problems"])
 
 
-def test_mediation_variant_prioritizes_pedagogy_and_ai_without_forcing_web_languages():
-    master = load_json("data/cv_master_profile.json")
-    job = {
-        "title": "Animateur conseiller numérique",
-        "description": "Accompagnement numérique, ateliers, autonomie et inclusion numérique.",
-    }
-
-    plan = analyze_job_for_cv(job, master)
-    konexio = master["experience_catalog"]["konexio_formateur_benevole"]
-
-    assert plan["selected_base_variant"] == "formateur_generaliste"
-    assert "konexio_formateur_benevole" in [item["experience_id"] for item in plan["experience_plan"]]
-    assert "IA" in plan["positioning"]
-    assert konexio["period"] == {"start": "2023-01", "end": "2023-07", "date_confidence": "confirmed_by_user"}
-    assert "ia" not in konexio["tags"]
-    assert any("HTML" in highlight and "CSS" in highlight and "JavaScript" in highlight for highlight in konexio["highlights"])
-    variant = next(item for item in master["cv_variants"] if item["id"] == "formateur_generaliste")
-    assert "ChatGPT" in variant["skills"]["tools"]
-    assert "Claude" in variant["skills"]["tools"]
-    emphasized = {item for items in plan["skills_to_emphasize"].values() for item in items}
-    assert {"Animation de groupe", "Accompagnement numérique", "ChatGPT", "Claude"} <= emphasized
-    assert "PHP 8" not in emphasized
-    assert "JavaScript ES6+" not in emphasized
-
-
 def test_hybrid_trainer_prompts_balance_real_work_pedagogy_and_ai():
     assert "trois piliers" in ANALYZER_PROMPT
     assert "réalisation technique réelle" in ANALYZER_PROMPT
@@ -654,206 +553,32 @@ def test_hybrid_trainer_prompts_balance_real_work_pedagogy_and_ai():
     assert "ordre antéchronologique" in CREATOR_PROMPT
     assert "formations en ligne ou à distance" in CREATOR_PROMPT
     assert "mairie_chelles" in ANALYZER_PROMPT
-    assert "mairie_chelles" in CREATOR_PROMPT
     assert "human_group_facilitation" in REVIEWER_PROMPT
     assert "écart honnête" in REVISER_PROMPT
 
 
-def test_every_trainer_variant_prefers_the_human_group_experience():
-    master = load_json("data/cv_master_profile.json")
-    preferences = master["adaptation_rules"]["standing_experience_preferences_by_variant"]
-
-    assert preferences == {
-        "formateur_developpement_web": ["mairie_chelles"],
-        "formateur_generaliste": ["mairie_chelles"],
-        "formateur_ia": ["mairie_chelles"],
-    }
-
-
-def test_truth_guard_rejects_unconfirmed_remote_training_and_unknown_languages():
-    master = load_json("data/cv_master_profile.json")
-    job = {
-        "title": "Formateur en ligne IA et développement web",
-        "description": "Formation à distance en Python, JavaScript, Java, C++, HTML/CSS et R.",
-    }
-    plan = analyze_job_for_cv(job, master)
-    base = create_cv_draft(job, master, plan)
-    proposed = {
-        "title": "Formateur développement web et IA",
-        "profile": "Animation de formation en ligne pour adultes en Java, C++ et R.",
-        "skills": [{
-            "title": "Programmation",
-            "items": ["Python", "JavaScript ES6+", "Java", "C++", "R"],
-        }],
-        "experiences": [{
-            "id": "pole_s",
-            "bullets": [{
-                "text": "Animation de formations pour 12 apprenants adultes en reconversion",
-                "source_highlight_indexes": [2],
-            }],
-        }],
-        "projects": [],
-        "education": [],
-    }
-
-    sanitized = _sanitize_cv_content(
-        proposed,
-        job,
-        master,
-        plan,
-        base,
-        AgentResult(data=proposed, provider="test", model="test"),
-        "test_writer",
-    )
-
-    profile = sanitized["cv"]["profile"].lower()
-    skills = {item for section in sanitized["cv"]["skills"] for item in section["items"]}
-    assert "formation en ligne" not in profile
-    assert {"Java", "C++", "R"}.isdisjoint(skills)
-    assert {"Python", "JavaScript ES6+"} <= skills
-
-
-def test_conditional_education_is_selected_from_job_keywords():
-    master = load_json("data/cv_master_profile.json")
-    job = {"title": "Animateur petite enfance", "description": "Animation auprès d'enfants."}
-    plan = analyze_job_for_cv(job, master)
-    draft = create_cv_draft(job, master, plan)
-
-    assert any(item["title"] == "CAP Petite Enfance" for item in draft["cv"]["education"])
-
-
-def test_human_training_job_selects_cap_and_bac_l():
-    master = load_json("data/cv_master_profile.json")
-    job = {
-        "title": "Conseiller formateur",
-        "description": "Approche humaine, accompagnement et gestion de groupe.",
-    }
-    plan = analyze_job_for_cv(job, master)
-    education = create_cv_draft(job, master, plan)["cv"]["education"]
-    titles = [item["title"] for item in education]
-
-    assert "CAP Petite Enfance" in titles
-    assert "Bac L option cinéma audiovisuel" in titles
-    assert "Développeur Web et Web Mobile" in titles
-    assert "Titre Professionnel Concepteur Développeur d'Applications" in titles
-    assert "secom_gard" not in [item["experience_id"] for item in plan["experience_plan"]]
-
-
-def test_cultural_job_selects_bac_l():
-    master = load_json("data/cv_master_profile.json")
-    job = {
-        "title": "Médiateur culturel en bibliothèque",
-        "description": "Animation autour du livre, de la lecture et du patrimoine.",
-    }
-    plan = analyze_job_for_cv(job, master)
-    education = create_cv_draft(job, master, plan)["cv"]["education"]
-
-    assert any(item["title"] == "Bac L option cinéma audiovisuel" for item in education)
-
-
-def test_group_management_job_selects_animation_experience():
-    master = load_json("data/cv_master_profile.json")
-    job = {
-        "title": "Formateur adultes",
-        "description": "Animation et gestion de groupe, accompagnement des participants.",
-    }
-    plan = analyze_job_for_cv(job, master)
-
-    assert "mairie_chelles" in [item["experience_id"] for item in plan["experience_plan"]]
-
-
-def test_cultural_job_keeps_illustration_as_complementary_experience():
-    master = load_json("data/cv_master_profile.json")
-    job = {
-        "title": "Médiateur culturel en bibliothèque",
-        "description": "Animation autour du livre, de la lecture et de la création visuelle.",
-    }
-
-    plan = analyze_job_for_cv(job, master)
-    selected = {item["experience_id"]: item for item in plan["experience_plan"]}
-
-    assert "illustration_neva" in selected
-    assert selected["illustration_neva"]["selection_role"] == "complementary"
-
-
-def test_experience_mix_reserves_one_of_four_slots_for_relevant_journey():
-    core_ids = ["core_1", "core_2", "core_3", "core_4"]
-    catalog = {
-        exp_id: {
-            "period": {"start": str(2026 - index), "end": str(2026 - index)},
-            "tags": ["culture"],
-            "highlights": [exp_id],
+def test_standing_preference_reaches_the_creator_from_the_master_not_the_prompt():
+    """La préférence permanente vient du candidat, pas d'une constante Python."""
+    master = {
+        "adaptation_rules": {
+            "standing_experience_preferences_by_variant": {"formateur_ia": ["mairie_chelles"]}
         }
-        for index, exp_id in enumerate(core_ids)
     }
-    catalog["creative"] = {
-        "period": {"start": "2022", "end": "2022"},
-        "tags": ["culture"],
-        "highlights": ["Album jeunesse"],
-        "visibility": "only_if_creative",
-        "cv_role": "complementary",
-    }
-    master = {
-        "experience_catalog": catalog,
-        "adaptation_rules": {"experience_priority_by_variant": {"webmaster": core_ids}},
-        "layout_constraints": {"max_experiences": 4},
-    }
-    selected = {"id": "webmaster", "experience_refs": core_ids}
+    plan = {"selected_base_variant": "formateur_ia"}
 
-    plan = _experience_plan({"title": "Culture", "description": ""}, selected, master)
-
-    assert len(plan) == 4
-    assert sum(item["selection_role"] == "core" for item in plan) == 3
-    assert any(item["experience_id"] == "creative" for item in plan)
+    assert "mairie_chelles" not in CREATOR_PROMPT
+    assert "mairie_chelles" in _standing_preference_clause(master, plan, "creator")
+    assert _standing_preference_clause(master, {"selected_base_variant": "webmaster"}, "creator") == ""
 
 
-def test_ai_plan_can_drop_rule_based_complementary_experience():
-    catalog = {
-        exp_id: {"period": {"start": "2026", "end": "2026"}, "highlights": [exp_id]}
-        for exp_id in ["core_1", "core_2", "core_3", "core_4"]
-    }
-    catalog["creative"] = {
-        "period": {"start": "2022", "end": "2022"},
-        "highlights": ["Album jeunesse"],
-        "cv_role": "complementary",
-    }
-    master = {
-        "cv_variants": [{"id": "webmaster", "skills": {}}],
-        "experience_catalog": catalog,
-        "layout_constraints": {"max_experiences": 4},
-    }
-    rule_plan = {
-        "selected_base_variant": "webmaster",
-        "experience_plan": [
-            *[
-                {"experience_id": exp_id, "priority": 10, "selection_role": "core", "highlights": [exp_id]}
-                for exp_id in ["core_1", "core_2", "core_3"]
-            ],
-            {
-                "experience_id": "creative",
-                "priority": 5,
-                "selection_role": "complementary",
-                "highlights": ["Album jeunesse"],
-            },
-        ],
-    }
-    proposed = {
-        "selected_base_variant": "webmaster",
-        "experience_plan": [
-            {"experience_id": exp_id, "priority": 10, "highlight_indexes": [0]}
-            for exp_id in ["core_1", "core_2", "core_3", "core_4"]
-        ],
-    }
-
-    sanitized = _sanitize_plan(
-        proposed,
-        rule_plan,
-        master,
-        AgentResult(data=proposed, provider="test", model="test"),
-    )
-
-    ids = [item["experience_id"] for item in sanitized["experience_plan"]]
-    assert ids == ["core_1", "core_2", "core_3", "core_4"]
+def test_agents_own_the_selection_contract_in_their_prompts():
+    """Les prompts disent explicitement que Python ne complète plus rien."""
+    assert "purement consultative" in ANALYZER_PROMPT
+    assert "Python ne complète rien" in CREATOR_PROMPT
+    assert "sources" in CREATOR_PROMPT
+    assert "source_experience_ids" in CREATOR_PROMPT
+    assert "Le moteur\nne regroupe plus à ta place" in CREATOR_PROMPT
+    assert "Une puce sans source est refusée" in REVISER_PROMPT
 
 
 def test_ai_review_owns_semantic_scores_and_verdict():
@@ -947,19 +672,6 @@ def test_ai_evidence_coverage_keeps_only_grounded_ids():
     assert _trace_item(review)["evidence_coverage"] == review["evidence_coverage"]
 
 
-def test_generated_cv_keeps_profile_and_skills_quick_to_scan():
-    master = load_json("data/cv_master_profile.json")
-    job = {
-        "title": "Formateur et conseiller numérique",
-        "description": "Formation, accompagnement humain, gestion de groupe et outils numériques.",
-    }
-    plan = analyze_job_for_cv(job, master)
-    cv = create_cv_draft(job, master, plan)["cv"]
-
-    assert len(cv["profile"]) <= 240
-    assert sum(len(section["items"]) for section in cv["skills"]) <= 10
-
-
 def test_quality_checker_flags_an_overloaded_skill_block():
     master = {
         "layout_constraints": {
@@ -985,177 +697,6 @@ def test_quality_checker_flags_an_overloaded_skill_block():
     assert any(problem["section"] == "skills" for problem in review["problems"])
 
 
-def test_job_application_pipeline_project_is_selected_for_scraping_role():
-    master = load_json("data/cv_master_profile.json")
-    job = {
-        "title": "Développeur Python — automatisation de candidatures",
-        "description": "Scraping web, API, analyse d'annonces, génération de CV et lettres de motivation.",
-    }
-    plan = analyze_job_for_cv(job, master)
-    projects = create_cv_draft(job, master, plan)["cv"]["projects"]
-
-    assert [project["id"] for project in projects] == ["job_search_pipeline"]
-
-
-def test_wordpress_project_remains_selected_for_wordpress_role():
-    master = load_json("data/cv_master_profile.json")
-    job = {
-        "title": "Webmaster WordPress",
-        "description": "Administration WordPress, Gutenberg et maintenance de sites.",
-    }
-    plan = analyze_job_for_cv(job, master)
-    draft = create_cv_draft(job, master, plan)
-    projects = draft["cv"]["projects"]
-    la_magicieuse = next(item for item in draft["cv"]["experiences"] if item["id"] == "la_magicieuse")
-
-    assert [project["id"] for project in projects] == ["wp_site_builder"]
-    assert la_magicieuse["links"] == ["https://www.la-magicieuse.org/"]
-
-
-def test_mediator_trainer_always_uses_devdoc_personal_project():
-    master = load_json("data/cv_master_profile.json")
-    job = {
-        "title": "Médiateur et conseiller numérique",
-        "description": "Accompagnement des publics, animation d'ateliers et formation aux usages numériques.",
-    }
-    plan = analyze_job_for_cv(job, master)
-    projects = create_cv_draft(job, master, plan)["cv"]["projects"]
-
-    assert plan["selected_base_variant"] == "formateur_generaliste"
-    assert [project["id"] for project in projects] == ["devdoc_platform"]
-    assert projects[0]["links"] == ["https://devdoc.varascundo.com/"]
-
-
-def test_web_cv_always_contains_a_personal_project_without_project_keywords():
-    master = load_json("data/cv_master_profile.json")
-    job = {
-        "title": "Développeur full stack",
-        "description": "Conception d'applications PHP Symfony, API REST et backend pour une équipe produit.",
-    }
-    plan = analyze_job_for_cv(job, master)
-    projects = create_cv_draft(job, master, plan)["cv"]["projects"]
-
-    assert plan["selected_base_variant"] == "fullstack"
-    assert [project["id"] for project in projects] == ["devdoc_platform"]
-
-
-def test_unrelated_job_does_not_force_a_personal_project():
-    master = load_json("data/cv_master_profile.json")
-    job = {
-        "title": "Agent de sécurité",
-        "description": "Surveillance de nuit et contrôle des accès.",
-    }
-    plan = analyze_job_for_cv(job, master)
-    projects = create_cv_draft(job, master, plan)["cv"]["projects"]
-
-    assert projects == []
-
-
-def test_backend_trainer_plan_keeps_practice_pedagogy_and_ai_proofs():
-    master = load_json("data/cv_master_profile.json")
-    job = {
-        "title": "Formateur Développement backend MVC",
-        "description": (
-            "Architecture MVC, bonnes pratiques de code, Bachelor Développement Full Stack, "
-            "formateur professionnel en activité sur le développement backend et enseignement supérieur."
-        ),
-    }
-
-    plan = analyze_job_for_cv(job, master)
-    draft = create_cv_draft(job, master, plan)
-    ids = {item["experience_id"] for item in plan["experience_plan"]}
-    skills = {item for section in draft["cv"]["skills"] for item in section["items"]}
-
-    assert plan["selected_base_variant"] == "formateur_developpement_web"
-    assert {
-        "pole_s",
-        "qualiscope_backend",
-        "helene_massage_ayurveda",
-        "konexio_formateur_benevole",
-        "mairie_chelles",
-    } <= ids
-    assert "bioconcept_accueil" not in ids
-    assert {"PHP 8", "Symfony 6/7", "Doctrine ORM", "ChatGPT", "Claude"} <= skills
-    assert [project["id"] for project in draft["cv"]["projects"]] == ["devdoc_platform"]
-    assert draft["cv"]["projects"][0]["links"] == ["https://devdoc.varascundo.com/"]
-
-
-def test_writer_cannot_silently_drop_planned_experiences_or_project():
-    master = load_json("data/cv_master_profile.json")
-    job = {
-        "title": "Formateur Développement backend MVC",
-        "description": "Architecture MVC, bonnes pratiques de code et transmission du développement backend.",
-    }
-    plan = analyze_job_for_cv(job, master)
-    base = create_cv_draft(job, master, plan)
-    proposed = {
-        "title": "Formateur backend",
-        "profile": "Formateur et développeur backend.",
-        "skills": [{"title": "Backend", "items": ["PHP 8", "Symfony 6/7"]}],
-        "experiences": [],
-        "projects": [],
-    }
-
-    sanitized = _sanitize_cv_content(
-        proposed,
-        job,
-        master,
-        plan,
-        base,
-        AgentResult(data=proposed, provider="test", model="test"),
-        "test_writer",
-    )
-
-    assert sanitized["cv"]["experiences"] == []
-    assert sanitized["cv"]["projects"] == []
-    skills = {item for section in sanitized["cv"]["skills"] for item in section["items"]}
-    assert skills == {"PHP 8", "Symfony 6/7"}
-
-
-def test_reviser_can_apply_grounded_order_education_and_project_reduction():
-    master = load_json("data/cv_master_profile.json")
-    job = {
-        "title": "Formateur Développement backend MVC",
-        "description": "Architecture MVC, PHP Symfony, JavaScript et transmission du développement web.",
-    }
-    plan = analyze_job_for_cv(job, master)
-    base = create_cv_draft(job, master, plan)
-    reversed_ids = [item["experience_id"] for item in reversed(plan["experience_plan"])]
-    proposed = {
-        "title": "Formateur Développement backend MVC",
-        "profile": "Formateur et développeur web, orienté transmission et autonomie.",
-        "skills": [{"title": "Technique", "items": ["PHP 8", "JavaScript ES6+"]}],
-        "experiences": [
-            {
-                "id": exp_id,
-                "bullets": [{"text": master["experience_catalog"][exp_id]["highlights"][0], "source_highlight_indexes": [0]}],
-            }
-            for exp_id in reversed_ids
-        ],
-        "projects": [{
-            "id": "devdoc_platform",
-            "description": "Plateforme pédagogique de cours, exercices et QCM.",
-            "technologies": ["Symfony 6.4", "Vue.js 3"],
-        }],
-        "education": ["CAP Petite Enfance"],
-    }
-
-    sanitized = _sanitize_cv_content(
-        proposed,
-        job,
-        master,
-        plan,
-        base,
-        AgentResult(data=proposed, provider="test", model="test"),
-        "test_reviser",
-    )
-
-    assert [item["id"] for item in sanitized["cv"]["experiences"]] == reversed_ids
-    assert sanitized["cv"]["projects"][0]["technologies"] == ["Symfony 6.4", "Vue.js 3"]
-    education_titles = [item["title"] for item in sanitized["cv"]["education"]]
-    assert education_titles == ["CAP Petite Enfance"]
-
-
 def test_final_ai_review_overrides_a_conflicting_ready_status():
     assessment = {"overall_status": "ready", "match": {"score": 73}, "human_quality": {"score": 90}}
     review = {
@@ -1169,65 +710,6 @@ def test_final_ai_review_overrides_a_conflicting_ready_status():
 
     assert result["overall_status"] == "review"
     assert result["final_ai_review"]["status"] == "needs_revision"
-
-
-def test_experience_plan_is_reverse_chronological_after_selection():
-    ids = ["freelance", "current", "qualiscope", "pole_s"]
-    periods = {
-        "freelance": {"start": "2023", "end": "2024"},
-        "current": {"start": "2026-06", "end": None},
-        "qualiscope": {"start": "2026-03", "end": "2026-08"},
-        "pole_s": {"start": "2024-12", "end": "2026-03"},
-    }
-    master = {
-        "experience_catalog": {
-            exp_id: {"period": periods[exp_id], "tags": [], "highlights": [exp_id]}
-            for exp_id in ids
-        },
-        "adaptation_rules": {"experience_priority_by_variant": {"webmaster": ids}},
-        "layout_constraints": {"max_experiences": 4},
-    }
-    selected = {"id": "webmaster", "experience_refs": ids}
-
-    plan = _experience_plan({}, selected, master)
-
-    assert [item["experience_id"] for item in plan] == ["current", "qualiscope", "pole_s", "freelance"]
-
-
-def test_conditional_experience_is_selected_only_when_job_tags_match():
-    master = {
-        "experience_catalog": {
-            "web": {
-                "period": {"start": "2024", "end": None},
-                "tags": ["developpement web"],
-                "highlights": ["Développement d'applications web"],
-                "visibility": "default",
-            },
-            "logistics": {
-                "period": {"start": "2018", "end": "2021"},
-                "tags": ["logistique", "preparation de commandes"],
-                "highlights": ["Préparation de commandes"],
-                "visibility": "only_if_relevant",
-            },
-        },
-        "adaptation_rules": {"experience_priority_by_variant": {"webmaster": ["web"]}},
-        "layout_constraints": {"max_experiences": 4},
-    }
-    selected = {"id": "webmaster", "experience_refs": ["web"]}
-
-    web_plan = _experience_plan(
-        {"title": "Développeur web", "description": "Maintenance de sites"},
-        selected,
-        master,
-    )
-    logistics_plan = _experience_plan(
-        {"title": "Préparateur logistique", "description": "Préparation de commandes"},
-        selected,
-        master,
-    )
-
-    assert [item["experience_id"] for item in web_plan] == ["web"]
-    assert [item["experience_id"] for item in logistics_plan] == ["web", "logistics"]
 
 
 def test_cv_llm_client_prefers_subscription_cli_bridge(monkeypatch):
@@ -1284,91 +766,6 @@ def test_cv_llm_client_prefers_subscription_cli_bridge(monkeypatch):
     assert fake_socket.path == "/tmp/test-cv-bridge.sock"
     assert result.provider == "codex_cli"
     assert result.data == {"status": "ok"}
-
-
-def test_master_uses_user_confirmed_experience_dates():
-    master = load_json("data/cv_master_profile.json")
-    catalog = master["experience_catalog"]
-
-    assert catalog["pole_s"]["period"] == {
-        "start": "2025-01", "end": "2026-03", "date_confidence": "confirmed_by_user"
-    }
-    assert catalog["bioconcept_accueil"]["period"]["start"] == "2023-08"
-    assert catalog["illustration_neva"]["period"] == {
-        "start": "2022-03", "end": "2022-12", "date_confidence": "confirmed_by_user"
-    }
-
-
-def test_technical_overlaps_are_grouped_by_strategy():
-    master = load_json("data/cv_master_profile.json")
-    job = {
-        "title": "Développeur full stack React Symfony",
-        "description": "Développement React, Symfony, API REST et WordPress.",
-    }
-
-    plan = analyze_job_for_cv(job, master)
-    draft = create_cv_draft(job, master, plan)
-
-    assert plan["presentation_strategy"]["experience_display_mode"] == "grouped_missions"
-    grouped = next(item for item in draft["cv"]["experiences"] if item["id"] == "technical_missions_2026")
-    assert len(grouped["source_experience_ids"]) >= 2
-    assert grouped["period"] == "2026-03 – Aujourd'hui"
-
-
-GENERAL_TRAINER_JOB = {
-    "title": "Conseiller numérique France Services",
-    "description": "Conseiller numerique, mediation numerique, inclusion numerique, ateliers.",
-}
-
-
-def test_general_trainer_cv_groups_recent_web_missions():
-    master = load_json("data/cv_master_profile.json")
-
-    plan = analyze_job_for_cv(GENERAL_TRAINER_JOB, master)
-    draft = create_cv_draft(GENERAL_TRAINER_JOB, master, plan)
-
-    assert plan["selected_base_variant"] == "formateur_generaliste"
-    assert plan["presentation_strategy"]["experience_display_mode"] == "grouped_missions"
-    grouped = next(item for item in draft["cv"]["experiences"] if item["id"] == "technical_missions_2026")
-    assert set(grouped["source_experience_ids"]) == {"la_magicieuse", "helene_massage_ayurveda"}
-
-
-def test_general_trainer_cv_keeps_pedagogy_evidence_despite_grouping():
-    master = load_json("data/cv_master_profile.json")
-
-    plan = analyze_job_for_cv(GENERAL_TRAINER_JOB, master)
-
-    planned_ids = {item["experience_id"] for item in plan["experience_plan"]}
-    assert {"pole_s", "freelance_wordpress"} <= planned_ids
-
-
-def test_every_cv_variant_keeps_at_least_four_experiences():
-    master = load_json("data/cv_master_profile.json")
-    jobs = [
-        GENERAL_TRAINER_JOB,
-        {"title": "Agent logistique", "description": "Préparation de commandes, manutention, entrepôt."},
-        {"title": "Agent de sécurité", "description": "Surveillance, rondes de nuit, gardiennage."},
-        {"title": "Hôte d'accueil", "description": "Accueil physique et téléphonique, standard."},
-        {"title": "Webmaster", "description": "WordPress, SEO, mise à jour de site."},
-        {"title": "Poste", "description": "."},
-    ]
-
-    for job in jobs:
-        plan = analyze_job_for_cv(job, master)
-        assert len(plan["experience_plan"]) >= 4, job["title"]
-
-
-def test_grouped_block_counts_as_its_members_for_the_minimum():
-    master = load_json("data/cv_master_profile.json")
-    job = {"title": "Webmaster", "description": "WordPress, SEO, mise à jour de site."}
-
-    plan = analyze_job_for_cv(job, master)
-    draft = create_cv_draft(job, master, plan)
-
-    # The floor applies to the plan, not to the rendered lines: the block merges
-    # two missions into a single entry.
-    assert len(plan["experience_plan"]) == 4
-    assert len(draft["cv"]["experiences"]) == 3
 
 
 def test_quality_checker_reports_skill_without_visible_evidence():
@@ -1530,3 +927,307 @@ def test_final_review_downgrades_ready():
     result = _apply_final_review_status(assessment, final_review)
 
     assert result["overall_status"] == "review"
+
+
+# --------------------------------------------------------------------------- #
+# Les agents décident, Python vérifie — cas CARECO, entièrement hors `data/`
+# --------------------------------------------------------------------------- #
+
+CARECO = json.loads(
+    (Path(__file__).parent / "fixtures" / "careco_cv_case.json").read_text(encoding="utf-8")
+)
+
+
+@pytest.fixture()
+def careco_master(tmp_path):
+    path = tmp_path / "master.json"
+    path.write_text(json.dumps(CARECO["master"], ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+class CarecoAgentClient:
+    """Agent simulé qui écrit lui-même son bloc groupé et ses puces sourcées."""
+
+    def __init__(self, *, experiences=None, projects=None, skills=None, education=None):
+        self.calls = []
+        self._experiences = experiences
+        self._projects = projects
+        self._skills = skills
+        self._education = education
+
+    def default_experiences(self):
+        return [
+            {
+                "id": "missions_techniques_2026",
+                "source_experience_ids": ["boutique_fictive", "atelier_imaginaire"],
+                "bullets": [
+                    {
+                        "text": "Catalogue WooCommerce et API REST sur une boutique inventée.",
+                        "sources": ["boutique_fictive:0", "boutique_fictive:1"],
+                    },
+                    {
+                        "text": "Gabarits Twig et Bootstrap maintenus sur un site inventé.",
+                        "sources": ["atelier_imaginaire:0"],
+                    },
+                    {
+                        "text": "Travail en branches Git sur une base de code fictive.",
+                        "sources": ["atelier_imaginaire:1"],
+                    },
+                ],
+            },
+            {
+                "id": "permanence_test",
+                "bullets": [
+                    {
+                        "text": "Accompagnement d'usagers fictifs sur des outils bureautiques.",
+                        "sources": ["permanence_test:0"],
+                    }
+                ],
+            },
+        ]
+
+    def complete_json(self, *, agent_name, system_prompt, payload):
+        self.calls.append(agent_name)
+        if agent_name == "cv_job_analyzer":
+            data = {
+                "selected_base_variant": "webmaster",
+                "target_title": "Webmaster e-commerce",
+                "positioning": "Webmaster de test, profil entierement invente.",
+                "priority_keywords": ["WordPress", "WooCommerce", "Git"],
+                "experience_plan": [
+                    {"experience_id": "boutique_fictive", "priority": 10, "highlight_indexes": [0, 1]},
+                    {"experience_id": "atelier_imaginaire", "priority": 9, "highlight_indexes": [0, 1]},
+                    {"experience_id": "permanence_test", "priority": 5, "highlight_indexes": [0]},
+                ],
+                "presentation_strategy": {
+                    "experience_display_mode": "grouped_missions",
+                    "experience_group_id": "missions_techniques_2026",
+                    "member_ids": ["boutique_fictive", "atelier_imaginaire"],
+                },
+                "section_order": ["profile", "skills", "experiences", "projects", "education"],
+                "selected_projects": ["projet_vitrine"],
+                "skills_to_emphasize": {
+                    "cms": ["WordPress", "WooCommerce"],
+                    "dev": ["Twig", "Bootstrap", "Git"],
+                },
+                "warnings": [],
+            }
+        elif agent_name in {"cv_creator", "cv_style_reviser"}:
+            data = {
+                "title": "Webmaster e-commerce",
+                "profile": "Webmaster de test, profil entierement invente.",
+                "skills": self._skills
+                if self._skills is not None
+                else [
+                    {"title": "CMS", "items": ["WordPress", "WooCommerce"]},
+                    {"title": "Développement", "items": ["Twig", "Bootstrap", "Git"]},
+                ],
+                "experiences": self._experiences
+                if self._experiences is not None
+                else self.default_experiences(),
+                "projects": self._projects
+                if self._projects is not None
+                else [{"id": "projet_vitrine", "technologies": ["WordPress"]}],
+                "education": self._education
+                if self._education is not None
+                else ["Titre professionnel Developpeur web (fictif)"],
+            }
+        elif agent_name == "cv_quality_checker":
+            data = {
+                "quality_score": 92,
+                "ats_score": 90,
+                "status": "validated",
+                "strengths": ["Preuves techniques visibles."],
+                "problems": [],
+                "missing_keywords": [],
+                "forbidden_claims_found": [],
+                "verdict": "CV cohérent.",
+            }
+        else:
+            raise AssertionError(f"Agent inattendu : {agent_name}")
+        return AgentResult(data=data, provider="fake", model="fake-careco")
+
+
+def _careco_cv(tmp_path, master_path, client):
+    result = prepare_custom_cv(
+        CARECO["job"], application_dir=tmp_path, master_path=master_path, llm_client=client
+    )
+    return result, json.loads((tmp_path / "cv" / "cv_final.json").read_text(encoding="utf-8"))
+
+
+def test_careco_group_keeps_ecommerce_stack_and_support_evidence(tmp_path, careco_master):
+    """Le défaut CARECO : le groupe ne conserve plus qu'une seule preuve."""
+    result, final = _careco_cv(tmp_path, careco_master, CarecoAgentClient())
+
+    grouped = final["cv"]["experiences"][0]
+    assert grouped["id"] == "missions_techniques_2026"
+    assert len(grouped["bullets"]) == 3
+    text = " ".join(grouped["bullets"])
+    assert "WooCommerce" in text or "API REST" in text
+    assert "Twig" in text and "Bootstrap" in text
+    assert "Git" in text
+    assert "Accompagnement d'usagers" in " ".join(final["cv"]["experiences"][1]["bullets"])
+    assert result["assessment"]["truthfulness"]["status"] == "pass"
+
+
+def test_careco_never_invents_an_unsourced_requirement(tmp_path, careco_master):
+    """Marketplace, comptabilité automobile et anglais restent des écarts honnêtes."""
+    _, final = _careco_cv(tmp_path, careco_master, CarecoAgentClient())
+
+    rendered = json.dumps(final["cv"], ensure_ascii=False).lower()
+    for term in CARECO["unsourced_terms"]:
+        assert term not in rendered
+
+
+def test_python_never_reinjects_an_experience_the_agent_dropped(tmp_path, careco_master):
+    """Une expérience écartée par le rédacteur reste absente du CV rendu."""
+    client = CarecoAgentClient(experiences=CarecoAgentClient().default_experiences()[:1])
+
+    _, final = _careco_cv(tmp_path, careco_master, client)
+
+    assert [item["id"] for item in final["cv"]["experiences"]] == ["missions_techniques_2026"]
+
+
+def test_python_preserves_the_order_chosen_by_the_agent(tmp_path, careco_master):
+    """L'ordre rendu est celui de l'agent : Python le signale, ne le retrie pas."""
+    reversed_experiences = list(reversed(CarecoAgentClient().default_experiences()))
+    client = CarecoAgentClient(experiences=reversed_experiences)
+
+    result, final = _careco_cv(tmp_path, careco_master, client)
+
+    assert [item["id"] for item in final["cv"]["experiences"]] == [
+        "permanence_test",
+        "missions_techniques_2026",
+    ]
+    codes = {item["code"] for item in result["assessment"]["truthfulness"]["format_issues"]}
+    assert "EXPERIENCE_ORDER_NOT_ANTICHRONOLOGICAL" in codes
+
+
+def test_python_never_fabricates_a_fallback_bullet(tmp_path, careco_master):
+    """Une expérience vide reste vide et devient une erreur, jamais une puce inventée."""
+    experiences = CarecoAgentClient().default_experiences()
+    experiences[1]["bullets"] = []
+    client = CarecoAgentClient(experiences=experiences)
+
+    result, final = _careco_cv(tmp_path, careco_master, client)
+
+    assert final["cv"]["experiences"][1]["bullets"] == []
+    codes = {item["code"] for item in result["assessment"]["truthfulness"]["format_issues"]}
+    assert "EMPTY_EXPERIENCE" in codes
+
+
+def test_python_does_not_group_when_the_agent_did_not_ask(tmp_path, careco_master):
+    """Sans demande de l'agent, aucune mission n'est fusionnée par Python."""
+    experiences = [
+        {
+            "id": "boutique_fictive",
+            "bullets": [
+                {"text": "Catalogue WooCommerce inventé.", "sources": ["boutique_fictive:0"]}
+            ],
+        },
+        {
+            "id": "atelier_imaginaire",
+            "bullets": [
+                {"text": "Gabarits Twig et Bootstrap inventés.", "sources": ["atelier_imaginaire:0"]}
+            ],
+        },
+    ]
+    client = CarecoAgentClient(experiences=experiences)
+
+    _, final = _careco_cv(tmp_path, careco_master, client)
+
+    assert [item["id"] for item in final["cv"]["experiences"]] == [
+        "boutique_fictive",
+        "atelier_imaginaire",
+    ]
+
+
+def test_agent_projects_and_education_survive_without_reinjection(tmp_path, careco_master):
+    """Aucun projet ni diplôme n'est ajouté derrière le dos de l'agent."""
+    client = CarecoAgentClient(projects=[], education=[])
+
+    _, final = _careco_cv(tmp_path, careco_master, client)
+
+    assert final["cv"]["projects"] == []
+    assert final["cv"]["education"] == []
+
+
+def test_creator_returning_no_experience_is_a_contract_error(tmp_path, careco_master):
+    """Un CV sans expérience est une erreur de contrat, pas un CV à compléter."""
+    client = CarecoAgentClient(experiences=[])
+
+    with pytest.raises(CVAgentError, match="aucune expérience"):
+        prepare_custom_cv(
+            CARECO["job"],
+            application_dir=tmp_path,
+            master_path=careco_master,
+            llm_client=client,
+        )
+
+
+def test_analyzer_plan_is_kept_verbatim_without_quota(careco_master):
+    """Le plan de l'analyste n'est ni complété ni plafonné par Python."""
+    master = CARECO["master"]
+    proposed = {
+        "selected_base_variant": "webmaster",
+        "experience_plan": [{"experience_id": "permanence_test", "highlight_indexes": [0]}],
+    }
+
+    plan = _validate_plan(
+        proposed,
+        analyze_job_for_cv(CARECO["job"], master),
+        master,
+        AgentResult(data={}, provider="test", model="test"),
+    )
+
+    assert [item["experience_id"] for item in plan["experience_plan"]] == ["permanence_test"]
+    assert plan["presentation_strategy"] == {"experience_display_mode": "individual"}
+
+
+def test_analyzer_plan_rejects_an_unknown_experience_without_replacing_it(careco_master):
+    """Un identifiant inconnu est écarté et tracé, jamais remplacé par un autre."""
+    master = CARECO["master"]
+    proposed = {
+        "selected_base_variant": "webmaster",
+        "experience_plan": [
+            {"experience_id": "mission_fantome"},
+            {"experience_id": "permanence_test", "highlight_indexes": [0]},
+        ],
+    }
+
+    plan = _validate_plan(
+        proposed,
+        analyze_job_for_cv(CARECO["job"], master),
+        master,
+        AgentResult(data={}, provider="test", model="test"),
+    )
+
+    assert [item["experience_id"] for item in plan["experience_plan"]] == ["permanence_test"]
+    assert plan["unknown_experience_ids"] == ["mission_fantome"]
+
+
+def test_analyzer_returning_nothing_is_a_contract_error(careco_master):
+    """Python ne fabrique pas un plan à la place de l'agent analyste."""
+    master = CARECO["master"]
+
+    with pytest.raises(CVAgentError, match="aucune expérience"):
+        _validate_plan(
+            {"selected_base_variant": "webmaster", "experience_plan": []},
+            analyze_job_for_cv(CARECO["job"], master),
+            master,
+            AgentResult(data={}, provider="test", model="test"),
+        )
+
+
+def test_preanalysis_only_suggests_and_imposes_no_minimum():
+    """La préanalyse est un catalogue noté, sans quota ni expérience forcée."""
+    plan = analyze_job_for_cv(CARECO["job"], CARECO["master"])
+
+    assert "experience_plan" not in plan
+    assert "selected_projects" not in plan
+    assert "presentation_strategy" not in plan
+    suggestions = plan["experience_suggestions"]
+    assert {item["experience_id"] for item in suggestions} <= set(
+        CARECO["master"]["experience_catalog"]
+    )
+    assert suggestions == sorted(suggestions, key=lambda item: item["priority"], reverse=True)

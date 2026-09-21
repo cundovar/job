@@ -8,14 +8,10 @@ from typing import Any, Dict, Iterable, List, Protocol
 
 from openai import OpenAI
 
-from cv_generator.cv_creator import apply_experience_presentation, create_cv_draft
+from cv_generator.cv_creator import build_structural_shell
 from cv_generator.cv_quality_checker import review_cv as review_cv_rules
-from cv_generator.job_analyzer import (
-    _max_experiences,
-    _min_experiences,
-    _period_sort_key,
-    analyze_job_for_cv as analyze_job_rules,
-)
+from cv_generator.cv_truth_validator import ALLOWED_SECTIONS, validate_cv_content
+from cv_generator.job_analyzer import analyze_job_for_cv as analyze_job_rules
 from cv_generator.utils import compact_items, flatten_skills, normalize, period_to_text
 from utils.ai_role_routing import AIRouteStep, legacy_route, load_role_route
 from utils.cli_agent_bridge import CLIAgentBridgeClient
@@ -286,8 +282,9 @@ Lis toute l'annonce et la source de vérité du candidat. Produis un plan d'adap
 Tu peux sélectionner et hiérarchiser, jamais inventer. Les identifiants d'expériences et les
 indices de preuves doivent exister dans source_verite. Conserve les vrais intitulés de poste.
 Le titre cible et le positionnement peuvent être adaptés, sans augmenter le niveau réel.
-La préanalyse Python est une suggestion de départ: tu peux retirer, ajouter ou réordonner tout
-élément sourcé. Tu as la responsabilité finale de la pertinence du plan.
+La préanalyse Python est purement consultative: aucun de ses éléments n'est imposé. Python ne
+réinjectera aucune expérience que tu écartes et n'imposera aucun nombre minimum. Tu as la
+responsabilité entière de la sélection, de l'ordre et du regroupement.
 Les consignes_candidat sont des préférences éditoriales prioritaires, séparées de l'annonce.
 Respecte-les lorsqu'elles sont réalisables avec la source de vérité. Si elles demandent une
 affirmation absente, contradictoire ou interdite, refuse cette partie et ajoute un avertissement.
@@ -313,7 +310,7 @@ JSON attendu:
   ],
   "critical_requirements":[{"requirement":"...","importance":"high"}],
   "evidence_matches":[{"requirement":"...","evidence_id":"id existant","project_ids":["..."]}],
-  "presentation_strategy":{"experience_display_mode":"individual|grouped_missions","experience_group_id":"...","member_ids":["..."]},
+  "presentation_strategy":{"experience_display_mode":"individual|grouped_missions","experience_group_id":"id de experience_groups","member_ids":["ids présents dans experience_plan"]},
   "section_order":["profile","skills","projects","experiences","education"],
   "selected_projects":["id projet existant"],
   "skills_to_emphasize": {"nom_section":["compétence exacte de la source"]},
@@ -352,9 +349,10 @@ CREATOR_PROMPT = """
 Tu es l'agent rédacteur du CV. Rédige un CV ciblé et crédible en français à partir du plan,
 du brouillon structurel et de la source de vérité. Tu peux reformuler une preuve, mais pas
 ajouter de mission, résultat, chiffre, outil, niveau, date ou diplôme absent de la source.
-Tu décides du contenu final: le brouillon Python n'est pas obligatoire. Sélectionne, omets et
-réordonne librement les expériences, compétences, projets et formations selon l'annonce,
-à condition que chaque élément existe dans la source de vérité.
+Tu décides seul du contenu final. Python ne complète rien: une expérience que tu omets restera
+absente, une puce que tu n'écris pas ne sera pas fabriquée, et l'ordre que tu donnes est celui
+qui sera rendu. Sélectionne, omets et réordonne librement expériences, compétences, projets et
+formations, à condition que chaque élément existe dans la source de vérité.
 Applique les consignes_candidat comme préférences éditoriales prioritaires. Elles ne peuvent
 jamais autoriser une expérience, une compétence ou un niveau absent de la source de vérité.
 Présente les expériences retenues dans un ordre antéchronologique cohérent. Utilise
@@ -362,14 +360,17 @@ skills_confidence pour ne jamais présenter des bases ou notions comme une maît
 Pour une annonce large de développement web, conserve une stack projet représentative de
 plusieurs couches pertinentes plutôt qu'une technologie isolée. Ne prétends jamais avoir animé
 des formations en ligne ou à distance sans preuve explicite dans la source de vérité.
-Les intitulés d'expériences ne sont jamais réécrits. Chaque puce doit citer les indices des
-highlights qui la prouvent. Les compétences doivent reprendre exactement un libellé autorisé.
+Les intitulés d'expériences ne sont jamais réécrits. Chaque puce doit citer ses preuves dans
+"sources", au format "experience_id:index_du_highlight" (ou "project_id"). Une puce sans source
+est refusée. Une puce d'un bloc groupé ne peut citer que les missions de son groupe. Les compétences doivent reprendre exactement un libellé autorisé.
 Respecte la presentation_strategy et section_order du plan. Quand grouped_missions est demandé,
-les missions restent sourcées séparément dans ta réponse : le moteur les regroupera sans perdre
-leur provenance. Pour une annonce IA, rends visibles les projets qui prouvent Python, MCP,
+écris directement UN SEUL bloc portant l'identifiant du groupe, avec "source_experience_ids" et
+autant de puces que nécessaire pour conserver les preuves de CHAQUE mission du groupe. Le moteur
+ne regroupe plus à ta place: si tu n'écris qu'une puce, une seule preuve subsistera. Pour une annonce IA, rends visibles les projets qui prouvent Python, MCP,
 l'orchestration et les boucles de contrôle. N'écris pas « profil transférable » et n'utilise pas
 « bases en Python » dans l'accroche : montre le niveau réel par les réalisations disponibles.
-Respecte strictement les limites Canva fournies.
+Respecte strictement les limites Canva fournies: une longueur dépassée est renvoyée en correction,
+elle n'est plus tronquée automatiquement.
 
 JSON attendu:
 {
@@ -377,7 +378,9 @@ JSON attendu:
   "profile":"...",
   "skills":[{"title":"...","items":["libellé exact"]}],
   "experiences":[
-    {"id":"...","bullets":[{"text":"...","source_highlight_indexes":[0]}]}
+    {"id":"experience_id","bullets":[{"text":"...","sources":["experience_id:0"]}]},
+    {"id":"group_id","source_experience_ids":["mission_a","mission_b"],
+     "bullets":[{"text":"...","sources":["mission_a:0"]},{"text":"...","sources":["mission_b:1"]}]}
   ],
   "projects":[{"id":"...","description":"reformulation fidèle","technologies":["sous-ensemble exact"]}],
   "education":["intitulé exact présent dans person.education"]
@@ -397,7 +400,7 @@ Vérifie aussi que les consignes_candidat réalisables ont été respectées. Si
 toute consigne oubliée, mais ne pénalise pas le CV pour une demande impossible ou non sourcée.
 Pour une annonce hybride de formation web et IA, renseigne les cinq piliers de couverture.
 Chaque preuve doit citer uniquement un identifiant d'expérience ou de projet existant dans la
-source. Un pilier manquant doit produire une correction concrète et influencer ton verdict.\nPour chaque exigence critique du plan, vérifie qu'une expérience ou un projet visible apporte\nune preuve. Une technologie demandée mais absente de la source est un écart honnête non réparable :
+source. Un pilier manquant doit produire une correction concrète et influencer ton verdict.\nVérifie que les expériences sont présentées dans un ordre antéchronologique et signale toute\ninversion. Pour chaque exigence critique du plan, vérifie qu'une expérience ou un projet visible\napporte une preuve. Une technologie demandée mais absente de la source est un écart honnête non réparable :
 ne la classe pas en sévérité haute et ne déclenche pas une révision à elle seule. Utilise le code
 SKILL_WITHOUT_EVIDENCE lorsqu'une compétence importante est\naffichée ou demandée sans preuve concrète visible dans le CV.
 
@@ -427,8 +430,8 @@ JSON attendu:
 
 REVISER_PROMPT = """
 Tu es l'agent réviseur final. Applique les corrections du juge sans inventer et sans modifier
-les vrais intitulés d'expérience. Préserve la provenance de chaque puce avec ses indices de
-highlights. N'ajoute que des compétences dont le libellé exact existe dans la source.
+les vrais intitulés d'expérience. Préserve la provenance de chaque puce dans "sources", au format
+"experience_id:index" ou "project_id". Une puce sans source est refusée. N'ajoute que des compétences dont le libellé exact existe dans la source.
 Tu peux ajouter, retirer ou réordonner tout élément sourcé; aucune sélection Python n'est
 obligatoire. Le jugement IA décide de la pertinence, Python ne contrôle que la vérité et le format.
 Applique les consignes_candidat et les corrections du juge ensemble. Si une consigne contredit
@@ -439,9 +442,12 @@ Utilise evidence_coverage du jugement pour combler chaque pilier partiel ou manq
 meilleures preuves disponibles, sans forcer un identifiant particulier. Priorise les corrections
 SKILL_WITHOUT_EVIDENCE : ajoute une preuve sourcée visible ou retire la compétence insuffisamment
 étayée. Préserve presentation_strategy et section_order du plan.
-Respecte les limites Canva. Retourne le même schéma JSON que l'agent rédacteur:
-title, profile, skills, experiences avec bullets {text, source_highlight_indexes}, projects
-avec un sous-ensemble de technologies exactes, et education avec les intitulés exacts à conserver.
+Respecte les limites Canva: un dépassement de longueur est une correction à appliquer, Python ne
+tronque plus. Corrige aussi chaque erreur listée dans controle_python: une erreur de vérité
+interdit la publication, une erreur de format doit disparaître avant l'export.
+Retourne le même schéma JSON que l'agent rédacteur: title, profile, skills, experiences avec
+bullets {text, sources}, un bloc groupé portant source_experience_ids et une puce par mission,
+projects avec un sous-ensemble de technologies exactes, et education avec les intitulés exacts.
 """.strip()
 
 
@@ -581,455 +587,336 @@ def _sanitize_skill_mapping(
     return result
 
 
-def _sanitize_plan(
+def _validate_plan(
     proposed: Dict[str, Any],
     rule_plan: Dict[str, Any],
     master: Dict[str, Any],
     run: AgentResult,
 ) -> Dict[str, Any]:
+    """Conserve le plan de l'agent analyste, en ne vérifiant que sa véracité.
+
+    Python contrôle que chaque identifiant existe dans le profil maître et que
+    chaque indice de preuve est atteignable. Il ne réintroduit aucune
+    expérience écartée, n'impose aucun minimum et ne réordonne rien : une
+    sélection courte est une décision éditoriale, pas un défaut à réparer.
+    """
     variants = {item.get("id"): item for item in master.get("cv_variants", []) if item.get("id")}
     variant_id = str(proposed.get("selected_base_variant") or "")
     if variant_id not in variants:
         variant_id = str(rule_plan.get("selected_base_variant") or next(iter(variants), "webmaster"))
-    selected = variants.get(variant_id, {})
     catalog = master.get("experience_catalog", {})
-    rule_by_id = {item.get("experience_id"): item for item in rule_plan.get("experience_plan", [])}
-    experience_plan: List[Dict[str, Any]] = []
-    seen = set()
+
     raw_experiences = proposed.get("experience_plan")
-    ai_supplied_experience_plan = isinstance(raw_experiences, list)
-    if not ai_supplied_experience_plan:
-        raw_experiences = []
+    if not isinstance(raw_experiences, list) or not raw_experiences:
+        raise CVAgentError(
+            "L'agent analyste n'a proposé aucune expérience. Le plan est un choix "
+            "éditorial : Python ne le fabrique pas à sa place."
+        )
+
+    experience_plan: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    unknown: List[str] = []
     for item in raw_experiences:
         if not isinstance(item, dict):
             continue
-        exp_id = item.get("experience_id")
-        if exp_id not in catalog or exp_id in seen:
+        exp_id = str(item.get("experience_id") or "")
+        if exp_id in seen:
+            continue
+        if exp_id not in catalog:
+            unknown.append(exp_id)
             continue
         highlights = catalog[exp_id].get("highlights", [])
-        indexes = []
-        for index in item.get("highlight_indexes", []):
+        indexes: List[int] = []
+        for index in item.get("highlight_indexes", []) or []:
             if isinstance(index, int) and 0 <= index < len(highlights) and index not in indexes:
                 indexes.append(index)
-        if not indexes:
-            rule_highlights = rule_by_id.get(exp_id, {}).get("highlights", [])
-            indexes = [highlights.index(text) for text in rule_highlights if text in highlights][:3]
-        if not indexes:
-            indexes = list(range(min(3, len(highlights))))
         experience_plan.append(
             {
                 "experience_id": exp_id,
                 "priority": int(item.get("priority") or 0),
-                "selection_role": rule_by_id.get(exp_id, {}).get("selection_role", "core"),
-                "reason": _clip(item.get("reason"), 260, "Expérience pertinente pour l'annonce."),
-                "highlight_indexes": indexes[:3],
-                "highlights": [highlights[index] for index in indexes[:3]],
+                "selection_role": catalog[exp_id].get("cv_role", "core"),
+                "reason": _clip(item.get("reason"), 260, "Expérience retenue par l'agent analyste."),
+                "highlight_indexes": indexes,
+                "highlights": [highlights[index] for index in indexes],
             }
         )
         seen.add(exp_id)
-    if not ai_supplied_experience_plan:
-        for item in rule_plan.get("experience_plan", []):
-            exp_id = item.get("experience_id")
-            if exp_id not in catalog:
-                continue
-            highlights = catalog[exp_id].get("highlights", [])
-            indexes = [highlights.index(text) for text in item.get("highlights", []) if text in highlights][:3]
-            experience_plan.append({**item, "highlight_indexes": indexes})
-            seen.add(exp_id)
+    if not experience_plan:
+        raise CVAgentError(
+            "Aucune expérience proposée par l'agent analyste n'existe dans le profil "
+            f"maître (reçu : {', '.join(unknown) or 'rien'})."
+        )
 
-    # Required experiences are a hard contract from the master profile.
-    # Re-inject them even when the AI proposes its own experience plan.
-    required_ids = master.get("adaptation_rules", {}).get("required_experiences_by_variant", {}).get(variant_id, [])
-    for exp_id in required_ids:
-        if exp_id in seen or exp_id not in catalog:
-            continue
-        rule_item = rule_by_id.get(exp_id, {})
-        highlights = catalog[exp_id].get("highlights", [])
-        indexes = [highlights.index(text) for text in rule_item.get("highlights", []) if text in highlights][:3]
-        if not indexes:
-            indexes = list(range(min(3, len(highlights))))
-        experience_plan.append({
-            "experience_id": exp_id,
-            "priority": int(rule_item.get("priority") or 100),
-            "selection_role": rule_item.get("selection_role", catalog[exp_id].get("cv_role", "core")),
-            "reason": rule_item.get("reason") or "Expérience obligatoire pour cette variante.",
-            "highlight_indexes": indexes,
-            "highlights": [highlights[index] for index in indexes],
-        })
-        seen.add(exp_id)
-
-    max_experiences = _max_experiences(master, variant_id)
-    # Keep all mandatory experiences within the slot limit, then fill remaining
-    # slots with the AI-selected experiences. Presentation order is handled later.
-    required_set = set(required_ids)
-    mandatory = [item for item in experience_plan if item.get("experience_id") in required_set]
-    optional = [item for item in experience_plan if item.get("experience_id") not in required_set]
-    experience_plan = (mandatory + optional)[:max_experiences]
-
-    # The AI may propose a thin selection. Re-fill from the deterministic plan so
-    # the CV always shows the minimum number of experiences.
-    seen = {item.get("experience_id") for item in experience_plan}
-    for item in rule_plan.get("experience_plan", []):
-        if len(experience_plan) >= _min_experiences(master, variant_id):
-            break
-        exp_id = item.get("experience_id")
-        if exp_id in seen or exp_id not in catalog:
-            continue
-        highlights = catalog[exp_id].get("highlights", [])
-        indexes = [highlights.index(text) for text in item.get("highlights", []) if text in highlights][:3]
-        experience_plan.append({**item, "highlight_indexes": indexes})
-        seen.add(exp_id)
-
-    presentation_strategy = {"experience_display_mode": "individual"}
-    final_ids = [item.get("experience_id") for item in experience_plan]
-    for group_id, group in master.get("experience_groups", {}).items():
-        if variant_id not in group.get("allowed_variants", []):
-            continue
-        member_ids = [item for item in final_ids if item in group.get("member_ids", [])]
-        for alternatives in group.get("mutually_exclusive_sets", []):
-            present = [item for item in member_ids if item in alternatives]
-            member_ids = [item for item in member_ids if item not in alternatives] + present[:1]
-        if len(member_ids) >= int(group.get("min_selected_members", 2)):
-            presentation_strategy = {
-                "experience_display_mode": group.get("display_mode", "grouped_missions"),
-                "experience_group_id": group_id,
-                "member_ids": member_ids,
-            }
-            break
+    presentation_strategy = _validate_presentation_strategy(
+        proposed.get("presentation_strategy"), variant_id, seen, master
+    )
 
     raw_skills = proposed.get("skills_to_emphasize")
-    if isinstance(raw_skills, dict):
-        skills = _sanitize_skill_mapping(raw_skills, master, variant_id)
-    else:
-        skills = _sanitize_skill_mapping(selected.get("skills", {}), master, variant_id)
-    title_default = (
-        master.get("positioning", {}).get("title_variants", {}).get(variant_id)
-        or selected.get("title")
-        or rule_plan.get("target_title")
-        or "Développeur web / Webmaster"
-    )
-    profile_default = (
-        master.get("positioning", {}).get("summary_variants", {}).get(variant_id)
-        or selected.get("profile")
-        or rule_plan.get("positioning")
-        or ""
-    )
+    skills = _sanitize_skill_mapping(raw_skills, master, variant_id) if isinstance(raw_skills, dict) else {}
+
+    section_order = [
+        str(section)
+        for section in (proposed.get("section_order") or [])
+        if str(section) in ALLOWED_SECTIONS
+    ]
+    if not section_order:
+        section_order = rule_plan.get(
+            "suggested_section_order", ["profile", "skills", "experiences", "projects", "education"]
+        )
+
+    project_catalog = master.get("project_catalog", {})
+    selected_projects = [
+        project_id
+        for project_id in _as_string_list(proposed.get("selected_projects"), limit=4)
+        if project_id in project_catalog
+    ]
+
+    critical_requirements = [
+        {
+            "requirement": _clip(item.get("requirement"), 120),
+            "importance": str(item.get("importance") or "high"),
+        }
+        for item in (proposed.get("critical_requirements") or [])
+        if isinstance(item, dict) and _clip(item.get("requirement"), 120)
+    ] or rule_plan.get("critical_requirements", [])
+
     return {
         "agent": "cv_job_analyzer_ai",
         "agent_run": _agent_run(run),
         "selected_base_variant": variant_id,
-        "target_title": _clip(proposed.get("target_title"), 90, str(title_default)),
+        "target_title": _clip(proposed.get("target_title"), 90),
         "positioning": _clip(
             proposed.get("positioning"),
             int(master.get("layout_constraints", {}).get("max_profile_chars", 240)),
-            str(profile_default),
         ),
         "priority_keywords": _as_string_list(
             proposed.get("priority_keywords") or rule_plan.get("priority_keywords"),
             limit=14,
         ),
         "experience_plan": experience_plan,
-        "critical_requirements": rule_plan.get("critical_requirements", []),
+        "critical_requirements": critical_requirements,
+        # Index déterministe du catalogue de preuves : une entrée de contrôle
+        # pour le juge, jamais une sélection éditoriale imposée au rédacteur.
         "evidence_matches": rule_plan.get("evidence_matches", []),
         "presentation_strategy": presentation_strategy,
-        "section_order": rule_plan.get("section_order", ["profile", "skills", "experiences", "projects", "education"]),
-        "selected_projects": rule_plan.get("selected_projects", []),
+        "section_order": section_order,
+        "selected_projects": selected_projects,
         "skills_to_emphasize": skills,
         "skills_to_reduce": _as_string_list(proposed.get("skills_to_reduce"), limit=8),
         "warnings": _as_string_list(proposed.get("warnings"), limit=8),
+        "unknown_experience_ids": unknown,
     }
 
 
-def _remove_forbidden(text: str, forbidden: Iterable[Any]) -> str:
-    result = text
-    for claim in forbidden:
-        claim_text = str(claim or "").strip()
-        if claim_text:
-            result = re.sub(re.escape(claim_text), "", result, flags=re.IGNORECASE)
-    return re.sub(r"\s+", " ", result).strip(" ,;:-")
-
-
-def _sanitize_skill_sections(
-    value: Any,
-    base_cv: Dict[str, Any],
+def _validate_presentation_strategy(
+    proposed: Any,
+    variant_id: str,
+    planned_ids: Iterable[str],
     master: Dict[str, Any],
-    variant_id: str = "",
-) -> List[Dict[str, Any]]:
-    mapping: Dict[str, List[str]] = {}
-    if isinstance(value, list):
-        for section in value:
-            if isinstance(section, dict):
-                mapping[str(section.get("title") or "Compétences")] = section.get("items", [])
-    if isinstance(value, list):
-        sanitized = _sanitize_skill_mapping(mapping, master, variant_id)
-    else:
-        sanitized = {
-            str(section.get("title") or "Compétences"): section.get("items", [])
-            for section in base_cv.get("skills", [])
-            if isinstance(section, dict)
-        }
-    sanitized = _sanitize_skill_mapping(sanitized, master, variant_id)
-    return [{"title": title, "items": items} for title, items in sanitized.items()]
+) -> Dict[str, Any]:
+    """Accepte le regroupement demandé par l'agent s'il est déclaré et cohérent.
 
-
-def _sanitize_education(
-    value: Any,
-    base_cv: Dict[str, Any],
-    master: Dict[str, Any],
-) -> List[Dict[str, Any]]:
-    education = master.get("person", {}).get("education", [])
-    catalog = {
-        normalize(item.get("title")): item
-        for item in education
-        if isinstance(item, dict) and normalize(item.get("title"))
+    Python ne décide plus de grouper : il refuse un groupe impossible et laisse
+    l'agent seul juge de l'opportunité de le faire.
+    """
+    if not isinstance(proposed, dict):
+        return {"experience_display_mode": "individual"}
+    if str(proposed.get("experience_display_mode") or "individual") != "grouped_missions":
+        return {"experience_display_mode": "individual"}
+    group_id = str(proposed.get("experience_group_id") or "")
+    group = master.get("experience_groups", {}).get(group_id)
+    if not isinstance(group, dict) or variant_id not in group.get("allowed_variants", []):
+        return {"experience_display_mode": "individual"}
+    declared = set(group.get("member_ids", []))
+    requested = [
+        str(item)
+        for item in (proposed.get("member_ids") or [])
+        if str(item) in declared and str(item) in set(planned_ids)
+    ]
+    if len(requested) < int(group.get("min_selected_members", 2)):
+        return {"experience_display_mode": "individual"}
+    return {
+        "experience_display_mode": group.get("display_mode", "grouped_missions"),
+        "experience_group_id": group_id,
+        "member_ids": requested,
     }
-    max_items = int(master.get("layout_constraints", {}).get("max_education_items", 4))
-    requested_titles: List[str] = []
-    if isinstance(value, list):
-        for item in value:
-            title = item.get("title") if isinstance(item, dict) else item
-            key = normalize(title)
-            if key in catalog and key not in requested_titles:
-                requested_titles.append(key)
-
-    if isinstance(value, list):
-        requested = [catalog[key] for key in requested_titles]
-    else:
-        requested = [
-            item
-            for item in base_cv.get("education", [])
-            if isinstance(item, dict) and normalize(item.get("title")) in catalog
-        ]
-
-    return requested[:max_items]
 
 
-def _source_indexes(value: Any, max_index: int) -> List[int]:
-    if isinstance(value, int):
-        value = [value]
-    if not isinstance(value, list):
-        return []
-    result = []
-    for index in value:
-        if isinstance(index, int) and 0 <= index < max_index and index not in result:
-            result.append(index)
-    return result
-
-
-def _sanitize_cv_content(
+def _assemble_cv_content(
     proposed: Dict[str, Any],
     job: Dict[str, Any],
     master: Dict[str, Any],
     plan: Dict[str, Any],
-    base_draft: Dict[str, Any],
     run: AgentResult,
     agent_name: str,
 ) -> Dict[str, Any]:
-    base_cv = base_draft.get("cv", {})
-    constraints = master.get("layout_constraints", {})
-    forbidden = master.get("forbidden_claims", [])
-    catalog = master.get("experience_catalog", {})
-    plan_by_id = {item.get("experience_id"): item for item in plan.get("experience_plan", [])}
-    raw_experiences = proposed.get("experiences")
-    if not isinstance(raw_experiences, list):
-        raw_experiences = base_cv.get("experiences", [])
-    proposed_experience_items = [
-        item
-        for item in raw_experiences
-        if isinstance(item, dict) and item.get("id") in catalog
-    ]
-    proposed_experiences = {
-        item.get("id"): item
-        for item in proposed_experience_items
-    }
-    ordered_plan_items = []
-    ordered_ids = set()
-    for item in proposed_experience_items:
-        exp_id = item["id"]
-        if exp_id not in ordered_ids:
-            ordered_plan_items.append(
-                plan_by_id.get(exp_id, {
-                    "experience_id": exp_id,
-                    "selection_role": catalog[exp_id].get("cv_role", "core"),
-                    "highlight_indexes": list(range(len(catalog[exp_id].get("highlights", [])))),
-                })
-            )
-            ordered_ids.add(exp_id)
+    """Assemble le CV rendu à partir du seul contenu écrit par l'agent.
 
-    # The final AI draft/revision may omit planned experiences. The trusted plan
-    # is authoritative, so append every planned experience that the AI dropped.
-    for plan_item in plan.get("experience_plan", []):
-        exp_id = plan_item.get("experience_id")
-        if exp_id in catalog and exp_id not in ordered_ids:
-            ordered_plan_items.append(plan_item)
-            ordered_ids.add(exp_id)
+    Python recopie ce qui appartient à la source de vérité — intitulés,
+    organisations, périodes, liens — et n'ajoute rien d'autre. La sélection,
+    l'ordre, le regroupement et le texte restent ceux de l'agent. Ce qui ne
+    tient pas le contrat devient une erreur rendue au réviseur, pas une
+    correction silencieuse.
+    """
+    constraints = master.get("layout_constraints", {})
+    catalog = master.get("experience_catalog", {})
+    groups = master.get("experience_groups", {})
+
+    raw_experiences = proposed.get("experiences")
+    if not isinstance(raw_experiences, list) or not raw_experiences:
+        raise CVAgentError(
+            f"L'agent {agent_name} n'a retourné aucune expérience. La sélection est "
+            "un choix éditorial : Python n'en fabrique pas."
+        )
+
     experiences: List[Dict[str, Any]] = []
     grounding: List[Dict[str, Any]] = []
-    max_bullets = int(constraints.get("max_bullets_per_experience", 3))
-    max_chars = int(constraints.get("max_bullet_chars", 145))
-    for plan_item in ordered_plan_items:
-        exp_id = plan_item.get("experience_id")
-        source = catalog.get(exp_id)
-        proposed_exp = proposed_experiences.get(exp_id)
-        if not source:
-            continue
-        highlights = source.get("highlights", [])
-        # The plan is editorial guidance, not a whitelist. Provenance is safe
-        # as long as the cited highlight exists in the master catalogue.
-        allowed_indexes = set(range(len(highlights)))
-        bullets: List[str] = []
-        bullet_sources: List[List[str]] = []
-        raw_bullets = proposed_exp.get("bullets") if proposed_exp else None
-        for bullet in raw_bullets if isinstance(raw_bullets, list) else []:
-            if not isinstance(bullet, dict):
-                continue
-            indexes = _source_indexes(
-                bullet.get("source_highlight_indexes", bullet.get("source_highlight_index")),
-                len(highlights),
-            )
-            indexes = [index for index in indexes if index in allowed_indexes]
-            if not indexes:
-                continue
-            text = _remove_forbidden(_clip(bullet.get("text"), max_chars), forbidden)
-            if not text or normalize(text) in {normalize(existing) for existing in bullets}:
-                continue
-            bullets.append(text)
-            bullet_sources.append([f"{exp_id}:{index}" for index in indexes])
-            grounding.append(
-                {
-                    "experience_id": exp_id,
-                    "bullet": text,
-                    "source_highlight_indexes": indexes,
-                    "source_highlights": [highlights[index] for index in indexes],
-                }
-            )
-            if len(bullets) >= max_bullets:
-                break
-        if not bullets:
-            fallback_indexes = sorted(allowed_indexes)[:max_bullets]
-            for index in fallback_indexes:
-                text = _remove_forbidden(_clip(highlights[index], max_chars), forbidden)
-                if not text:
-                    continue
-                bullets.append(text)
-                bullet_sources.append([f"{exp_id}:{index}"])
-                grounding.append(
-                    {
-                        "experience_id": exp_id,
-                        "bullet": text,
-                        "source_highlight_indexes": [index],
-                        "source_highlights": [highlights[index]],
-                    }
-                )
-        if bullets:
-            experiences.append(
-                {
-                    "id": exp_id,
-                    "selection_role": plan_item.get("selection_role", "core"),
-                    "organization": source.get("organization", ""),
-                    "title": source.get("title", ""),
-                    "period": period_to_text(source.get("period")),
-                    "bullets": bullets,
-                    "bullet_sources": bullet_sources,
-                    "links": source.get("links", [])[:2],
-                }
-            )
-
-    # The AI may return experiences in a relevance-driven order. The rendered CV
-    # must always be reverse chronological, based on the trusted master periods.
-    experiences.sort(
-        key=lambda item: _period_sort_key(catalog.get(item.get("id"), {}).get("period")),
-        reverse=True,
-    )
-    experiences = apply_experience_presentation(experiences, plan, master)
-    projects: List[Dict[str, Any]] = []
-    raw_projects = proposed.get("projects")
-    if not isinstance(raw_projects, list):
-        raw_projects = base_cv.get("projects", [])
-    else:
-        raw_projects = list(raw_projects)
-
-    # Required projects from the master survive AI drafting/revision.
-    variant_id = str(plan.get("selected_base_variant") or "")
-    required_project_ids = list(dict.fromkeys([
-        *master.get("adaptation_rules", {}).get("required_projects_by_variant", {}).get(variant_id, []),
-        *plan.get("selected_projects", []),
-    ]))
-    present_project_ids = {item.get("id") for item in raw_projects if isinstance(item, dict)}
-    required_project_items = []
-    for project_id in required_project_ids:
-        if project_id in master.get("project_catalog", {}):
-            existing = next((item for item in raw_projects if isinstance(item, dict) and item.get("id") == project_id), None)
-            required_project_items.append(existing or {"id": project_id})
-            present_project_ids.add(project_id)
-    optional_project_items = [
-        item for item in raw_projects
-        if not (isinstance(item, dict) and item.get("id") in set(required_project_ids))
-    ]
-    raw_projects = required_project_items + optional_project_items
-
-    for item in raw_projects:
+    for item in raw_experiences:
         if not isinstance(item, dict):
             continue
-        project_id = item.get("id")
-        source = master.get("project_catalog", {}).get(project_id)
-        if not source:
+        exp_id = str(item.get("id") or "")
+        member_ids = [
+            str(member)
+            for member in (item.get("source_experience_ids") or [])
+            if isinstance(member, (str, int))
+        ]
+        source = catalog.get(exp_id)
+        group = groups.get(exp_id)
+        if source is None and group is None:
+            # L'identifiant est refusé, pas remplacé : le validateur le signalera.
+            experiences.append({"id": exp_id, "bullets": [], "bullet_sources": []})
             continue
+
+        bullets: List[str] = []
+        bullet_sources: List[List[str]] = []
+        for raw_bullet in item.get("bullets", []) or []:
+            if isinstance(raw_bullet, dict):
+                text = re.sub(r"\s+", " ", str(raw_bullet.get("text") or "")).strip()
+                sources = raw_bullet.get("sources")
+                if isinstance(sources, str):
+                    sources = [sources]
+                if not isinstance(sources, list):
+                    legacy = raw_bullet.get(
+                        "source_highlight_indexes", raw_bullet.get("source_highlight_index")
+                    )
+                    if isinstance(legacy, int):
+                        legacy = [legacy]
+                    sources = (
+                        [f"{exp_id}:{index}" for index in legacy if isinstance(index, int)]
+                        if isinstance(legacy, list)
+                        else []
+                    )
+            else:
+                text = re.sub(r"\s+", " ", str(raw_bullet or "")).strip()
+                sources = []
+            if not text:
+                continue
+            bullets.append(text)
+            bullet_sources.append([str(reference).strip() for reference in sources])
+            grounding.append(
+                {"experience_id": exp_id, "bullet": text, "sources": bullet_sources[-1]}
+            )
+
+        if group is not None:
+            organizations = [
+                str(catalog[member].get("organization") or "")
+                for member in member_ids
+                if member in catalog
+            ]
+            links: List[str] = []
+            for member in member_ids:
+                for link in catalog.get(member, {}).get("links", []):
+                    if link not in links:
+                        links.append(link)
+            entry = {
+                "id": exp_id,
+                "source_experience_ids": member_ids,
+                "selection_role": "core",
+                "organization": " · ".join(
+                    organization for organization in dict.fromkeys(organizations) if organization
+                ),
+                "title": group.get("title", "Missions et projets professionnels"),
+                "period": period_to_text(group.get("period")),
+                "bullets": bullets,
+                "bullet_sources": bullet_sources,
+                "links": links[:2],
+            }
+        else:
+            entry = {
+                "id": exp_id,
+                "selection_role": source.get("cv_role", "core"),
+                "organization": source.get("organization", ""),
+                "title": source.get("title", ""),
+                "period": period_to_text(source.get("period")),
+                "bullets": bullets,
+                "bullet_sources": bullet_sources,
+                "links": source.get("links", [])[:2],
+            }
+        experiences.append(entry)
+
+    projects: List[Dict[str, Any]] = []
+    for item in proposed.get("projects") or []:
+        if not isinstance(item, dict):
+            continue
+        project_id = str(item.get("id") or "")
+        source = master.get("project_catalog", {}).get(project_id)
+        if source is None:
+            projects.append({"id": project_id, "title": "", "description": "", "technologies": []})
+            continue
+        requested = item.get("technologies")
         projects.append(
             {
                 "id": project_id,
                 "title": source.get("title", ""),
                 "year": source.get("year"),
-                "description": _remove_forbidden(
-                    _clip(item.get("description"), 300, str(source.get("description", ""))),
-                    forbidden,
-                ),
+                "description": re.sub(
+                    r"\s+", " ", str(item.get("description") or source.get("description", ""))
+                ).strip(),
                 "technologies": (
-                    [
-                        technology
-                        for technology in source.get("technologies", [])
-                        if normalize(technology) in {
-                            normalize(requested)
-                            for requested in item.get("technologies", [])
-                        }
-                    ]
-                    if isinstance(item.get("technologies"), list)
+                    [str(technology) for technology in requested]
+                    if isinstance(requested, list)
                     else source.get("technologies", [])
                 ),
                 "links": source.get("links", [])[:2],
             }
         )
-        if len(projects) >= int(constraints.get("max_projects", 1)):
-            break
-    profile = _remove_forbidden(
-        _clip(
-            proposed.get("profile"),
-            int(constraints.get("max_profile_chars", 240)),
-            str(base_cv.get("profile", "")),
-        ),
-        forbidden,
-    )
+
+    education_catalog = {
+        normalize(entry.get("title")): entry
+        for entry in master.get("person", {}).get("education", [])
+        if isinstance(entry, dict) and normalize(entry.get("title"))
+    }
+    education: List[Dict[str, Any]] = []
+    for item in proposed.get("education") or []:
+        title = item.get("title") if isinstance(item, dict) else item
+        entry = education_catalog.get(normalize(title))
+        education.append(entry if entry is not None else {"title": str(title)})
+
+    person = master.get("person", {})
+    variant_id = str(plan.get("selected_base_variant") or "")
     cv = {
-        "title": _remove_forbidden(
-            _clip(proposed.get("title"), 90, str(base_cv.get("title", ""))),
-            forbidden,
+        "title": re.sub(r"\s+", " ", str(proposed.get("title") or "")).strip(),
+        "profile": re.sub(r"\s+", " ", str(proposed.get("profile") or "")).strip(),
+        "section_order": plan.get(
+            "section_order", ["profile", "skills", "experiences", "projects", "education"]
         ),
-        "profile": profile,
-        "section_order": base_cv.get("section_order", plan.get("section_order", ["skills", "experiences", "projects", "education"])),
-        "contact": base_cv.get("contact", {}),
-        "location": base_cv.get("location", ""),
-        "skills": _sanitize_skill_sections(
-            proposed.get("skills"),
-            base_cv,
-            master,
-            str(plan.get("selected_base_variant") or ""),
-        ),
+        "contact": build_structural_shell(master, variant_id)["contact"],
+        "location": person.get("location", ""),
+        "skills": [
+            {
+                "title": _clip(section.get("title"), 60, "Compétences"),
+                "items": [str(entry) for entry in section.get("items", []) or []],
+            }
+            for section in (proposed.get("skills") or [])
+            if isinstance(section, dict)
+        ],
         "experiences": experiences,
         "projects": projects,
-        "education": _sanitize_education(proposed.get("education"), base_cv, master),
-        "languages": base_cv.get("languages", []),
+        "education": education,
+        "languages": person.get("languages", []),
     }
-    return {
+
+    content = {
         "agent": agent_name,
         "agent_run": _agent_run(run),
         "generated_for": {
@@ -1040,14 +927,14 @@ def _sanitize_cv_content(
         "base_variant": plan.get("selected_base_variant"),
         "cv": cv,
         "grounding": {"experience_bullets": grounding},
-        "canva_copy_blocks": {
-            "title": cv["title"],
-            "profile": cv["profile"],
-            "skills": cv["skills"],
-            "experiences": cv["experiences"],
-            "projects": cv["projects"],
-        },
     }
+    validation = validate_cv_content(content, master, plan)
+    content["python_validation"] = {
+        "ok": validation["ok"],
+        "truthful": validation["truthful"],
+        "issues": validation["issues"],
+    }
+    return content
 
 
 def _normalize_problems(value: Any) -> List[Dict[str, str]]:
@@ -1127,6 +1014,9 @@ def _merge_review(
     master: Dict[str, Any],
 ) -> Dict[str, Any]:
     problems = _normalize_problems(proposed.get("problems"))
+    # Ce que le juge IA a lui-même relevé, avant fusion avec les signalements
+    # Python : c'est sur cette seule liste qu'on contrôle la cohérence du verdict.
+    ai_reported_high = any(item.get("severity") == "high" for item in problems)
     known = {(item["section"], item["problem"]) for item in problems}
     technical_sections = {"truthfulness", "header", "profile", "skills", "experiences", "evidence"}
     technical_problems = [
@@ -1152,11 +1042,18 @@ def _merge_review(
     status = str(proposed.get("status") or "").strip().lower()
     if status not in {"validated", "needs_minor_revision", "needs_revision"}:
         status = "needs_revision" if problems else "validated"
-    # Python may block a structurally inconsistent verdict or a hard factual
-    # or layout failure, but it never decides whether a skill is relevant.
-    if forbidden or any(item.get("severity") == "high" for item in problems):
+    # Python impose une révision sur une erreur de vérité, jamais sur un
+    # jugement de pertinence : une compétence insuffisamment prouvée est un
+    # signalement remis au juge IA, pas un veto déterministe.
+    if deterministic.get("truth_blocking") or forbidden:
         status = "needs_revision"
-    elif problems and status == "validated":
+    elif ai_reported_high:
+        # Un juge qui signale un problème grave et conclut « validated » se
+        # contredit : Python refuse le verdict, pas la pertinence.
+        status = "needs_revision"
+    elif deterministic.get("format_issues") and status == "validated":
+        # Un dépassement de gabarit interdit l'export : il justifie une passe de
+        # correction, à la différence d'un simple signalement de pertinence.
         status = "needs_minor_revision"
     return {
         "agent": "cv_quality_checker_ai",
@@ -1200,7 +1097,7 @@ class AICVPipeline:
                 "preanalyse_python": rule_plan,
             },
         )
-        return _sanitize_plan(result.data, rule_plan, master, result)
+        return _validate_plan(result.data, rule_plan, master, result)
 
     def create(
         self,
@@ -1208,7 +1105,6 @@ class AICVPipeline:
         master: Dict[str, Any],
         plan: Dict[str, Any],
     ) -> Dict[str, Any]:
-        base = create_cv_draft(job, master, plan)
         result = _agent_call(
             self.client,
             "cv_creator",
@@ -1218,15 +1114,18 @@ class AICVPipeline:
                 "consignes_candidat": _candidate_instructions(job),
                 "source_verite": _truth_context(master, "creator"),
                 "plan_adaptation": plan,
-                "brouillon_structurel_python": base,
+                # Le squelette ne porte que ce qui n'est pas éditorial : contact,
+                # localisation, langues et contraintes de gabarit.
+                "squelette_structurel": build_structural_shell(
+                    master, str(plan.get("selected_base_variant") or "")
+                ),
             },
         )
-        return _sanitize_cv_content(
+        return _assemble_cv_content(
             result.data,
             job,
             master,
             plan,
-            base,
             result,
             "cv_creator_ai",
         )
@@ -1275,12 +1174,11 @@ class AICVPipeline:
                 "jugement": review,
             },
         )
-        final = _sanitize_cv_content(
+        final = _assemble_cv_content(
             result.data,
             job,
             master,
             plan,
-            draft,
             result,
             "cv_style_reviser_ai",
         )
