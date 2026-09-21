@@ -64,9 +64,13 @@ front/ server/   interface de validation (Vite/React + Express)
 
 ## Chemins et ports
 
-- La racine du dépôt est **déduite du fichier** (`Path(__file__).parent…`),
-  jamais écrite en dur. Des chemins absolus vers `~/apps/job-search-automation-package`
-  — qui n'existe sur aucune machine — ont fait travailler des scripts dans le vide.
+- **Le dépôt n'est pas au même endroit selon la machine** : `~/apps/job-search-automation-package`
+  sur le VPS, `~/Bureau/perso/code_perso/job-search-automation-package` sur le poste
+  de travail. Un chemin absolu codé en dur marche donc sur l'une et écrit dans le
+  vide sur l'autre — c'est ce qui rendait la prospection muette en local. Toute
+  racine se déduit du fichier (`Path(__file__).parent…`). Seule exception assumée :
+  `deploy/job-search-cli-bridge.service`, unité systemd du VPS, dont l'`ExecStart`
+  porte le chemin VPS et doit être adapté à l'installation.
 - Le port du serveur Node vient de `PORT` dans l'environnement puis dans le
   `.env` racine. `server/config.js` et `hermes_mcp_server.py` lisent la **même**
   source : ne pas recoder un port en dur d'un seul côté.

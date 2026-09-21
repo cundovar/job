@@ -34,8 +34,9 @@ def load_v2():
 def test_prospecting_writes_only_inside_the_repository():
     """Régression : les chemins absolus visaient ~/apps/job-search-automation-package.
 
-    Ce dossier n'existe sur aucune machine du projet. Le script tournait, ne
-    plantait pas, et n'écrivait nulle part de visible.
+    C'est le clone du VPS, absent du poste de travail. Le script y tournait, ne
+    plantait pas, et n'écrivait nulle part de visible. Un chemin déduit du
+    fichier vaut sur les deux machines.
     """
     v2 = load_v2()
 

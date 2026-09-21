@@ -27,9 +27,9 @@ from urllib.parse import quote_plus, unquote, urljoin, urlparse
 from urllib.request import Request, urlopen
 
 # Racine déduite du fichier, jamais codée en dur : les chemins absolus précédents
-# pointaient vers ~/apps/job-search-automation-package, qui n'existe pas. Le script
-# tournait donc en écrivant dans le vide, et le cache du dépôt restait désespérément
-# vide. Même convention que server/config.js (PROJECT_ROOT = resolve(__dirname, '..')).
+# pointaient vers ~/apps/job-search-automation-package : c'est le clone du VPS, absent
+# du poste de travail. Le script y tournait donc en écrivant dans le vide, et le cache
+# du dépôt restait vide. Même convention que server/config.js (resolve(__dirname, '..')).
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / 'data'
 FRONT_DIR = ROOT / 'front/public/data/agencies'

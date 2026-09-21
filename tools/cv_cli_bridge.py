@@ -25,8 +25,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 # Racine déduite du fichier. Les défauts codés en dur pointaient vers
-# ~/apps/job-search-automation-package, qui n'existe pas : le bridge cherchait son
-# jeton et son socket hors du dépôt et échouait au démarrage.
+# ~/apps/job-search-automation-package, le clone du VPS : lancé depuis un autre clone,
+# le bridge cherchait son jeton et son socket hors du dépôt et échouait au démarrage.
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 

@@ -12,10 +12,10 @@ Environment=CV_CLI_BRIDGE_PROVIDER_ORDER=codex,claude
 Environment=CV_CLI_BRIDGE_TIMEOUT_SECONDS=300
 Environment=CV_CLI_BRIDGE_REQUEST_TIMEOUT_SECONDS=10
 Environment=CV_CLI_BRIDGE_MAX_CONNECTIONS=8
-# Seul chemin à adapter à l'installation : le socket et le jeton sont déduits de
-# celui-ci par tools/cv_cli_bridge.py (ROOT = parent de tools/). Le chemin précédent,
-# %h/apps/job-search-automation-package, ne correspondait à aucun clone existant.
-ExecStart=/usr/bin/python3 %h/Bureau/perso/code_perso/job-search-automation-package/tools/cv_cli_bridge.py
+# Chemin du clone sur le VPS, où ce service tourne. Sur le poste de travail le
+# dépôt vit ailleurs : c'est la seule ligne à adapter, car tools/cv_cli_bridge.py
+# déduit le socket et le jeton de son propre emplacement (ROOT = parent de tools/).
+ExecStart=/usr/bin/python3 %h/apps/job-search-automation-package/tools/cv_cli_bridge.py
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
