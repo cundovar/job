@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -83,6 +84,65 @@ def test_address_how_says_how_the_position_was_obtained(address_source, expected
     v2 = load_v2()
 
     assert v2.address_how({"address_source": address_source}) == expected
+
+
+def test_postal_code_is_extracted_only_from_a_real_address():
+    v2 = load_v2()
+
+    assert v2.postal_code_from_address("401 rue des Pyrénées 75020") == "75020"
+    assert v2.postal_code_from_address("Paris 20e") is None
+    assert v2.postal_code_from_address(None) is None
+
+
+def test_curated_csv_is_merged_without_losing_crawl_data(tmp_path):
+    v2 = load_v2()
+    csv_path = tmp_path / "companies.csv"
+    csv_path.write_text(
+        "nom,site,ville,type,statut,poste_vise,adresse,code_postal\n"
+        "Agence Test,https://example.test,Paris 75020,agence_web,prioritaire,,1 rue Test 75020,75020\n"
+        "Sans site,,Paris 75020,agence_web,a_qualifier,,2 rue Test 75020,75020\n"
+        "Ecartee,https://excluded.test,Paris 75020,agence_web,ecartee,,3 rue Test 75020,75020\n",
+        encoding="utf-8",
+    )
+    crawled = [{
+        "name": "Nom crawl",
+        "website": "https://example.test/",
+        "score": 80,
+        "sources": ["moteur"],
+        "address": None,
+    }]
+
+    merged = v2.merge_curated_agencies(crawled, "paris-20", csv_path)
+
+    by_name = {agency["name"]: agency for agency in merged}
+    assert by_name["Nom crawl"]["score"] == 80
+    assert by_name["Nom crawl"]["address"] == "1 rue Test 75020"
+    assert by_name["Nom crawl"]["postal_code"] == "75020"
+    assert "config/companies.csv" in by_name["Nom crawl"]["sources"]
+    assert by_name["Sans site"]["website"] is None
+    assert "Ecartee" not in by_name
+
+
+def test_manual_address_survives_a_geocoding_failure(monkeypatch):
+    v2 = load_v2()
+    monkeypatch.setattr(v2, "geocode", lambda _query: (None, None, ""))
+    monkeypatch.setattr(v2, "geocode_ban", lambda _query: (None, None, ""))
+    agencies = [{
+        "name": "Agence Test",
+        "website": "https://example.test",
+        "address": "1 rue Test",
+        "postal_code": "75020",
+        "address_source": "relevé à la main (config/companies.csv)",
+        "snippet": "401 rue des Pyrénées 75020",
+        "page_texts": [],
+    }]
+
+    v2.enrich_with_distances(agencies)
+
+    assert agencies[0]["address"] == "1 rue Test"
+    assert agencies[0]["postal_code"] == "75020"
+    assert agencies[0]["address_source"] == "relevé à la main (config/companies.csv)"
+    assert agencies[0]["distance_m"] is None
 
 
 def test_published_agencies_never_carry_a_postal_code_without_an_address():
@@ -163,3 +223,42 @@ def test_every_mcp_tool_says_whether_it_is_about_ads_or_companies():
     ]
 
     assert vague == [], f"Outils sans domaine annoncé : {vague}"
+
+
+def test_company_prepare_does_not_generate_a_cv_by_default(monkeypatch):
+    import hermes_mcp_server
+
+    monkeypatch.setattr(hermes_mcp_server, "load_cached_companies", lambda: [{"opportunity": {}}])
+    captured = {}
+
+    def fake_prepare(number, results, with_cv):
+        captured.update(number=number, results=results, with_cv=with_cv)
+        return {"company": "Test", "files": {}}
+
+    monkeypatch.setattr(hermes_mcp_server, "prepare_numbered_application", fake_prepare)
+    monkeypatch.setattr(hermes_mcp_server, "format_preparation", lambda payload: payload["company"])
+
+    assert hermes_mcp_server.company_prepare({}) == "Test"
+    assert captured["with_cv"] is False
+
+
+def test_search_task_deduplication_includes_zone_and_radius():
+    script = """
+      import { sameProspectingRequest } from './server/services/agenciesService.js';
+      const task = { zone: 'paris-20', radius_m: 2000 };
+      const result = [
+        sameProspectingRequest(task, { zone: 'paris-20', radiusM: 2000 }),
+        sameProspectingRequest(task, { zone: 'ile-de-france', radiusM: 2000 }),
+        sameProspectingRequest(task, { zone: 'paris-20', radiusM: 3000 }),
+      ];
+      console.log(JSON.stringify(result));
+    """
+    completed = subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        cwd=PROJECT_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert json.loads(completed.stdout) == [True, False, False]

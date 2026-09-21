@@ -373,6 +373,12 @@ const PROSPECTING_TIMEOUT = Number.parseInt(
 
 const ZONE_PATTERN = /^[a-z0-9-]{1,40}$/;
 
+function sameProspectingRequest(task, { zone, radiusM }) {
+  const requestedRadius = radiusM == null ? null : Number(radiusM);
+  const taskRadius = task?.radius_m == null ? null : Number(task.radius_m);
+  return task?.zone === zone && taskRadius === requestedRadius;
+}
+
 async function runProspecting({ zone = 'ile-de-france', radiusM = null } = {}) {
   if (!ZONE_PATTERN.test(zone)) {
     throw new Error(`Zone invalide : ${zone}`);
@@ -408,5 +414,6 @@ export {
   parseCompanyTopOutput,
   measureAgency,
   prepareAgency,
-  runProspecting
+  runProspecting,
+  sameProspectingRequest
 };

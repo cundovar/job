@@ -12,6 +12,7 @@ Pipeline:
 from __future__ import annotations
 
 import html
+import csv
 import json
 import math
 import re
@@ -34,6 +35,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / 'data'
 FRONT_DIR = ROOT / 'front/public/data/agencies'
 DEFAULT_OUT_DIR = ROOT / 'output' / 'agencies'
+COMPANIES_CSV = ROOT / 'config' / 'companies.csv'
 
 # Distance depuis l'adresse de référence de Cundo (point fixe, choisi par lui).
 # Adresse relevée sur le site de chaque agence — jamais déduite, jamais devinée.
@@ -370,6 +372,81 @@ def find_address(blob: str) -> str:
     return re.sub(r'\s+', ' ', m.group(0).strip().rstrip(',;')) if m else ''
 
 
+def postal_code_from_address(address: str | None) -> str | None:
+    """Extrait un code postal uniquement d'une adresse effectivement relevée."""
+    if not address:
+        return None
+    match = re.search(r'\b(75\d{3}|92\d{3}|93\d{3}|94\d{3})\b', address)
+    return match.group(1) if match else None
+
+
+def _agency_key(agency: dict) -> str:
+    host = host_of(str(agency.get('website') or agency.get('site') or ''))
+    if host:
+        return f'host:{host}'
+    name = str(agency.get('name') or agency.get('nom') or '').strip().casefold()
+    return f'name:{name}'
+
+
+def load_curated_agencies(zone_key: str, path: Path = COMPANIES_CSV) -> list[dict]:
+    """Charge les cibles versionnées afin qu'elles survivent à chaque nouveau crawl."""
+    if not path.exists():
+        return []
+    with path.open(encoding='utf-8', newline='') as handle:
+        rows = list(csv.DictReader(handle))
+
+    curated = []
+    for row in rows:
+        name = (row.get('nom') or '').strip()
+        if not name or (row.get('statut') or '').strip() == 'ecartee':
+            continue
+        address = (row.get('adresse') or '').strip() or None
+        postal_code = (row.get('code_postal') or '').strip() or None
+        if not address:
+            postal_code = None
+        blob = ' '.join(str(row.get(key) or '') for key in ('ville', 'adresse', 'code_postal')).lower()
+        zone_match, zone_term = zone_of(blob, zone_key)
+        curated.append({
+            'name': name,
+            'website': (row.get('site') or '').strip() or None,
+            'score': 0,
+            'raw_score': 0,
+            'stack': [],
+            'emails': [],
+            'contact_urls': [],
+            'reasons': ['cible versionnée dans config/companies.csv'],
+            'sources': ['config/companies.csv'],
+            'fetched_pages': [],
+            'snippet': '',
+            'zone_match': zone_match,
+            'zone_term': zone_term,
+            'category': 'agence',
+            'page_texts': [],
+            'address': address,
+            'postal_code': postal_code,
+            'address_source': 'relevé à la main (config/companies.csv)' if address else None,
+            'distance_m': None,
+        })
+    return curated
+
+
+def merge_curated_agencies(results: list[dict], zone_key: str, path: Path = COMPANIES_CSV) -> list[dict]:
+    """Fusionne le crawl avec le CSV, en donnant priorité aux relevés manuels."""
+    merged = {_agency_key(agency): agency for agency in results}
+    for curated in load_curated_agencies(zone_key, path):
+        key = _agency_key(curated)
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = curated
+            continue
+        if curated.get('address'):
+            existing['address'] = curated['address']
+            existing['postal_code'] = curated['postal_code']
+            existing['address_source'] = curated['address_source']
+        existing['sources'] = sorted(set(existing.get('sources', [])) | {'config/companies.csv'})
+    return list(merged.values())
+
+
 def fmt_distance(m) -> str:
     if m is None:
         return 'inconnue'
@@ -393,13 +470,26 @@ def enrich_with_distances(results: list[dict]) -> str:
     origin = (o_lat, o_lon)
     print(f"DISTANCES depuis {ORIGIN_ADDRESS} → {o_lat:.5f},{o_lon:.5f}")
     for a in results:
-        a['address'], a['address_source'], a['distance_m'] = None, None, None
+        a.setdefault('address', None)
+        a.setdefault('postal_code', None)
+        a.setdefault('address_source', None)
+        a['distance_m'] = None
+        if a['address']:
+            lat, lon, _ = geocode(a['address'] + ', France')
+            if lat is not None:
+                a['postal_code'] = a.get('postal_code') or postal_code_from_address(a['address'])
+                a['distance_m'] = round(haversine(origin, (lat, lon)))
+            # Un relevé manuel reste prioritaire même si son géocodage échoue :
+            # le crawl ne doit pas remplacer une donnée versionnée par une
+            # extraction automatique moins fiable.
+            continue
         blob = (a.get('snippet') or '') + ' ' + ' '.join(p.get('text', '') for p in (a.get('page_texts') or []))
         found = find_address(blob)
         if found:
             lat, lon, _ = geocode(found + ', France')
             if lat is not None:
                 a['address'] = found
+                a['postal_code'] = postal_code_from_address(found)
                 a['address_source'] = 'site (pages crawlées)'
                 a['distance_m'] = round(haversine(origin, (lat, lon)))
                 continue
@@ -421,6 +511,7 @@ def enrich_with_distances(results: list[dict]) -> str:
                 lat, lon, _ = geocode(found + ', France')
                 if lat is not None:
                     a['address'] = found
+                    a['postal_code'] = postal_code_from_address(found)
                     a['address_source'] = f'site ({path})'
                     a['distance_m'] = round(haversine(origin, (lat, lon)))
                     break
@@ -769,6 +860,10 @@ def run():
         })
         time.sleep(0.2)
 
+    # Le CSV versionné et le crawl alimentent le même payload. Une adresse relevée
+    # à la main prévaut sur une extraction automatique du même domaine.
+    results = merge_curated_agencies(results, zone_key)
+
     # Zone : tier1 d'abord, puis tier2 ; les hors-zone sont écartés si la zone
     # a déjà produit assez de résultats (>= 10), sinon gardés en réserve.
     zone_rank = {'tier1': 0, 'tier2': 1, 'none': 2}
@@ -787,7 +882,18 @@ def run():
         zone_dropped = n_none
     results=sorted(results, key=lambda r: (-zone_rank.get(r['zone_match'], 2), r['score'], len(r['stack']), bool(r['emails'] or r['contact_urls'])), reverse=True)
     # Distance depuis l'adresse de référence de Cundo (--no-distance pour sauter).
-    origin_coords = '' if '--no-distance' in args else enrich_with_distances(results)
+    if '--no-distance' in args:
+        origin_coords = ''
+        for agency in results:
+            agency.setdefault('address', None)
+            agency.setdefault('postal_code', None)
+            agency.setdefault('address_source', None)
+            agency.setdefault('distance_m', None)
+            agency['how'] = address_how(agency)
+    else:
+        origin_coords = enrich_with_distances(results)
+        for agency in results:
+            agency['how'] = address_how(agency)
     radius_report = None
     if radius_m is not None:
         buckets = partition_by_radius(results, radius_m)

@@ -27,7 +27,8 @@ import {
   appendToYAML,
   measureAgency,
   prepareAgency,
-  runProspecting
+  runProspecting,
+  sameProspectingRequest
 } from '../services/agenciesService.js';
 
 const MAX_CV_PROCESS_OUTPUT = 10 * 1024 * 1024;
@@ -553,8 +554,12 @@ export default function createApplicationsRouter(repo) {
   function enqueueSearchTask({ zone, radiusM }) {
     // Une seule prospection à la fois : deux crawls concurrents se disputeraient
     // le quota de géocodage Nominatim et écriraient tous deux latest.json.
-    if (activeSearchTask && ['queued', 'running'].includes(activeSearchTask.state)) {
-      return activeSearchTask;
+    const duplicate = [...searchTasks.values()].find(task =>
+      ['queued', 'running'].includes(task.state)
+      && sameProspectingRequest(task, { zone, radiusM })
+    );
+    if (duplicate) {
+      return duplicate;
     }
 
     searchSequence += 1;

@@ -159,7 +159,7 @@ def company_prepare(args: Dict[str, Any]) -> str:
         results = run_spontaneous_search()
 
     payload = prepare_numbered_application(
-        int(args.get("number", 1)), results, with_cv=bool(args.get("with_cv", True))
+        int(args.get("number", 1)), results, with_cv=bool(args.get("with_cv", False))
     )
     return format_preparation(payload)
 
