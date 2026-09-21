@@ -117,6 +117,41 @@ Deux règles qui en découlent, et qui sont testées :
 - **une donnée manquante produit `incertain`, jamais `ecarte`.** Un écarté
   disparaît de la liste, un incertain y reste visible et qualifiable.
 
+## `analysis` : le jugement IA d'adéquation (phase 2)
+
+Après dédoublonnage, écartement hors zone et barème, chaque agence/formation
+dont le score atteint le seuil (`fit_analysis.seuil_min_score`, défaut 45)
+peut porter un bloc `analysis` produit par un LLM routé
+(`config/ai_role_routing.json` → rôle `agency_fit` : deepseek_job puis glm_cv).
+
+| Champ | Sens |
+|---|---|
+| `fit_status` | `ok` (contrat respecté) ou `review` (sortie invalide/indisponible — jamais de texte inventé) |
+| `strengths` / `weaknesses` | Max 6 points chacun ; chaque point doit s'appuyer sur une page fournie |
+| `application_angle` | Angle de candidature spontanée, adapté à `category` (jamais full-stack forcé) |
+| `fit_summary` | Résumé de ce que la structure fait, vu des pages crawlées |
+| `fit_score` | 0-10, adéquation profil ↔ structure |
+| `confidence` | `haute` / `moyenne` / `faible` |
+| `evidence_urls` | Uniquement des URLs présentes dans les pages fournies au modèle |
+| `issues` | Problèmes de contrat relevés par la validation Python |
+| `fingerprint` / `prompt_version` / `analyzed_at` / `provider` / `model` | Traçabilité du jugement |
+
+Règles de persistance :
+
+- Le cache runtime est `data/agency_analyses.json` (hors Git, volume persistant
+  en prod), indexé par **domaine normalisé + empreinte** (pages + profil +
+  version du prompt). Un changement de contenu pousse l'ancienne analyse en
+  `history` (max 2, marquée `obsolete`) sans jamais la détruire.
+- Une agence absente d'un run conserve son analyse : on n'écrit que les
+  domaines analysés dans le run.
+- Compteurs publiés dans l'enveloppe : `fit_analysis` (`eligible`, `analyzed`,
+  `cache_hits`, `review`, `calls`, `plafond_atteint`, `archive`,
+  `limite_appels`, `seuil_min_score`). Plafond dur : 15 appels IA par run ;
+  `--no-ai` désactive la passe.
+- Archive horodatée lisible : `output/agencies/analyses-<timestamp>.md`.
+- Niveau **recherche** : une analyse n'est pas un constat vérifié — le
+  Vérificateur n'intervient qu'au « Retenir & préparer ».
+
 ## `identity_match` : la garantie anti-invention sur l'identité
 
 Ce que `how` est à l'adresse, `identity_match` l'est à l'identité : il dit

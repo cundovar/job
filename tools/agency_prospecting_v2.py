@@ -1428,6 +1428,41 @@ def run():
         }
         results = buckets['inside']
     ts=datetime.now().strftime('%Y%m%d-%H%M%S')
+
+    # ── Phase 2 : analyse d'adéquation IA (points forts / faibles / angle) ──
+    # Lancée APRÈS dédoublonnage, écartement hors zone et barème (les annuaires
+    # et plateformes sont déjà sortis) : l'IA ne voit que des candidates
+    # plausibles, jamais les 40+ domaines bruts. `--no-ai` la désactive ; une
+    # panne IA laisse l'agence sans analyse (jamais un texte inventé).
+    fit_stats=None
+    if '--no-ai' not in args:
+        try:
+            from agency_analysis import fit_analyzer as _fit
+            _fit.load_env_file(ROOT / '.env')  # clés IA, setdefault, jamais imprimées
+            _criteria = ROOT/'config'/'criteria.yaml'
+            _profile = _fit.public_profile(_criteria)
+            _cache_path = DATA_DIR/'agency_analyses.json'
+            _cache = _fit.load_cache(_cache_path)
+            _eligibles=[
+                r for r in results
+                if (r.get('score') or 0) >= _fit.DEFAULT_MIN_SCORE
+                and r.get('category') in ('agence', 'formation')
+            ]
+            _analyzer=_fit.FitAnalyzer()
+            fit_stats=_analyzer.analyze_batch(_eligibles, _profile, _cache)
+            fit_stats['limite_appels']=_fit.DEFAULT_MAX_CALLS
+            fit_stats['seuil_min_score']=_fit.DEFAULT_MIN_SCORE
+            if _eligibles:
+                _archive=_fit.write_archive_md(
+                    out_dir/f'analyses-{ts}.md', _eligibles, fit_stats,
+                    f"zone {zone_key} ({zone['label']})",
+                )
+                fit_stats['archive']=str(_archive)
+            save_cache_atomic = _fit.save_cache_atomic
+            save_cache_atomic(_cache_path, _cache)
+        except Exception as _fit_exc:  # noqa: BLE001 - l'analyse ne casse jamais un run
+            fit_stats={'error': f'{type(_fit_exc).__name__}: {_fit_exc}'}
+
     payload={
         'ok': True,
         'version': 'v2',
@@ -1459,6 +1494,7 @@ def run():
             for origin in (ORIGIN_CSV, ORIGIN_REGISTRY, ORIGIN_WEB)
         },
         'ecartes': ecartes,
+        'fit_analysis': fit_stats,
         'agencies': results,
     }
     json_path=out_dir/f'agences-web-v2-{ts}.json'
@@ -1532,7 +1568,7 @@ def run():
             f"Détail dans {json_path}.",
             file=sys.stderr,
         )
-    print(json.dumps({'ok': True, 'version':'v2', 'zone': zone_key, 'zone_label': zone['label'], 'radius': radius_report and {k: v for k, v in radius_report.items() if not isinstance(v, list)}, 'total': len(results), 'scanned_domains': scanned, 'seed_count': len(seeds), 'md': str(md_path), 'json': str(json_path), 'front': str(FRONT_DIR/'latest.json'), 'top': results[:10]}, ensure_ascii=False, indent=2))
+    print(json.dumps({'ok': True, 'version':'v2', 'zone': zone_key, 'zone_label': zone['label'], 'radius': radius_report and {k: v for k, v in radius_report.items() if not isinstance(v, list)}, 'total': len(results), 'scanned_domains': scanned, 'seed_count': len(seeds), 'md': str(md_path), 'json': str(json_path), 'front': str(FRONT_DIR/'latest.json'), 'fit': fit_stats and {k: fit_stats.get(k) for k in ('eligible', 'analyzed', 'cache_hits', 'review', 'calls', 'archive') if k in fit_stats}, 'top': results[:10]}, ensure_ascii=False, indent=2))
 
 if __name__ == '__main__':
     run()

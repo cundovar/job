@@ -80,6 +80,10 @@
     "company_verifier": [
       "deepseek_job",
       "codex_medium"
+    ],
+    "agency_fit": [
+      "deepseek_job",
+      "glm_cv"
     ]
   }
 }
