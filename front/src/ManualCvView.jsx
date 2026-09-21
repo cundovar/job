@@ -3,7 +3,7 @@ import { FileDown, Globe, LoaderCircle, RotateCw, Sparkles, TriangleAlert } from
 import CvAssessment from './CvAssessment'
 
 const POLL_INTERVAL_MS = 2500
-const GENERATION_TIMEOUT_MS = 15 * 60 * 1000
+const GENERATION_TIMEOUT_MS = 30 * 60 * 1000
 const PREPARATION_TIMEOUT_MS = 10 * 60 * 1000
 const LAST_RESULT_STORAGE_KEY = 'job-search:last-manual-cv-result'
 
@@ -215,7 +215,7 @@ export default function ManualCvView({ onOpenCandidatures }) {
       }
     }
 
-    throw new Error('La génération dépasse 15 minutes. Vous pourrez vérifier la candidature plus tard.')
+    throw new Error('La génération dépasse 30 minutes. Vous pourrez vérifier la candidature plus tard.')
   }
 
   const handleSubmit = async event => {
