@@ -16,6 +16,7 @@ import re
 import shutil
 import socket
 import socketserver
+import fcntl
 import subprocess
 import tempfile
 import threading
@@ -424,6 +425,33 @@ class ThreadingUnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamSe
             self._connection_slots.release()
 
 
+class ThreadingTcpServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    """Même protocole que le serveur Unix, sur un port interne protégé par jeton.
+
+    Motif hermes-api : bind 0.0.0.0 + UFW qui n'autorise que le sous-réseau
+    Docker (10.0.1.0/24). Le port reste inaccessible depuis Internet.
+    """
+
+    daemon_threads = True
+    allow_reuse_address = True
+    request_queue_size = 8
+
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        bridge: CLIAgentBridge,
+        token: str,
+        *,
+        request_timeout: float = 10.0,
+        max_connections: int = 8,
+    ) -> None:
+        self.bridge = bridge
+        self.token = token
+        self.request_timeout = request_timeout
+        self._connection_slots = threading.BoundedSemaphore(max_connections)
+        super().__init__(server_address, BridgeRequestHandler)
+
+
 def _load_token() -> str:
     token_file = Path(
         os.getenv(
@@ -461,7 +489,46 @@ def create_server(
     return server
 
 
+def _acquire_instance_lock() -> None:
+    """Verrou anti-orphelin : un second lancement refuse au lieu de recréer le
+    fichier socket et d'orphaner celui du service (cause de la panne du
+    09/09/2026 : une instance manuelle avait remplacé le fichier à 22h51).
+    """
+    lock_path = Path(
+        os.getenv(
+            "CV_CLI_BRIDGE_LOCK_FILE",
+            "/home/cundo/apps/job-search-automation-package/data/.cv_cli_bridge.lock",
+        )
+    )
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(lock_path, "w")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        raise SystemExit(
+            f"Un bridge tourne déjà (verrou: {lock_path}). "
+            "Redémarrer le service systemd au lieu de lancer une seconde instance."
+        ) from exc
+    # Le descripteur doit rester ouvert pour que le verrou survive.
+    globals()["_INSTANCE_LOCK_HANDLE"] = handle
+
+
+def create_tcp_server(
+    server_address: tuple[str, int],
+    bridge: CLIAgentBridge,
+    token: str,
+) -> ThreadingTcpServer:
+    return ThreadingTcpServer(
+        server_address,
+        bridge,
+        token,
+        request_timeout=float(os.getenv("CV_CLI_BRIDGE_REQUEST_TIMEOUT_SECONDS", "10")),
+        max_connections=int(os.getenv("CV_CLI_BRIDGE_MAX_CONNECTIONS", "8")),
+    )
+
+
 def main() -> None:
+    _acquire_instance_lock()
     socket_path = Path(
         os.getenv(
             "CV_CLI_BRIDGE_SOCKET",
@@ -469,23 +536,41 @@ def main() -> None:
         )
     )
     bridge = CLIAgentBridge()
-    server = create_server(socket_path, bridge, _load_token())
+    token = _load_token()
+    server = create_server(socket_path, bridge, token)
+    tcp_address = None
+    tcp_server = None
+    tcp_port = os.getenv("CV_CLI_BRIDGE_TCP_PORT", "").strip()
+    if tcp_port:
+        tcp_host = os.getenv("CV_CLI_BRIDGE_TCP_HOST", "127.0.0.1").strip() or "127.0.0.1"
+        tcp_address = (tcp_host, int(tcp_port))
+        tcp_server = create_tcp_server(tcp_address, bridge, token)
     print(
         json.dumps(
             {
                 "event": "bridge_started",
                 "socket": str(socket_path),
+                "tcp": f"{tcp_address[0]}:{tcp_address[1]}" if tcp_address else None,
                 "providers": bridge.provider_status(),
                 "provider_order": bridge.provider_order,
             }
         ),
         flush=True,
     )
+    if tcp_server is not None:
+        threading.Thread(
+            target=tcp_server.serve_forever,
+            kwargs={"poll_interval": 0.5},
+            name="bridge-tcp",
+            daemon=True,
+        ).start()
     try:
         server.serve_forever(poll_interval=0.5)
     except KeyboardInterrupt:
         pass
     finally:
+        if tcp_server is not None:
+            tcp_server.server_close()
         server.server_close()
         if socket_path.is_socket():
             socket_path.unlink()

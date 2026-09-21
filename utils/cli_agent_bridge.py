@@ -47,10 +47,20 @@ class CLIAgentBridgeClient:
         token_file: str | None = None,
         timeout: float | None = None,
     ) -> None:
-        self.socket_path = socket_path or os.getenv(
-            "CV_CLI_BRIDGE_SOCKET",
-            _default_socket_path(),
-        )
+        if socket_path:
+            # Appelant explicite : pas de TCP, il sait ce qu'il fait.
+            self.tcp_address = None
+            self.socket_path = socket_path
+        else:
+            tcp_host = os.getenv("CV_CLI_BRIDGE_TCP_HOST", "").strip()
+            tcp_port = os.getenv("CV_CLI_BRIDGE_TCP_PORT", "").strip()
+            self.tcp_address = (
+                (tcp_host, int(tcp_port)) if tcp_host and tcp_port else None
+            )
+            self.socket_path = os.getenv(
+                "CV_CLI_BRIDGE_SOCKET",
+                _default_socket_path(),
+            )
         provider_timeout = float(os.getenv("CV_CLI_BRIDGE_TIMEOUT_SECONDS", "300"))
         self.timeout = (
             timeout
@@ -104,10 +114,14 @@ class CLIAgentBridgeClient:
         )
         if len(encoded) > 1_500_000:
             raise CLIBridgeError("La requête du bridge CLI dépasse la taille autorisée")
+        if self.tcp_address is not None:
+            family, address = socket.AF_INET, self.tcp_address
+        else:
+            family, address = socket.AF_UNIX, self.socket_path
         try:
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            with socket.socket(family, socket.SOCK_STREAM) as connection:
                 connection.settimeout(self.timeout)
-                connection.connect(self.socket_path)
+                connection.connect(address)
                 connection.sendall(encoded)
                 response_line = connection.makefile("rb").readline(2_000_001)
         except (OSError, TimeoutError) as exc:
