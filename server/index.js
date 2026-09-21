@@ -227,4 +227,6 @@ app.listen(PORT, () => {
   console.log(`   POST /api/hermes/session`);
   console.log(`   GET  /api/hermes/messages/:sessionId`);
   console.log(`   POST /api/hermes/chat`);
+  console.log(`   POST /api/hermes/search`);
+  console.log(`   GET  /api/hermes/search/:runId`);
 });

@@ -63,7 +63,8 @@ def job_top(args: Dict[str, Any]) -> str:
 def job_today(args: Dict[str, Any]) -> str:
     limit = int(args.get("limit", 5))
     send_outputs = bool(args.get("send_outputs", False))
-    result = run_job_search(send_outputs=send_outputs)
+    search_id = args.get("search_id") or None
+    result = run_job_search(send_outputs=send_outputs, search_id=search_id)
     stats = result["stats"]
     top_jobs = ranked_jobs(result["jobs"], limit=limit)
     return "\n".join(
@@ -181,6 +182,13 @@ TOOLS: Dict[str, Dict[str, Any]] = {
             "properties": {
                 "limit": {"type": "integer", "default": 5},
                 "send_outputs": {"type": "boolean", "default": False},
+                "search_id": {
+                    "type": "string",
+                    "description": (
+                        "Identifiant explicite de la session de recherche a archiver "
+                        "(front/public/data/<search_id>/). Par defaut : la date du jour."
+                    ),
+                },
             },
             "additionalProperties": False,
         },

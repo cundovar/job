@@ -156,6 +156,46 @@
   flex-shrink: 0;
 }
 
+.hermes-search-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap);
+  min-width: var(--tap);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-sunken);
+  color: var(--text-strong);
+  cursor: pointer;
+}
+
+.hermes-search-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+.hermes-search-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hermes-search-link {
+  display: block;
+  margin-top: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--accent-hover);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hermes-search-link:hover {
+  border-color: var(--accent);
+}
+
 /* --- Mobile (<768px) -----------------------------------------
    Le FAB « 💬 Hermes » passe à gauche pour ne pas recouvrir le FAB
    « Lancer une recherche » (droite, en mode recherche). Le panneau
@@ -173,5 +213,12 @@
     right: var(--sp-3);
     width: auto;
     max-width: none;
+  }
+
+  /* En dessous de 16px, iOS (Safari et Chrome) refuse la saisie en place dans
+     le textarea et ouvre sa propre zone de saisie : le texte tapé ne s'affiche
+     pas. --fs-sm (13px, hérité ci-dessus) est donc inutilisable ici sur mobile. */
+  .hermes-input-row textarea {
+    font-size: 16px;
   }
 }

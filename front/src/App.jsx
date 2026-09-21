@@ -1608,6 +1608,12 @@ function App() {
     setMoreOpen(false)
   }
 
+  // Une recherche lancée depuis le chat Hermes écrit sa session dans index.json en tâche de
+  // fond : on rafraîchit la liste pour que la carte apparaisse, sans changer ce que l'utilisateur
+  // regarde. `onOpenSearch` (déclenché par le lien affiché dans le fil) ouvre la carte visée.
+  const handleHermesSearchDone = () => { loadIndex() }
+  const handleOpenSearchFromChat = (id) => { loadIndex().then(() => openSearch(id)) }
+
   const navHint = (item) => (
     item.id === 'postulees'
       ? (nbPostulees > 0 ? `${nbPostulees} postulées` : 'Aucune')
@@ -1622,7 +1628,7 @@ function App() {
 
   return (
     <div className="app-layout">
-      <HermesChat />
+      <HermesChat onSearchDone={handleHermesSearchDone} onOpenSearch={handleOpenSearchFromChat} />
       <aside className="sidebar">
         <button
           className="prepare-btn launch-search-btn"

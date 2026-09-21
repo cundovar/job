@@ -216,6 +216,7 @@ def select_new_ai_candidates(
 def run_job_search(
     criteria_path: str = "config/criteria.yaml",
     send_outputs: bool | None = None,
+    search_id: str | None = None,
 ) -> PipelineResult:
     criteria = load_criteria(criteria_path)
     sources = load_sources()
@@ -312,7 +313,7 @@ def run_job_search(
             logger.error(f"Email failed: {exc}")
 
     try:
-        export_front_data(filtered)
+        export_front_data(filtered, search_id)
     except Exception as exc:
         logger.error(f"Front export failed: {exc}")
 
