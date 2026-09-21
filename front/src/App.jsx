@@ -985,6 +985,17 @@ function PostuleesView() {
   )
 }
 
+function distanceLabel(agency) {
+  if (agency.distance_m == null) {
+    return agency.address || 'Distance non calculée (adresse non publiée sur le site)'
+  }
+  const d = agency.distance_m < 1000
+    ? `${agency.distance_m} m`
+    : `${(agency.distance_m / 1000).toFixed(1).replace('.', ',')} km`
+  const approx = (agency.address_source || '').startsWith('~') ? ' (approx.)' : ''
+  return `${d} de la Monte-Cristo${approx}${agency.address ? ` — ${agency.address}` : ''}`
+}
+
 function AgenciesView() {
   const [payload, setPayload] = useState(null)
   const [fetchError, setFetchError] = useState(false)
@@ -1090,7 +1101,7 @@ function AgenciesView() {
             <article key={agency.website || i} className="job-card agency-card">
               <div className="card-top">
                 <div className="card-badges">
-                  <span className="badge-agency">Agence</span>
+                  <span className={agency.category === 'formation' ? 'badge-formation' : 'badge-agency'}>{agency.category === 'formation' ? 'Organisme de formation' : 'Agence'}</span>
                 </div>
                 <span className="job-score"><strong>{agency.score ?? '?'}</strong>/100</span>
               </div>
@@ -1098,6 +1109,7 @@ function AgenciesView() {
                 <h3>{agency.name}</h3>
               </div>
               <div className="job-meta">
+                <span><MapPin /> {distanceLabel(agency)}</span>
                 {agency.stack?.length > 0 && <span><Wrench /> {agency.stack.join(', ')}</span>}
                 {agency.emails?.length > 0 && <span><Mail /> {agency.emails[0]}</span>}
                 {agency.query && <span><Search /> {agency.query}</span>}

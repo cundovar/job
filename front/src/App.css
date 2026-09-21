@@ -168,6 +168,7 @@ h3 > .lucide {
 .badge-applied,
 .badge-applied-small,
 .badge-agency,
+.badge-formation,
 .badge-relance-due,
 .optional-badge {
   display: inline-flex;
@@ -209,6 +210,11 @@ h3 > .lucide {
   background: var(--info-bg);
   border-color: var(--info-border);
   color: var(--info);
+}
+.badge-formation {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent-hover);
 }
 .badge-relance-due {
   background: var(--warn-bg);

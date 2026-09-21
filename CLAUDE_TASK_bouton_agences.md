@@ -18,7 +18,7 @@ On veut : un **bouton dans chaque card** qui déclenche le circuit de candidatur
 ## Interpréteur Python
 
 **Toujours `python3.10`** (jamais `python3` : bs4 absent). Le CLI marche :
-`cd /home/cundo/Bureau/perso/code_perso/job-search-automation-package && python3.10 -m hermes_commands.company_top`
+`cd /home/cundo/apps/job-search-automation-package && python3.10 -m hermes_commands.company_top`
 
 ## Format de sortie de company_top (à parser)
 
