@@ -222,6 +222,31 @@ class RetryCVAgentClient(FakeCVAgentClient):
         return AgentResult(data=data, provider=result.provider, model=result.model)
 
 
+class MinorOnlyCVAgentClient(FakeCVAgentClient):
+    """Juge qui ne demande qu'une révision mineure, sans problème grave.
+
+    Vérifie le rapport coût/bénéfice de la boucle : trois appels IA de plus
+    pour du cosmétique ne se justifient pas, le verdict mineur reste consigné
+    dans l'évaluation et le CV est publié tel quel.
+    """
+
+    def complete_json(self, *, agent_name, system_prompt, payload):
+        result = super().complete_json(
+            agent_name=agent_name, system_prompt=system_prompt, payload=payload
+        )
+        if agent_name != "cv_quality_checker":
+            return result
+        data = dict(result.data)
+        data["status"] = "needs_minor_revision"
+        data["problems"] = [{
+            "severity": "low",
+            "section": "profil",
+            "problem": "L'accroche pourrait mentionner la mobilité en Île-de-France.",
+            "suggested_fix": "Ajouter une phrase de mobilité.",
+        }]
+        return AgentResult(data=data, provider=result.provider, model=result.model)
+
+
 class AlwaysRetryCVAgentClient(FakeCVAgentClient):
     """Juge qui ne valide jamais, et réviseur qui ne change rien."""
 
@@ -386,6 +411,37 @@ def test_pipeline_stops_early_when_a_revision_makes_no_progress(tmp_path, careco
     assert trace["stopped_because"] == "no_progress"
     assert trace["automatic_revision_rounds"] < trace["automatic_revision_limit"]
     assert trace["automatic_corrections_exhausted"] is True
+
+
+def test_minor_revision_request_does_not_open_a_round(tmp_path, careco_master):
+    """Une demande de révision mineure n'ouvre aucun tour et publie le CV.
+
+    Le juge mineur ne peut pas retarder un CV prêt (cf.
+    `_apply_final_review_status`) : lui consacrer trois appels IA de plus
+    n'a donc aucun effet sur la publication. Le verdict reste tracé dans
+    `final_ai_review`, la boucle ne tourne pas.
+    """
+    job = {
+        "title": "Webmaster WordPress",
+        "company": "Ville Test",
+        "description": "Gestion CMS WordPress, maintenance, contenus et documentation utilisateurs.",
+    }
+
+    result = prepare_custom_cv(
+        job,
+        application_dir=tmp_path,
+        master_path=careco_master,
+        llm_client=MinorOnlyCVAgentClient(),
+    )
+    trace = json.loads((tmp_path / "cv" / "cv_agent_trace.json").read_text(encoding="utf-8"))
+    assessment = json.loads((tmp_path / "cv" / "cv_assessment.json").read_text(encoding="utf-8"))
+
+    assert result["status"] == "ready"
+    assert result["published"] is True
+    assert trace["stopped_because"] == "validated"
+    assert trace["automatic_revision_rounds"] == 0
+    assert assessment["final_ai_review"]["status"] == "needs_minor_revision"
+    assert (tmp_path / "cv" / "cv_final.pdf").exists()
 
 
 def test_persistent_revision_publishes_no_final_artefact(tmp_path, careco_master):

@@ -22,7 +22,10 @@ from .utils import load_json, save_json
 #: Trois passes de correction au maximum : assez pour réparer, trop peu pour
 #: boucler indéfiniment sur un désaccord que l'IA ne sait pas résoudre.
 MAX_AUTOMATIC_REVISION_ROUNDS = 3
-REVISION_STATUSES = {"needs_revision", "needs_minor_revision"}
+#: Seuls ces verdicts du juge déclenchent un tour de révision. Une demande
+#: « mineure » ne vaut pas trois appels IA : elle reste consignée dans
+#: `final_ai_review` et le CV est publié (cf. `_apply_final_review_status`).
+REVISION_STATUSES = {"needs_revision"}
 
 #: Artefacts réservés à un CV réellement accepté.
 FINAL_ARTEFACTS = ("cv_final.html", "cv_final.pdf", "cv_ats.html", "cv_ats.pdf")
