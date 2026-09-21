@@ -30,10 +30,24 @@ async function readJson(response) {
   return payload
 }
 
+const CV_STATUS_LABELS = {
+  ready: 'CV prêt',
+  review: 'CV à corriger',
+  blocked: 'CV bloqué',
+  absent: 'CV non généré',
+}
+
+function cvPublicationStatus(status) {
+  if (!status) return 'absent'
+  if (['queued', 'running'].includes(status.generation?.state)) return 'preparing'
+  return status.status || 'absent'
+}
+
+// Un CV « à corriger » est un résultat légitime, pas un échec technique : la
+// génération n'est incomplète que si le diagnostic lui-même manque.
 function generatedCvIsComplete(status) {
   return Boolean(
-    status?.files?.['cv_final.pdf'] &&
-    status?.files?.['cv_ats.pdf'] &&
+    status?.files?.['cv_content.json'] &&
     status?.files?.['cv_agent_trace.json'] &&
     status?.files?.['cv_assessment.json']
   )
@@ -68,7 +82,9 @@ export default function ManualCvView({ onOpenCandidatures }) {
   const [result, setResult] = useState(loadLastResult)
   const controllerRef = useRef(null)
   const isBusy = ['preparing', 'queued', 'running'].includes(stage)
-  const needsRevision = result?.status?.review?.status === 'needs_revision'
+  const cvState = cvPublicationStatus(result?.status)
+  const cvReady = cvState === 'ready'
+  const needsRevision = !cvReady
 
   useEffect(() => () => controllerRef.current?.abort(), [])
 
@@ -416,7 +432,7 @@ export default function ManualCvView({ onOpenCandidatures }) {
       {result && (
         <section className="manual-cv-result">
           <div>
-            <span className="manual-cv-kicker">{needsRevision ? 'CV à corriger' : 'CV prêt'}</span>
+            <span className="manual-cv-kicker">{CV_STATUS_LABELS[cvState] || 'CV à corriger'}</span>
             <h2>{result.candidature?.poste || form.title || 'CV personnalisé'}</h2>
             <p>{result.candidature?.entreprise || form.company || 'Annonce personnalisée'}</p>
           </div>
@@ -435,19 +451,62 @@ export default function ManualCvView({ onOpenCandidatures }) {
                 ? <><LoaderCircle className="spin" /> Régénération…</>
                 : <><RotateCw /> Régénérer avec les corrections</>}
             </button>
-            <a className="download-btn primary" href={downloadUrl(result.id, 'cv_final.pdf')} download>
-              <FileDown /> {needsRevision ? 'PDF à relire' : 'PDF design'}
-            </a>
-            <a className="download-btn" href={downloadUrl(result.id, 'cv_ats.pdf')} download>
-              <FileDown /> PDF ATS
-            </a>
-            <a className="download-btn" href={downloadUrl(result.id, 'cv_final.html')} download>
-              <Globe /> Télécharger HTML
-            </a>
-            <a className="download-btn" href={downloadUrl(result.id, 'cv_final.json')} download>
-              JSON
-            </a>
+            {cvReady ? (
+              <>
+                <a className="download-btn primary" href={downloadUrl(result.id, 'cv_final.pdf')} download>
+                  <FileDown /> PDF design
+                </a>
+                <a className="download-btn" href={downloadUrl(result.id, 'cv_ats.pdf')} download>
+                  <FileDown /> PDF ATS
+                </a>
+                <a className="download-btn" href={downloadUrl(result.id, 'cv_final.html')} download>
+                  <Globe /> Télécharger HTML
+                </a>
+                <a className="download-btn" href={downloadUrl(result.id, 'cv_final.json')} download>
+                  JSON
+                </a>
+              </>
+            ) : (
+              // Hors `ready`, l'API refuse les fichiers finaux : on propose
+              // l'aperçu, sous un nom qui interdit de le prendre pour un CV validé.
+              result.status?.files?.['cv_review_preview.pdf'] && (
+                <a className="download-btn" href={downloadUrl(result.id, 'cv_review_preview.pdf')} download>
+                  <FileDown /> Aperçu à corriger
+                </a>
+              )
+            )}
           </div>
+          {!cvReady && (
+            <div className="cv-publication-diagnostic" role="status">
+              <strong>
+                {cvState === 'blocked'
+                  ? 'Ce CV est bloqué : une affirmation n\'est pas reliée au profil maître.'
+                  : 'Ce CV demande une correction avant d\'être envoyé.'}
+              </strong>
+              {result.status?.reason && <p>{result.status.reason}</p>}
+              {Number.isInteger(result.status?.revision_rounds) && (
+                <p className="cv-publication-rounds">
+                  {result.status.revision_rounds === 0
+                    ? 'Aucune correction automatique n\'a été nécessaire.'
+                    : `${result.status.revision_rounds} correction(s) automatique(s) déjà tentée(s).`}
+                </p>
+              )}
+              {(result.status?.blocking_issues || []).slice(0, 6).length > 0 && (
+                <ul>
+                  {result.status.blocking_issues.slice(0, 6).map((item, index) => (
+                    <li key={`blocking-${index}`}><code>{item.path}</code> — {item.detail}</li>
+                  ))}
+                </ul>
+              )}
+              {(result.status?.format_issues || []).slice(0, 6).length > 0 && (
+                <ul>
+                  {result.status.format_issues.slice(0, 6).map((item, index) => (
+                    <li key={`format-${index}`}><code>{item.path}</code> — {item.detail}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           <button type="button" className="copy-btn" onClick={onOpenCandidatures}>
             Ouvrir la candidature complète
           </button>

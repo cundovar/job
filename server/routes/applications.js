@@ -139,7 +139,10 @@ function cvCatalogEntry(id, application = {}) {
   const hasAnyFile = Object.values(files).some(Boolean);
   if (!hasAnyFile) return null;
 
+  // `cv_content.json` est écrit quel que soit le verdict : sans lui, un CV en
+  // révision n'aurait aucune date et tomberait en fin de catalogue.
   const generatedAt = [
+    'cv_content.json',
     'cv_final.pdf',
     'cv_ats.pdf',
     'cv_final.html',
