@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -384,6 +385,32 @@ JSON attendu:
   ],
   "projects":[{"id":"...","description":"reformulation fidèle","technologies":["sous-ensemble exact"]}],
   "education":["intitulé exact présent dans person.education"]
+}
+""".strip()
+
+
+TRUTH_CHECKER_PROMPT = """
+Tu es l'agent vérificateur de vérité. Ton seul rôle est d'accepter ou de refuser des
+affirmations sourcées. Tu ne juges ni la pertinence, ni le style, ni l'adéquation à l'annonce :
+un autre agent s'en charge. Tu ne proposes aucune reformulation et tu ne réécris rien.
+Pour chaque puce du CV, compare son texte aux highlights cités dans ses sources et à la source
+de vérité. Une puce est `supported` si son contenu découle directement des preuves citées.
+Elle est `unsupported` si elle ajoute un fait, un chiffre, un outil, un niveau, une date, un
+client ou un résultat que les preuves citées ne contiennent pas — même si l'information est
+vraie ailleurs dans la source de vérité : la preuve citée doit être la bonne.
+Vérifie de la même façon l'accroche, le titre, les compétences affichées et les descriptions
+de projets. Le contrôle Python joint liste déjà les références introuvables : tu traites ce que
+Python ne peut pas voir, c'est-à-dire l'écart de sens entre une preuve et sa reformulation.
+Sois strict : dans le doute, `unsupported`, en expliquant précisément ce qui manque.
+
+JSON attendu:
+{
+  "verdict":"accepted|refused",
+  "claims":[
+    {"path":"experiences[0].bullets[1]","source_refs":["exp_id:0"],"status":"supported|unsupported",
+     "reason":"ce que la preuve citée ne dit pas"}
+  ],
+  "summary":"..."
 }
 """.strip()
 
@@ -1007,6 +1034,62 @@ def _normalize_evidence_coverage(value: Any, master: Dict[str, Any]) -> List[Dic
     return result
 
 
+def _merge_truth_check(
+    proposed: Dict[str, Any],
+    validation: Dict[str, Any],
+    run: AgentResult,
+) -> Dict[str, Any]:
+    """Fusionne le contrôle Python et le jugement de l'agent vérificateur.
+
+    Python voit les références introuvables, l'agent voit l'écart de sens entre
+    une preuve et sa reformulation. Les deux bloquent, aucun ne réécrit.
+    """
+    claims: List[Dict[str, Any]] = []
+    for item in proposed.get("claims") or []:
+        if not isinstance(item, dict):
+            continue
+        status = str(item.get("status") or "").strip().lower()
+        if status not in {"supported", "unsupported"}:
+            status = "unsupported"
+        path = _clip(item.get("path"), 120)
+        if not path:
+            continue
+        claims.append(
+            {
+                "path": path,
+                "source_refs": _as_string_list(item.get("source_refs"), 8),
+                "status": status,
+                "reason": _clip(item.get("reason"), 300),
+            }
+        )
+    unsupported = [item for item in claims if item["status"] == "unsupported"]
+    issues = list(validation["truth_issues"])
+    for item in unsupported:
+        issues.append(
+            {
+                "code": "CLAIM_NOT_SUPPORTED_BY_SOURCE",
+                "kind": "truth",
+                "path": item["path"],
+                "detail": item["reason"] or "Reformulation non soutenue par la preuve citée.",
+                "reference": ", ".join(item["source_refs"]) or None,
+            }
+        )
+    return {
+        "agent": "cv_truth_checker_ai",
+        "agent_run": _agent_run(run),
+        "verdict": "refused" if issues else "accepted",
+        "claims": claims,
+        "unsupported_count": len(unsupported),
+        "truth_issues": issues,
+        "format_issues": validation["format_issues"],
+        "python_validation": {
+            "ok": validation["ok"],
+            "truthful": validation["truthful"],
+            "issues": validation["issues"],
+        },
+    }
+
+
 def _merge_review(
     proposed: Dict[str, Any],
     deterministic: Dict[str, Any],
@@ -1080,6 +1163,73 @@ def _merge_review(
     }
 
 
+def build_correction_contract(
+    review: Dict[str, Any],
+    truth_check: Dict[str, Any] | None = None,
+) -> List[Dict[str, Any]]:
+    """Les corrections à appliquer, vérité d'abord, en une seule liste.
+
+    Le réviseur reçoit les trois origines — vérité, gabarit, pertinence — dans
+    un format unique, pour ne pas avoir à deviner laquelle bloque la
+    publication.
+    """
+    corrections: List[Dict[str, Any]] = []
+    truth = truth_check or {}
+    for issue in truth.get("truth_issues", []):
+        corrections.append(
+            {
+                "origin": "truth",
+                "blocking": True,
+                "code": issue.get("code"),
+                "location": issue.get("path"),
+                "problem": issue.get("detail"),
+                "reference": issue.get("reference"),
+            }
+        )
+    for issue in truth.get("format_issues", []):
+        corrections.append(
+            {
+                "origin": "format",
+                "blocking": True,
+                "code": issue.get("code"),
+                "location": issue.get("path"),
+                "problem": issue.get("detail"),
+                "reference": issue.get("reference"),
+            }
+        )
+    for problem in review.get("problems", []):
+        corrections.append(
+            {
+                "origin": "relevance",
+                "blocking": False,
+                "code": problem.get("code"),
+                "location": problem.get("section"),
+                "problem": problem.get("problem"),
+                "suggested_fix": problem.get("suggested_fix"),
+            }
+        )
+    return corrections
+
+
+def correction_fingerprint(
+    content: Dict[str, Any],
+    corrections: List[Dict[str, Any]],
+) -> str:
+    """Empreinte du couple contenu/problèmes, pour détecter une boucle stagnante."""
+    payload = json.dumps(
+        {
+            "cv": content.get("cv", {}),
+            "issues": sorted(
+                f"{item.get('origin')}:{item.get('code')}:{item.get('location')}"
+                for item in corrections
+            ),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 class AICVPipeline:
     def __init__(self, client: AgentClient | None = None) -> None:
         self.client = client or CVLLMClient()
@@ -1130,6 +1280,32 @@ class AICVPipeline:
             "cv_creator_ai",
         )
 
+    def verify(
+        self,
+        job: Dict[str, Any],
+        master: Dict[str, Any],
+        plan: Dict[str, Any],
+        draft: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Contrôle la vérité avant tout jugement éditorial.
+
+        Python passe en premier : une référence introuvable n'a pas besoin d'un
+        appel IA pour être refusée. L'agent n'est consulté que sur ce que Python
+        ne peut pas voir — l'écart de sens entre une preuve et sa reformulation.
+        """
+        validation = validate_cv_content(draft, master, plan)
+        result = _agent_call(
+            self.client,
+            "cv_truth_checker",
+            TRUTH_CHECKER_PROMPT,
+            {
+                "source_verite": _truth_context(master, "reviewer"),
+                "cv_a_verifier": draft.get("cv", {}),
+                "controle_python": validation["issues"],
+            },
+        )
+        return _merge_truth_check(result.data, validation, result)
+
     def review(
         self,
         job: Dict[str, Any],
@@ -1160,6 +1336,7 @@ class AICVPipeline:
         plan: Dict[str, Any],
         draft: Dict[str, Any],
         review: Dict[str, Any],
+        truth_check: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         result = _agent_call(
             self.client,
@@ -1172,6 +1349,7 @@ class AICVPipeline:
                 "plan_adaptation": plan,
                 "brouillon": draft,
                 "jugement": review,
+                "corrections_a_appliquer": build_correction_contract(review, truth_check),
             },
         )
         final = _assemble_cv_content(
@@ -1188,5 +1366,6 @@ class AICVPipeline:
             "initial_ats_score": review.get("ats_score"),
             "status_before_revision": review.get("status"),
             "problem_count": len(review.get("problems", [])),
+            "truth_verdict_before_revision": (truth_check or {}).get("verdict"),
         }
         return final

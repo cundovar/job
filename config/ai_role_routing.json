@@ -59,6 +59,10 @@
       "glm_cv",
       "deepseek_cv"
     ],
+    "cv_truth_checker": [
+      "deepseek_cv",
+      "codex_medium"
+    ],
     "cv_quality_checker": [
       "deepseek_cv",
       "codex_medium"

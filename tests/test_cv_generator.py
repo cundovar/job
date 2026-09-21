@@ -20,6 +20,8 @@ from cv_generator.ai_agents import (
     _assemble_cv_content,
     _standing_preference_clause,
     _validate_plan,
+    build_correction_contract,
+    correction_fingerprint,
 )
 from cv_generator.exporters import (
     DEFAULT_PORTRAIT,
@@ -106,6 +108,8 @@ class FakeCVAgentClient:
                 ],
                 "projects": [],
             }
+        elif agent_name == "cv_truth_checker":
+            data = {"verdict": "accepted", "claims": [], "summary": "Toutes les puces sont sourcées."}
         elif agent_name == "cv_quality_checker":
             data = {
                 "quality_score": 96,
@@ -124,9 +128,12 @@ class FakeCVAgentClient:
 
 
 class RetryCVAgentClient(FakeCVAgentClient):
+    """Juge sévère deux fois, et réviseur qui corrige réellement entre deux passes."""
+
     def __init__(self):
         super().__init__()
         self.review_count = 0
+        self.revision_count = 0
 
     def complete_json(self, *, agent_name, system_prompt, payload):
         result = super().complete_json(
@@ -134,6 +141,24 @@ class RetryCVAgentClient(FakeCVAgentClient):
             system_prompt=system_prompt,
             payload=payload,
         )
+        if agent_name == "cv_style_reviser":
+            # Un vrai réviseur rend un contenu différent : sans cela, la
+            # détection d'absence de progrès arrêterait la boucle à raison.
+            self.revision_count += 1
+            data = dict(result.data)
+            experiences = [dict(item) for item in data["experiences"]]
+            experiences[0] = dict(experiences[0])
+            experiences[0]["bullets"] = [
+                {
+                    "text": (
+                        "Développement d'un site e-commerce headless pour une maison d'édition"
+                        f" (révision {self.revision_count})"
+                    ),
+                    "sources": ["la_magicieuse:0"],
+                }
+            ]
+            data["experiences"] = experiences
+            return AgentResult(data=data, provider=result.provider, model=result.model)
         if agent_name != "cv_quality_checker":
             return result
         self.review_count += 1
@@ -315,14 +340,16 @@ def test_prepare_custom_cv_generates_webmaster_files(tmp_path):
     )
 
     assert result["ok"] is True
-    assert result["pipeline"] == "ai_cv_pipeline_v3"
+    assert result["pipeline"] == "ai_cv_pipeline_v4"
     assert result["selected_base_variant"] == "webmaster"
     assert "Webmaster" in result["target_title"]
     assert client.calls == [
         "cv_job_analyzer",
         "cv_creator",
+        "cv_truth_checker",
         "cv_quality_checker",
     ]
+    assert result["published"] is True
     assert (tmp_path / "cv" / "cv_final.json").exists()
     assert (tmp_path / "cv" / "cv_agent_trace.json").exists()
     assert (tmp_path / "cv" / "cv_final.html").exists()
@@ -360,12 +387,15 @@ def test_pipeline_automatically_applies_relevant_corrections_until_validated(tmp
     assert trace["automatic_corrections_exhausted"] is False
     assert client.calls.count("cv_style_reviser") == 2
     assert client.calls.count("cv_quality_checker") == 3
-    assert {payload["consignes_candidat"] for payload in client.payloads} == {
-        "Mettre en avant DevDoc sans inventer de compétence."
-    }
+    assert {
+        payload["consignes_candidat"]
+        for payload in client.payloads
+        if "consignes_candidat" in payload
+    } == {"Mettre en avant DevDoc sans inventer de compétence."}
     assert all(
         "candidate_instructions" not in payload["annonce_complete"]
         for payload in client.payloads
+        if "annonce_complete" in payload
     )
     assert {
         "cv_job_analyzer",
@@ -394,7 +424,13 @@ def test_empty_candidate_instructions_preserve_the_existing_agent_contract(tmp_p
     )
     trace = json.loads((tmp_path / "cv" / "cv_agent_trace.json").read_text(encoding="utf-8"))
 
-    assert all(payload["consignes_candidat"] == "" for payload in client.payloads)
+    # Le vérificateur de vérité ne reçoit ni annonce ni consignes : il ne juge
+    # que la provenance, pas la pertinence.
+    assert all(
+        payload["consignes_candidat"] == ""
+        for payload in client.payloads
+        if "consignes_candidat" in payload
+    )
     assert trace["job"]["candidate_instructions_present"] is False
     assert trace["job"]["candidate_instructions_chars"] == 0
     for prompt in (ANALYZER_PROMPT, CREATOR_PROMPT, REVIEWER_PROMPT, REVISER_PROMPT):
@@ -402,7 +438,8 @@ def test_empty_candidate_instructions_preserve_the_existing_agent_contract(tmp_p
         assert "source de vérité" in prompt
 
 
-def test_pipeline_stops_automatic_corrections_at_the_safety_limit(tmp_path):
+def test_pipeline_stops_early_when_a_revision_makes_no_progress(tmp_path):
+    """Deux fois le même contenu et les mêmes reproches : on arrête, avec la cause."""
     job = {
         "title": "Webmaster WordPress",
         "company": "Ville Test",
@@ -419,10 +456,60 @@ def test_pipeline_stops_automatic_corrections_at_the_safety_limit(tmp_path):
     trace = json.loads((tmp_path / "cv" / "cv_agent_trace.json").read_text(encoding="utf-8"))
 
     assert result["status"] == "review"
-    assert trace["automatic_revision_rounds"] == 3
+    assert trace["stopped_because"] == "no_progress"
+    assert trace["automatic_revision_rounds"] < trace["automatic_revision_limit"]
     assert trace["automatic_corrections_exhausted"] is True
-    assert client.calls.count("cv_style_reviser") == 3
-    assert client.calls.count("cv_quality_checker") == 4
+
+
+def test_persistent_revision_publishes_no_final_artefact(tmp_path):
+    """Un CV que le juge refuse encore ne produit aucun fichier `cv_final`."""
+    job = {
+        "title": "Webmaster WordPress",
+        "company": "Ville Test",
+        "description": "Gestion CMS WordPress, maintenance et documentation utilisateurs.",
+    }
+
+    result = prepare_custom_cv(
+        job,
+        application_dir=tmp_path,
+        master_path="data/cv_master_profile.json",
+        llm_client=AlwaysRetryCVAgentClient(),
+    )
+
+    assert result["published"] is False
+    assert result["status"] != "ready"
+    for name in ("cv_final.json", "cv_final.html", "cv_final.pdf", "cv_ats.pdf", "cv_ats.html"):
+        assert not (tmp_path / "cv" / name).exists(), name
+    assert (tmp_path / "cv" / "cv_review_preview.pdf").read_bytes().startswith(b"%PDF")
+    assert (tmp_path / "cv" / "cv_review_preview_ats.pdf").exists()
+    assert (tmp_path / "cv" / "cv_content.json").exists()
+    assert (tmp_path / "cv" / "cv_truth_check.json").exists()
+
+
+def test_a_refused_regeneration_removes_the_previous_final_files(tmp_path):
+    """Le CV final d'un run précédent ne survit pas à un refus : il serait périmé."""
+    job = {
+        "title": "Webmaster WordPress",
+        "company": "Ville Test",
+        "description": "Gestion CMS WordPress, maintenance et documentation utilisateurs.",
+    }
+
+    prepare_custom_cv(
+        job, application_dir=tmp_path, master_path="data/cv_master_profile.json",
+        llm_client=FakeCVAgentClient(),
+    )
+    assert (tmp_path / "cv" / "cv_final.pdf").exists()
+
+    result = prepare_custom_cv(
+        job, application_dir=tmp_path, master_path="data/cv_master_profile.json",
+        llm_client=AlwaysRetryCVAgentClient(),
+    )
+
+    assert result["published"] is False
+    assert not (tmp_path / "cv" / "cv_final.pdf").exists()
+    assert not (tmp_path / "cv" / "cv_ats.pdf").exists()
+    trace = json.loads((tmp_path / "cv" / "cv_agent_trace.json").read_text(encoding="utf-8"))
+    assert "cv_final.pdf" in trace["stale_artefacts_removed"]
 
 
 def test_pdf_and_html_use_the_real_portrait(tmp_path):
@@ -1032,6 +1119,8 @@ class CarecoAgentClient:
                 if self._education is not None
                 else ["Titre professionnel Developpeur web (fictif)"],
             }
+        elif agent_name == "cv_truth_checker":
+            data = {"verdict": "accepted", "claims": [], "summary": "Toutes les puces sont sourcées."}
         elif agent_name == "cv_quality_checker":
             data = {
                 "quality_score": 92,
@@ -1052,7 +1141,7 @@ def _careco_cv(tmp_path, master_path, client):
     result = prepare_custom_cv(
         CARECO["job"], application_dir=tmp_path, master_path=master_path, llm_client=client
     )
-    return result, json.loads((tmp_path / "cv" / "cv_final.json").read_text(encoding="utf-8"))
+    return result, json.loads((tmp_path / "cv" / "cv_content.json").read_text(encoding="utf-8"))
 
 
 def test_careco_group_keeps_ecommerce_stack_and_support_evidence(tmp_path, careco_master):
@@ -1231,3 +1320,178 @@ def test_preanalysis_only_suggests_and_imposes_no_minimum():
         CARECO["master"]["experience_catalog"]
     )
     assert suggestions == sorted(suggestions, key=lambda item: item["priority"], reverse=True)
+
+
+# --------------------------------------------------------------------------- #
+# Vérité avant pertinence, révisions bornées, verrou d'export
+# --------------------------------------------------------------------------- #
+
+
+class InventingAgentClient(CarecoAgentClient):
+    """Le rédacteur invente un fait que la preuve citée ne contient pas.
+
+    Le réviseur reformule à chaque passe sans jamais retirer l'invention : la
+    boucle progresse donc réellement, et c'est la limite de trois révisions qui
+    l'arrête, pas la détection d'absence de progrès.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.revision_count = 0
+
+    def complete_json(self, *, agent_name, system_prompt, payload):
+        if agent_name == "cv_style_reviser":
+            self.revision_count += 1
+            result = super().complete_json(
+                agent_name=agent_name, system_prompt=system_prompt, payload=payload
+            )
+            data = dict(result.data)
+            experiences = [dict(item) for item in data["experiences"]]
+            experiences[0] = dict(experiences[0])
+            experiences[0]["bullets"] = [
+                {
+                    "text": f"Catalogue WooCommerce inventé (reformulation {self.revision_count}).",
+                    "sources": ["boutique_fictive:0"],
+                }
+            ] + list(experiences[0]["bullets"][1:])
+            data["experiences"] = experiences
+            return AgentResult(data=data, provider="fake", model="fake-careco")
+        if agent_name == "cv_truth_checker":
+            self.calls.append(agent_name)
+            return AgentResult(
+                data={
+                    "verdict": "refused",
+                    "claims": [
+                        {
+                            "path": "experiences[0].bullets[0]",
+                            "source_refs": ["boutique_fictive:0"],
+                            "status": "unsupported",
+                            "reason": "La preuve citée ne mentionne aucun chiffre d'affaires.",
+                        }
+                    ],
+                    "summary": "Une affirmation non soutenue.",
+                },
+                provider="fake",
+                model="fake-careco",
+            )
+        return super().complete_json(
+            agent_name=agent_name, system_prompt=system_prompt, payload=payload
+        )
+
+
+def test_an_invention_blocks_before_the_recruiter_judge(tmp_path, careco_master):
+    """Le vérificateur de vérité passe avant le juge, et son refus bloque."""
+    client = InventingAgentClient()
+
+    result = prepare_custom_cv(
+        CARECO["job"], application_dir=tmp_path, master_path=careco_master, llm_client=client
+    )
+
+    assert client.calls.index("cv_truth_checker") < client.calls.index("cv_quality_checker")
+    assert result["status"] == "blocked"
+    assert result["published"] is False
+    truth = json.loads((tmp_path / "cv" / "cv_truth_check.json").read_text(encoding="utf-8"))
+    assert truth["verdict"] == "refused"
+    assert truth["truth_issues"][0]["code"] == "CLAIM_NOT_SUPPORTED_BY_SOURCE"
+
+
+def test_a_persistent_invention_exhausts_exactly_three_revisions(tmp_path, careco_master):
+    """Trois passes de correction au maximum, chacune tracée."""
+    client = InventingAgentClient()
+
+    prepare_custom_cv(
+        CARECO["job"], application_dir=tmp_path, master_path=careco_master, llm_client=client
+    )
+    trace = json.loads((tmp_path / "cv" / "cv_agent_trace.json").read_text(encoding="utf-8"))
+
+    assert trace["automatic_revision_rounds"] == 3
+    assert trace["automatic_revision_limit"] == 3
+    assert trace["stopped_because"] == "revision_limit_reached"
+    assert len(trace["rounds"]) == 3
+    assert client.calls.count("cv_style_reviser") == 3
+    assert client.calls.count("cv_truth_checker") == 4
+
+
+def test_the_correction_contract_merges_truth_format_and_relevance():
+    """Le réviseur reçoit les trois origines dans une liste unique et ordonnée."""
+    review = {
+        "problems": [
+            {
+                "code": "SKILL_WITHOUT_EVIDENCE",
+                "section": "evidence",
+                "problem": "Preuve absente.",
+                "suggested_fix": "Ajouter une expérience sourcée.",
+            }
+        ]
+    }
+    truth_check = {
+        "truth_issues": [
+            {
+                "code": "BULLET_WITHOUT_SOURCE",
+                "path": "experiences[0].bullets[0]",
+                "detail": "Aucune preuve citée.",
+                "reference": None,
+            }
+        ],
+        "format_issues": [
+            {
+                "code": "BULLET_TOO_LONG",
+                "path": "experiences[0].bullets[1]",
+                "detail": "Puce trop longue.",
+                "reference": "exp",
+            }
+        ],
+    }
+
+    contract = build_correction_contract(review, truth_check)
+
+    assert [item["origin"] for item in contract] == ["truth", "format", "relevance"]
+    assert [item["blocking"] for item in contract] == [True, True, False]
+
+
+def test_the_fingerprint_detects_an_unchanged_revision():
+    """Même contenu et mêmes reproches produisent la même empreinte."""
+    content = {"cv": {"title": "Webmaster", "experiences": []}}
+    corrections = [{"origin": "truth", "code": "X", "location": "experiences[0]"}]
+
+    assert correction_fingerprint(content, corrections) == correction_fingerprint(
+        content, corrections
+    )
+    assert correction_fingerprint(content, corrections) != correction_fingerprint(
+        {"cv": {"title": "Autre", "experiences": []}}, corrections
+    )
+
+
+def test_a_format_error_alone_holds_the_cv_in_review(tmp_path, careco_master):
+    """Un dépassement de gabarit non résorbé retarde la publication sans bloquer."""
+    experiences = CarecoAgentClient().default_experiences()
+    experiences[0]["bullets"][0]["text"] = "Catalogue WooCommerce inventé. " * 12
+    client = CarecoAgentClient(experiences=experiences)
+
+    result = prepare_custom_cv(
+        CARECO["job"], application_dir=tmp_path, master_path=careco_master, llm_client=client
+    )
+
+    assert result["status"] == "review"
+    assert result["published"] is False
+    assert not (tmp_path / "cv" / "cv_final.pdf").exists()
+    codes = {item["code"] for item in result["assessment"]["publication"]["format_issues"]}
+    assert "BULLET_TOO_LONG" in codes
+
+
+def test_publication_block_reports_why_and_how_many_rounds(tmp_path, careco_master):
+    """L'évaluation dit pourquoi le CV n'est pas final et combien de passes ont eu lieu."""
+    result = prepare_custom_cv(
+        CARECO["job"],
+        application_dir=tmp_path,
+        master_path=careco_master,
+        llm_client=CarecoAgentClient(),
+    )
+
+    publication = result["assessment"]["publication"]
+    assert publication["revision_rounds"] == 0
+    assert publication["revision_limit"] == 3
+    assert publication["stopped_because"] == "validated"
+    assert publication["truth_verdict"] == "accepted"
+    assert publication["blocking_issues"] == []
+    assert result["published"] is True

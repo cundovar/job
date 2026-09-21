@@ -165,6 +165,9 @@ def prepare_application(
         cv_result = prepare_custom_cv(opportunity, application_dir=package.directory)
         payload["cv"] = {
             "status": cv_result["status"],
+            # Un CV généré n'est pas un CV publiable : seul `published` dit si
+            # les fichiers finaux existent.
+            "published": cv_result["published"],
             "quality_score": cv_result["quality_score"],
             "ats_score": cv_result["ats_score"],
             "cv_dir": cv_result["cv_dir"],
