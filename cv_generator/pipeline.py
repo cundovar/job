@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
@@ -221,6 +222,33 @@ def _truth_signature(truth_check: Dict[str, Any]) -> frozenset:
     )
 
 
+def _run_parallel_checks(
+    agents: AICVPipeline,
+    job: Dict[str, Any],
+    master: Dict[str, Any],
+    plan: Dict[str, Any],
+    content: Dict[str, Any],
+    *,
+    previous_content: Dict[str, Any] | None = None,
+    previous_truth: Dict[str, Any] | None = None,
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    """Vérité et pertinence en parallèle.
+
+    Les deux agents lisent le même contenu et aucun ne consomme le verdict de
+    l'autre : l'ordre d'arrivée n'a aucune incidence sur la décision, qui
+    n'est prise qu'une fois les deux verdicts posés. Une erreur de contrat
+    remonte telle quelle, comme en exécution séquentielle.
+    """
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        truth_future = pool.submit(
+            agents.verify, job, master, plan, content, previous_content, previous_truth
+        )
+        review_future = pool.submit(agents.review, job, master, plan, content)
+        truth_check = truth_future.result()
+        review = review_future.result()
+    return truth_check, review
+
+
 def prepare_custom_cv(
     job: Dict[str, Any],
     application_dir: str | Path,
@@ -248,10 +276,9 @@ def prepare_custom_cv(
         )
 
     content = draft
-    _write_progress(output_dir, "verification")
-    truth_check = agents.verify(job, master, plan, content)
+    _write_progress(output_dir, "verification", detail="Véracité et pertinence en parallèle")
+    truth_check, review = _run_parallel_checks(agents, job, master, plan, content)
     _write_progress(output_dir, "judgement")
-    review = agents.review(job, master, plan, content)
     first_review = review
 
     trace_runs = [_trace_item(plan), _trace_item(draft), _trace_item(truth_check), _trace_item(review)]
@@ -285,11 +312,21 @@ def prepare_custom_cv(
         try:
             revised = agents.revise(job, master, plan, content, review, truth_check)
             _write_progress(
-                output_dir, "verification", revision_round=revision_rounds + 1
+                output_dir,
+                "verification",
+                detail="Véracité et pertinence en parallèle",
+                revision_round=revision_rounds + 1,
             )
-            revised_truth = agents.verify(job, master, plan, revised)
+            revised_truth, revised_review = _run_parallel_checks(
+                agents,
+                job,
+                master,
+                plan,
+                revised,
+                previous_content=content,
+                previous_truth=truth_check,
+            )
             _write_progress(output_dir, "judgement", revision_round=revision_rounds + 1)
-            revised_review = agents.review(job, master, plan, revised)
         except CVAgentError as exc:
             # Le réviseur a violé son contrat. Le contenu précédent et son
             # diagnostic portent sur le même CV : ils restent valides et
@@ -312,6 +349,7 @@ def prepare_custom_cv(
                 "blocking_issue_count": len(truth_check.get("truth_issues", [])),
                 "format_issue_count": len(truth_check.get("format_issues", [])),
                 "relevance_problem_count": len(review.get("problems", [])),
+                "truth_mode": (truth_check.get("targeted") or {}).get("mode"),
             }
         )
         revised_signature = _truth_signature(revised_truth)
@@ -445,6 +483,7 @@ def prepare_custom_cv(
         "runs": trace_runs,
         "rounds": rounds,
         "correction_retried": revision_rounds > 0,
+        "checks_parallel": True,
         "automatic_revision_rounds": revision_rounds,
         "automatic_corrections_exhausted": stopped_because != "validated",
         "automatic_revision_limit": MAX_AUTOMATIC_REVISION_ROUNDS,

@@ -1,6 +1,8 @@
 import copy
 import io
 import json
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -272,6 +274,80 @@ class AlwaysRetryCVAgentClient(FakeCVAgentClient):
         return AgentResult(data=data, provider=result.provider, model=result.model)
 
 
+class TargetedTruthCVAgentClient(RetryCVAgentClient):
+    """Vérificateur qui ne juge que ce qu'on lui soumet.
+
+    Sans ciblage, il rend deux claims (puces 0 et 1 de la première
+    expérience) ; avec ciblage, il ne rend que les chemins modifiés qu'on lui
+    annonce, comme un vrai vérificateur concentré sur le diff.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.truth_payloads = []
+
+    def complete_json(self, *, agent_name, system_prompt, payload):
+        if agent_name == "cv_truth_checker":
+            self.truth_payloads.append(payload)
+            ciblage = payload.get("verification_ciblee")
+            if ciblage:
+                claims = [
+                    {
+                        "path": path,
+                        "source_refs": ["boutique_fictive:0"],
+                        "status": "supported",
+                        "reason": "",
+                    }
+                    for path in ciblage["chemins_modifies"]
+                ]
+            else:
+                claims = [
+                    {
+                        "path": "experiences[0].bullets[0]",
+                        "source_refs": ["boutique_fictive:0"],
+                        "status": "supported",
+                        "reason": "",
+                    },
+                    {
+                        "path": "experiences[0].bullets[1]",
+                        "source_refs": ["atelier_imaginaire:0"],
+                        "status": "supported",
+                        "reason": "",
+                    },
+                ]
+            return AgentResult(
+                data={"verdict": "accepted", "claims": claims, "summary": "Puces sourcées."},
+                provider="fake",
+                model="fake-targeted",
+            )
+        return super().complete_json(
+            agent_name=agent_name, system_prompt=system_prompt, payload=payload
+        )
+
+
+class ConcurrencyProbeCVAgentClient(FakeCVAgentClient):
+    """Compte le maximum d'appels IA réellement simultanés."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._lock = threading.Lock()
+        self._active = 0
+        self.max_concurrent = 0
+
+    def complete_json(self, *, agent_name, system_prompt, payload):
+        with self._lock:
+            self._active += 1
+            self.max_concurrent = max(self.max_concurrent, self._active)
+        time.sleep(0.05)
+        try:
+            return super().complete_json(
+                agent_name=agent_name, system_prompt=system_prompt, payload=payload
+            )
+        finally:
+            with self._lock:
+                self._active -= 1
+
+
 def _careco_cv(tmp_path, master_path, client):
     result = prepare_custom_cv(
         CARECO["job"], application_dir=tmp_path, master_path=master_path, llm_client=client
@@ -300,12 +376,10 @@ def test_prepare_custom_cv_generates_webmaster_files(tmp_path, careco_master):
     assert result["pipeline"] == "ai_cv_pipeline_v4"
     assert result["selected_base_variant"] == "webmaster"
     assert "Webmaster" in result["target_title"]
-    assert client.calls == [
-        "cv_job_analyzer",
-        "cv_creator",
-        "cv_truth_checker",
-        "cv_quality_checker",
-    ]
+    # L'analyse et la rédaction précèdent les contrôles ; vérité et jugement
+    # tournent en parallèle, leur ordre d'appel mutuel n'est plus garanti.
+    assert client.calls[:2] == ["cv_job_analyzer", "cv_creator"]
+    assert sorted(client.calls[2:]) == ["cv_quality_checker", "cv_truth_checker"]
     assert result["published"] is True
     assert (tmp_path / "cv" / "cv_final.json").exists()
     assert (tmp_path / "cv" / "cv_agent_trace.json").exists()
@@ -416,6 +490,71 @@ def test_pipeline_stops_early_when_a_revision_makes_no_progress(tmp_path, careco
     assert trace["stopped_because"] == "no_progress"
     assert trace["automatic_revision_rounds"] < trace["automatic_revision_limit"]
     assert trace["automatic_corrections_exhausted"] is True
+
+
+def test_verite_ciblee_ne_rejuge_pas_les_puces_intactes(tmp_path, careco_master):
+    """Après révision, le vérificateur ne re-juge que les chemins modifiés.
+
+    Le diff Python annonce les chemins touchés, l'agent ne rend que leurs
+    claims, et la puce intacte conserve le verdict qu'elle avait déjà — un
+    texte identique ne peut pas changer de sens.
+    """
+    client = TargetedTruthCVAgentClient()
+
+    result, _ = _careco_cv(tmp_path, careco_master, client)
+
+    cibles = [p for p in client.truth_payloads if "verification_ciblee" in p]
+    assert cibles, "Le contrôle post-révision doit être ciblé"
+    chemins = cibles[0]["verification_ciblee"]["chemins_modifies"]
+    assert any(chemin.startswith("experiences[0].bullets[0]") for chemin in chemins)
+    assert any(
+        precedent["path"] == "experiences[0].bullets[1]"
+        for precedent in cibles[0]["verification_ciblee"]["statuts_deja_valides"]
+    )
+
+    truth_check = json.loads(
+        (tmp_path / "cv" / "cv_truth_check.json").read_text(encoding="utf-8")
+    )
+    paths = {claim["path"] for claim in truth_check["claims"]}
+    assert "experiences[0].bullets[1]" in paths
+    assert truth_check["verdict"] == "accepted"
+    assert truth_check["targeted"]["mode"] == "targeted"
+    assert result["status"] == "ready"
+
+
+def test_verite_reutilisee_quand_la_revision_ne_change_rien(tmp_path, careco_master):
+    """Le réviseur rend l'identique : aucun second appel vérité n'est dépensé.
+
+    Python re-valide tout le CV (gratuit) et le verdict précédent est réutilisé
+    tel quel — la détection d'absence de progrès reste celle qui arrête la boucle.
+    """
+    client = AlwaysRetryCVAgentClient()
+
+    result, _ = _careco_cv(tmp_path, careco_master, client)
+
+    assert client.calls.count("cv_truth_checker") == 1
+    truth_check = json.loads(
+        (tmp_path / "cv" / "cv_truth_check.json").read_text(encoding="utf-8")
+    )
+    assert truth_check["agent_run"]["reused"] is True
+    assert truth_check["targeted"]["mode"] == "reused"
+    assert result["status"] == "review"
+    assert result["published"] is False
+
+
+def test_verite_et_jugement_partagent_le_meme_instant(tmp_path, careco_master):
+    """Vérité et pertinence sont lancés ensemble, pas l'un après l'autre.
+
+    Sur un run réel, ces deux appels durent 30 à 90 secondes chacun : les
+    séquencer coûterait une minute par tour pour un résultat identique.
+    """
+    client = ConcurrencyProbeCVAgentClient()
+
+    _careco_cv(tmp_path, careco_master, client)
+
+    assert client.max_concurrent >= 2, (
+        "Vérité et jugement doivent se dérouler en parallèle"
+    )
 
 
 def test_minor_revision_request_does_not_open_a_round(tmp_path, careco_master):
@@ -1256,14 +1395,22 @@ class InventingAgentClient(CarecoAgentClient):
 
 
 def test_an_invention_blocks_before_the_recruiter_judge(tmp_path, careco_master):
-    """Le vérificateur de vérité passe avant le juge, et son refus bloque."""
+    """Le refus de vérité bloque la publication, même quand le juge valide.
+
+    Vérité et jugement tournent en parallèle : l'ordre temporel des appels
+    n'est plus l'invariant. La hiérarchie des verdicts, elle, ne bouge pas —
+    un vérificateur qui refuse impose `blocked` quel que soit l'avis du juge.
+    """
     client = InventingAgentClient()
 
     result = prepare_custom_cv(
         CARECO["job"], application_dir=tmp_path, master_path=careco_master, llm_client=client
     )
 
-    assert client.calls.index("cv_truth_checker") < client.calls.index("cv_quality_checker")
+    final_review = json.loads(
+        (tmp_path / "cv" / "cv_final_review.json").read_text(encoding="utf-8")
+    )
+    assert final_review["status"] == "validated"
     assert result["status"] == "blocked"
     assert result["published"] is False
     truth = json.loads((tmp_path / "cv" / "cv_truth_check.json").read_text(encoding="utf-8"))
@@ -1398,7 +1545,12 @@ def test_progress_file_follows_each_construction_step(tmp_path, careco_master):
         llm_client=RecordingClient(),
     )
 
-    assert steps == ["analysis", "writing", "verification", "judgement"]
+    # Vérité et jugement tournant en parallèle, les deux appels voient
+    # l'étape « verification » — le « judgement » n'est plus une phase
+    # d'exécution distincte, juste une étape franchie une fois les deux
+    # verdicts posés.
+    assert steps[:2] == ["analysis", "writing"]
+    assert steps[2:] == ["verification", "verification"]
     final = json.loads((tmp_path / "cv" / "cv_progress.json").read_text(encoding="utf-8"))
     assert final["step"] == "done"
     assert final["status"] == "ready"

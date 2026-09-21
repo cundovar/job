@@ -1115,10 +1115,60 @@ def _normalize_evidence_coverage(value: Any, master: Dict[str, Any]) -> List[Dic
     return result
 
 
+def _path_segments(path: str) -> tuple[str, ...]:
+    """« experiences[0].bullets[1] » → ('experiences', '0', 'bullets', '1').
+
+    La comparaison passe par les segments plutôt que par un préfixe texte :
+    « [1] » ne doit jamais matcher « [10] ».
+    """
+    return tuple(
+        piece for piece in str(path).replace("[", ".").replace("]", "").split(".") if piece
+    )
+
+
+def _claim_affected(claim_path: str, changed_paths: List[str]) -> bool:
+    """Un claim est touché si son chemin contient — ou est contenu dans — un chemin modifié."""
+    segments = _path_segments(claim_path)
+    for changed in changed_paths:
+        other = _path_segments(changed)
+        if other[: len(segments)] == segments or segments[: len(other)] == other:
+            return True
+    return False
+
+
+def _cv_diff_paths(previous: Any, current: Any, prefix: str = "") -> List[str]:
+    """Chemins (convention des claims) où `current` diffère de `previous`.
+
+    Comparaison purement mécanique, donc du ressort de Python : elle ne dit
+    rien du sens, elle dit seulement où le réviseur est intervenu.
+    """
+    if type(previous) is not type(current):
+        return [prefix or "<racine>"]
+    if isinstance(previous, dict):
+        paths: List[str] = []
+        for key in sorted(set(previous) | set(current)):
+            child_prefix = f"{prefix}.{key}" if prefix else str(key)
+            if key not in previous or key not in current:
+                paths.append(child_prefix)
+            else:
+                paths.extend(_cv_diff_paths(previous[key], current[key], child_prefix))
+        return paths
+    if isinstance(previous, list):
+        if len(previous) != len(current):
+            return [prefix or "<racine>"]
+        paths = []
+        for index, (old_item, new_item) in enumerate(zip(previous, current)):
+            paths.extend(_cv_diff_paths(old_item, new_item, f"{prefix}[{index}]"))
+        return paths
+    return [] if previous == current else [prefix or "<racine>"]
+
+
 def _merge_truth_check(
     proposed: Dict[str, Any],
     validation: Dict[str, Any],
     run: AgentResult,
+    previous_claims: List[Dict[str, Any]] | None = None,
+    changed_paths: List[str] | None = None,
 ) -> Dict[str, Any]:
     """Fusionne le contrôle Python et le jugement de l'agent vérificateur.
 
@@ -1143,6 +1193,25 @@ def _merge_truth_check(
                 "reason": _clip(item.get("reason"), 300),
             }
         )
+    targeted: Dict[str, Any] | None = None
+    if previous_claims is not None:
+        # Véracité ciblée : les chemins intacts conservent le verdict rendu au
+        # tour précédent — un texte identique ne peut pas changer de sens.
+        # Un claim que l'agent rendrait sur un chemin intact est ignoré : le
+        # statut précédent fait foi, il porte sur exactement le même texte.
+        paths = changed_paths or []
+        kept = [
+            item
+            for item in previous_claims
+            if isinstance(item, dict) and not _claim_affected(str(item.get("path") or ""), paths)
+        ]
+        kept_paths = {item.get("path") for item in kept}
+        claims = kept + [item for item in claims if item["path"] not in kept_paths]
+        targeted = {
+            "mode": "reused" if not paths else "targeted",
+            "changed_paths": paths,
+            "reused_claims": len(kept),
+        }
     unsupported = [item for item in claims if item["status"] == "unsupported"]
     issues = list(validation["truth_issues"])
     for item in unsupported:
@@ -1155,7 +1224,7 @@ def _merge_truth_check(
                 "reference": ", ".join(item["source_refs"]) or None,
             }
         )
-    return {
+    merged = {
         "agent": "cv_truth_checker_ai",
         "agent_run": _agent_run(run),
         "verdict": "refused" if issues else "accepted",
@@ -1169,6 +1238,9 @@ def _merge_truth_check(
             "issues": validation["issues"],
         },
     }
+    if targeted is not None:
+        merged["targeted"] = targeted
+    return merged
 
 
 def _merge_review(
@@ -1576,25 +1648,85 @@ class AICVPipeline:
         master: Dict[str, Any],
         plan: Dict[str, Any],
         draft: Dict[str, Any],
+        previous_content: Dict[str, Any] | None = None,
+        previous_truth: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         """Contrôle la vérité avant tout jugement éditorial.
 
         Python passe en premier : une référence introuvable n'a pas besoin d'un
         appel IA pour être refusée. L'agent n'est consulté que sur ce que Python
         ne peut pas voir — l'écart de sens entre une preuve et sa reformulation.
+
+        Après une révision, le contrôle devient ciblé : Python diff le contenu
+        validé et le contenu révisé, l'agent ne re-juge que les chemins
+        modifiés, les chemins intacts gardent leur verdict précédent. Si rien
+        n'a bougé, aucun appel IA n'est dépensé du tout.
         """
         validation = validate_cv_content(draft, master, plan)
+        previous_claims: List[Dict[str, Any]] | None = None
+        changed_paths: List[str] = []
+        if previous_content is not None and previous_truth is not None:
+            changed_paths = _cv_diff_paths(
+                previous_content.get("cv", {}), draft.get("cv", {})
+            )
+            previous_claims = [
+                item for item in previous_truth.get("claims") or [] if isinstance(item, dict)
+            ]
+            if not changed_paths:
+                # Rien n'a bougé : le verdict précédent reste exact. Python
+                # re-valide tout le CV (gratuit), l'agent n'est pas rappelé.
+                previous_run = previous_truth.get("agent_run") or {}
+                inherited = AgentResult(
+                    data={},
+                    provider=str(previous_run.get("provider") or "injected"),
+                    model=str(previous_run.get("model") or "injected"),
+                    duration_seconds=0.0,
+                )
+                merged = _merge_truth_check(
+                    {"claims": previous_claims},
+                    validation,
+                    inherited,
+                    previous_claims=previous_claims,
+                    changed_paths=[],
+                )
+                merged["agent_run"]["reused"] = True
+                return merged
+
+        payload = {
+            "source_verite": _truth_context(master, "reviewer"),
+            "cv_a_verifier": draft.get("cv", {}),
+            "controle_python": validation["issues"],
+        }
+        if previous_claims is not None and changed_paths:
+            payload["verification_ciblee"] = {
+                "consigne": (
+                    "Seuls les chemins listés dans chemins_modifies ont changé depuis la "
+                    "validation précédente : concentre l'analyse de sens sur eux, en rendant "
+                    "un claim par chemin modifié. Les chemins intacts listés dans "
+                    "statuts_deja_valides portent exactement le même texte qu'au tour "
+                    "précédent où ils ont été jugés : ne les re-analyse pas, leur statut "
+                    "antérieur sera conservé tel quel."
+                ),
+                "chemins_modifies": changed_paths[:60],
+                "statuts_deja_valides": [
+                    {"path": item.get("path"), "status": item.get("status")}
+                    for item in previous_claims
+                    if not _claim_affected(str(item.get("path") or ""), changed_paths)
+                ][:80],
+            }
         result = _agent_call(
             self.client,
             "cv_truth_checker",
             TRUTH_CHECKER_PROMPT,
-            {
-                "source_verite": _truth_context(master, "reviewer"),
-                "cv_a_verifier": draft.get("cv", {}),
-                "controle_python": validation["issues"],
-            },
+            payload,
         )
-        return _merge_truth_check(result.data, validation, result)
+        return _merge_truth_check(
+            result.data,
+            validation,
+            result,
+            previous_claims=previous_claims,
+            changed_paths=changed_paths or None,
+        )
 
     def review(
         self,
