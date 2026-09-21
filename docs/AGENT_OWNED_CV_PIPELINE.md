@@ -165,8 +165,18 @@ réécriture complète :
   résultat dans l'assemblage déterministe : tout ce que le patch ne touche pas
   reste identique au brouillon — aucune partie déjà validée ne peut régresser.
 - Le périmètre autorisé est l'ensemble des `location` bloquantes du contrat de
-  correction (vérité + gabarit). Un chemin hors périmètre est refusé avec une
-  erreur localisée rendue au réviseur.
+  correction (vérité + gabarit). Une `location` sans index — `experiences` pour
+  `TOO_MANY_EXPERIENCES`, `skills` pour `TOO_MANY_SKILL_SECTIONS` — porte sur la
+  liste entière et ouvre donc chacun de ses éléments, sans quoi la seule
+  correction possible (retirer l'élément de trop) serait refusée.
+- Un patch dont **un seul** changement est illisible ou hors périmètre est
+  refusé en bloc, jamais appliqué à moitié, et la cause localisée du refus part
+  dans le contrat de l'appel de repli (`origin: "patch"`).
+- Les index d'un patch désignent le brouillon **entrant**. Python applique donc
+  les `modify` d'abord, à index stables, puis les `remove` du dernier au
+  premier : une suppression ne peut pas décaler une correction sur la puce
+  voisine. Ce décalage serait invisible au validateur, les deux puces
+  appartenant à la même expérience.
 - Après **deux échecs de patch consécutifs**, le pipeline abandonne le mode
   patch et revient à la réécriture complète (chemin historique). Une réponse
   au schéma complet est aussi tolérée à tout moment.

@@ -1358,11 +1358,31 @@ def _patch_scope(contract: List[Dict[str, Any]]) -> List[List[Any]]:
     return prefixes
 
 
+def _patch_token_matches(prefix_token: Any, path_token: Any) -> bool:
+    """Un segment de contrat couvre-t-il un segment de chemin ?
+
+    Un contrat sans index — « experiences » pour `TOO_MANY_EXPERIENCES`,
+    « skills » pour `TOO_MANY_SKILL_SECTIONS` — porte sur la liste entière :
+    il ouvre donc chacun de ses éléments, sans quoi la seule correction
+    possible (retirer l'élément de trop) serait refusée comme hors périmètre.
+    """
+    name, index = prefix_token
+    other_name, other_index = path_token
+    if name != other_name:
+        return False
+    return index is None or index == other_index
+
+
 def _patch_path_in_scope(tokens: List[Any], prefixes: List[List[Any]]) -> bool:
     for prefix in prefixes:
         if prefix and prefix[0] == ("cv", None):
             return True
-        if len(tokens) >= len(prefix) and tokens[: len(prefix)] == prefix:
+        if len(tokens) < len(prefix):
+            continue
+        if all(
+            _patch_token_matches(prefix_token, path_token)
+            for prefix_token, path_token in zip(prefix, tokens)
+        ):
             return True
     return False
 
@@ -1408,7 +1428,11 @@ def _apply_cv_patch(
     """
     if not isinstance(changes, list) or not changes:
         raise CVAgentError("Patch vide : la liste « changes » est absente ou vide.")
-    updated = copy.deepcopy(flat)
+
+    # Lecture complète avant la moindre écriture : un patch dont un seul
+    # changement est illisible ou hors périmètre est refusé en bloc, jamais
+    # appliqué à moitié.
+    lus: List[Any] = []
     for change in changes:
         if not isinstance(change, dict):
             raise CVAgentError("Changement de patch illisible (élément non objet).")
@@ -1422,19 +1446,27 @@ def _apply_cv_patch(
             raise CVAgentError(
                 f"Chemin de patch hors périmètre du contrat : « {change.get('path')} »."
             )
+        lus.append((action, tokens, change))
+
+    # Les index d'un patch désignent tous le brouillon *entrant*. Une
+    # suppression appliquée trop tôt décale la liste, et la correction
+    # suivante atterrit sur la puce voisine — texte de l'agent posé sur la
+    # mauvaise preuve, sans que le validateur puisse le voir. On modifie
+    # donc d'abord, à index stables, puis on supprime du dernier au premier.
+    modifications = [item for item in lus if item[0] == "modify"]
+    suppressions = sorted(
+        (item for item in lus if item[0] == "remove"),
+        key=lambda item: tuple(
+            (name, -1 if index is None else index) for name, index in item[1]
+        ),
+        reverse=True,
+    )
+
+    updated = copy.deepcopy(flat)
+    for _, tokens, change in modifications:
         container, key = _patch_parent(updated, tokens)
-        if action == "remove":
-            if not isinstance(container, list):
-                raise CVAgentError(
-                    f"« remove » ne s'applique pas à « {change.get('path')} »."
-                )
-            del container[key]
-            continue
         new = change.get("new")
-        if isinstance(key, int):
-            container[key] = new
-        else:
-            container[key] = new
+        container[key] = new
         # Une puce réécrite doit rester sourcée : on refuse tout de suite ce
         # que le validateur bloquerait plus tard, avec la localisation.
         if tokens[-1][0] == "bullets" and tokens[-1][1] is not None:
@@ -1446,6 +1478,15 @@ def _apply_cv_patch(
                 raise CVAgentError(
                     f"Puce modifiée sans preuve citée : « {change.get('path')} »."
                 )
+
+    for _, tokens, change in suppressions:
+        container, key = _patch_parent(updated, tokens)
+        if not isinstance(container, list):
+            raise CVAgentError(
+                f"« remove » ne s'applique pas à « {change.get('path')} »."
+            )
+        del container[key]
+
     return updated
 
 
@@ -1616,11 +1657,24 @@ class AICVPipeline:
                 if isinstance(data, dict) and isinstance(data.get("changes"), list):
                     try:
                         flat = _apply_cv_patch(payload["brouillon"], data["changes"], scope)
-                    except CVAgentError:
-                        # L'erreur localisée est rendue au réviseur : elle sera
-                        # dans le contrat du prochain appel. En attendant, on
-                        # referme le tour en réécriture complète.
+                    except CVAgentError as patch_error:
+                        # Le patch est refusé : l'erreur localisée part avec le
+                        # contrat de l'appel de repli, sans quoi le réviseur
+                        # réécrirait à l'aveugle la cause de son propre échec.
                         self._patch_failures = getattr(self, "_patch_failures", 0) + 1
+                        contract = contract + [
+                            {
+                                "origin": "patch",
+                                "blocking": True,
+                                "code": "PATCH_REFUSE",
+                                "location": None,
+                                "problem": str(patch_error),
+                                "suggested_fix": (
+                                    "Renvoie cette fois le schéma complet du rédacteur."
+                                ),
+                            }
+                        ]
+                        payload["corrections_a_appliquer"] = contract
                     else:
                         self._patch_failures = 0
                         final = _wrap_patched_cv(
@@ -1641,6 +1695,20 @@ class AICVPipeline:
                     # Ni patch ni schéma complet : échec de patch, le repli
                     # ci-dessous referme le tour.
                     self._patch_failures = getattr(self, "_patch_failures", 0) + 1
+                    contract = contract + [
+                        {
+                            "origin": "patch",
+                            "blocking": True,
+                            "code": "PATCH_ILLISIBLE",
+                            "location": None,
+                            "problem": (
+                                "La réponse précédente n'était ni un patch « changes » "
+                                "ni le schéma complet du rédacteur."
+                            ),
+                            "suggested_fix": "Renvoie le schéma complet du rédacteur.",
+                        }
+                    ]
+                    payload["corrections_a_appliquer"] = contract
 
         if final is None:
             result = _agent_call(

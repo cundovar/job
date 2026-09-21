@@ -1,3 +1,4 @@
+import copy
 import io
 import json
 from pathlib import Path
@@ -22,6 +23,10 @@ from cv_generator.ai_agents import (
     _validate_plan,
     build_correction_contract,
     correction_fingerprint,
+    _apply_cv_patch,
+    _parse_patch_path,
+    _patch_path_in_scope,
+    _patch_scope,
 )
 from cv_generator.exporters import (
     DEFAULT_PORTRAIT,
@@ -1686,3 +1691,156 @@ def test_an_out_of_scope_patch_falls_back_to_full_revision(tmp_path, careco_mast
     assert result["status"] == "ready"
     assert result["published"] is True
     assert "Accroche modifiée hors contrat." not in (content["cv"].get("profile") or "")
+
+
+# --- Mécanique du patch : ce que Python a le droit de poser, et où ----------- #
+
+
+def _scope(*locations):
+    return _patch_scope([{"origin": "format", "location": loc} for loc in locations])
+
+
+@pytest.mark.parametrize(
+    ("location", "path", "accepte"),
+    [
+        # Une erreur qui porte sur la liste entière — « trop d'expériences »,
+        # « trop de blocs de compétences » — doit ouvrir ses éléments : sans
+        # cela, retirer l'élément de trop, seule correction possible, serait
+        # refusé comme hors périmètre.
+        ("experiences", "experiences[4]", True),
+        ("skills", "skills[5]", True),
+        ("experiences", "experiences[0].bullets[1]", True),
+        # Le périmètre reste fermé sur ce que le contrat ne cite pas.
+        ("experiences[1]", "experiences[1].bullets[0]", True),
+        ("experiences[1]", "experiences[0].bullets[0]", False),
+        ("profile", "skills[0].items[1]", False),
+    ],
+)
+def test_patch_scope_covers_a_whole_list_without_opening_the_rest(location, path, accepte):
+    assert _patch_path_in_scope(_parse_patch_path(path), _scope(location)) is accepte
+
+
+def test_two_removals_in_one_patch_drop_the_two_intended_bullets():
+    """Les index d'un patch désignent le brouillon entrant, pas l'état courant."""
+    flat = {
+        "experiences": [
+            {
+                "id": "x",
+                "bullets": [
+                    {"text": "A", "sources": ["x:0"]},
+                    {"text": "B", "sources": ["x:1"]},
+                    {"text": "C", "sources": ["x:2"]},
+                ],
+            }
+        ]
+    }
+
+    updated = _apply_cv_patch(
+        flat,
+        [
+            {"action": "remove", "path": "experiences[0].bullets[1]"},
+            {"action": "remove", "path": "experiences[0].bullets[2]"},
+        ],
+        _scope("experiences[0]"),
+    )
+
+    assert [bullet["text"] for bullet in updated["experiences"][0]["bullets"]] == ["A"]
+
+
+def test_a_removal_never_shifts_a_correction_onto_the_neighbouring_bullet():
+    """Le pire cas : la correction atterrit sur la voisine et personne ne le voit.
+
+    Le validateur ne peut pas rattraper ce décalage — les deux puces
+    appartiennent à la même expérience, donc leurs preuves restent
+    « légales ». Seul l'ordre d'application protège le contenu.
+    """
+    flat = {
+        "experiences": [
+            {
+                "id": "x",
+                "bullets": [
+                    {"text": "A - à supprimer", "sources": ["x:0"]},
+                    {"text": "B - intacte", "sources": ["x:1"]},
+                    {"text": "C - à corriger", "sources": ["x:2"]},
+                    {"text": "D - intacte", "sources": ["x:3"]},
+                ],
+            }
+        ]
+    }
+
+    updated = _apply_cv_patch(
+        flat,
+        [
+            {"action": "remove", "path": "experiences[0].bullets[0]"},
+            {
+                "action": "modify",
+                "path": "experiences[0].bullets[2]",
+                "new": {"text": "C - corrigée", "sources": ["x:2"]},
+            },
+        ],
+        _scope("experiences[0]"),
+    )
+
+    assert [bullet["text"] for bullet in updated["experiences"][0]["bullets"]] == [
+        "B - intacte",
+        "C - corrigée",
+        "D - intacte",
+    ]
+
+
+def test_a_refused_change_leaves_the_draft_untouched():
+    """Un patch dont un seul changement est hors périmètre est refusé en bloc."""
+    flat = {
+        "profile": "Accroche d'origine.",
+        "experiences": [{"id": "x", "bullets": [{"text": "A", "sources": ["x:0"]}]}],
+    }
+    avant = copy.deepcopy(flat)
+
+    with pytest.raises(CVAgentError) as erreur:
+        _apply_cv_patch(
+            flat,
+            [
+                {
+                    "action": "modify",
+                    "path": "experiences[0].bullets[0]",
+                    "new": {"text": "A corrigée", "sources": ["x:0"]},
+                },
+                {"action": "modify", "path": "profile", "new": "Accroche hors contrat."},
+            ],
+            _scope("experiences[0]"),
+        )
+
+    assert "hors périmètre" in str(erreur.value)
+    assert flat == avant
+
+
+def test_a_refused_patch_tells_the_reviser_why_on_the_fallback_call(tmp_path, careco_master):
+    """Le repli n'est pas aveugle : il porte la cause du refus dans son contrat."""
+    client = PatchFlowClient(
+        patch_changes=[
+            {"action": "modify", "path": "profile", "new": "Accroche modifiée hors contrat."}
+        ],
+        experiences=TOO_LONG_PERMANENCE,
+    )
+    vus = []
+    complete_json = client.complete_json
+
+    def espion(*, agent_name, system_prompt, payload):
+        if agent_name == "cv_style_reviser":
+            vus.append(payload.get("corrections_a_appliquer") or [])
+        return complete_json(
+            agent_name=agent_name, system_prompt=system_prompt, payload=payload
+        )
+
+    client.complete_json = espion
+
+    prepare_custom_cv(
+        CARECO["job"], application_dir=tmp_path, master_path=careco_master, llm_client=client
+    )
+
+    assert client.patch_calls == 1 and client.full_calls == 1
+    appel_patch, appel_repli = vus[0], vus[1]
+    assert not [item for item in appel_patch if item.get("origin") == "patch"]
+    refus = [item for item in appel_repli if item.get("origin") == "patch"]
+    assert refus and refus[0]["code"] == "PATCH_REFUSE"
+    assert "hors périmètre" in refus[0]["problem"]
