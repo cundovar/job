@@ -45,7 +45,10 @@ utilisent l'UID `1000` et ce montage est déjà vérifié.
 
 ## Installation du service utilisateur
 
-Depuis le compte `cundo` :
+Depuis le compte `cundo`. Le chemin ci-dessous est celui du VPS ; sur le poste de
+travail le dépôt vit dans `~/Bureau/perso/code_perso/job-search-automation-package`.
+`tools/cv_cli_bridge.py` déduit désormais sa racine de son propre emplacement, donc
+seuls le `cd` et le fichier `.service` sont à adapter.
 
 ```bash
 cd /home/cundo/apps/job-search-automation-package

@@ -7,14 +7,15 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=%h/.local/share/job-search-cli-bridge/workspace
 Environment=PYTHONUNBUFFERED=1
-Environment=CV_CLI_BRIDGE_SOCKET=%h/apps/job-search-automation-package/data/.cv_cli_bridge.sock
 Environment=CV_CLI_BRIDGE_WORKSPACE=%h/.local/share/job-search-cli-bridge/workspace
-Environment=CV_CLI_BRIDGE_TOKEN_FILE=%h/apps/job-search-automation-package/data/.cv_cli_bridge_token
 Environment=CV_CLI_BRIDGE_PROVIDER_ORDER=codex,claude
 Environment=CV_CLI_BRIDGE_TIMEOUT_SECONDS=300
 Environment=CV_CLI_BRIDGE_REQUEST_TIMEOUT_SECONDS=10
 Environment=CV_CLI_BRIDGE_MAX_CONNECTIONS=8
-ExecStart=/usr/bin/python3 %h/apps/job-search-automation-package/tools/cv_cli_bridge.py
+# Seul chemin à adapter à l'installation : le socket et le jeton sont déduits de
+# celui-ci par tools/cv_cli_bridge.py (ROOT = parent de tools/). Le chemin précédent,
+# %h/apps/job-search-automation-package, ne correspondait à aucun clone existant.
+ExecStart=/usr/bin/python3 %h/Bureau/perso/code_perso/job-search-automation-package/tools/cv_cli_bridge.py
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

@@ -33,8 +33,12 @@ from company_analysis.verifier import CONFIRMED, run_verification
 from opportunity import build_opportunity
 from prospectors import CSVProspector, load_targeting_criteria, target_title_for
 
-CACHE_PATH = Path("data/companies_cache.json")
-CRITERIA_PATH = Path("config/criteria.yaml")
+# Chemins ancrés au dépôt, pas au répertoire courant : lancé depuis ailleurs
+# (service systemd, MCP), le pipeline écrivait son cache dans un `data/` créé au
+# hasard du cwd, et company_top ne le retrouvait jamais.
+ROOT = Path(__file__).resolve().parent
+CACHE_PATH = ROOT / "data" / "companies_cache.json"
+CRITERIA_PATH = ROOT / "config" / "criteria.yaml"
 
 # Collecteurs joués sur chaque entreprise, dans cet ordre.
 FACT_COLLECTORS = (
@@ -105,16 +109,55 @@ def analyse_company(
     }
 
 
+def filter_by_postal_code(
+    companies: List[Dict[str, Any]], postal_code: str
+) -> List[Dict[str, Any]]:
+    """Ne garde que les entreprises dont le code postal commence par `postal_code`.
+
+    Une entreprise sans code postal relevé est écartée : on ne sait pas où elle
+    est, et deviner depuis la colonne `ville` produirait une localisation qui n'a
+    jamais été vérifiée. Une zone que personne ne porte lève une erreur plutôt que
+    de renvoyer une liste vide qui passerait pour « aucune agence par ici ».
+    """
+    prefix = postal_code.strip()
+    if not prefix.isdigit():
+        raise ValueError(
+            f"Code postal invalide : « {postal_code} ». Attendu un préfixe numérique, "
+            "par exemple 75020 ou 75."
+        )
+
+    known = {
+        str(company.get("code_postal") or "").strip()
+        for company in companies
+        if str(company.get("code_postal") or "").strip()
+    }
+    if not any(code.startswith(prefix) for code in known):
+        raise ValueError(
+            f"Aucune entreprise du banc d'essai n'est en {prefix}. "
+            f"Codes postaux connus : {', '.join(sorted(known)) or 'aucun'}. "
+            "Ajoute les entreprises à config/companies.csv avec leur adresse relevée."
+        )
+
+    return [
+        company
+        for company in companies
+        if str(company.get("code_postal") or "").strip().startswith(prefix)
+    ]
+
+
 def run_spontaneous_search(
     limit: int | None = None,
     use_ai: bool = True,
     csv_path: str | Path | None = None,
     cache_path: str | Path = CACHE_PATH,
+    postal_code: str | None = None,
 ) -> List[Dict[str, Any]]:
     """Prospecte, mesure et vérifie. Ne produit aucun document, n'envoie rien."""
     criteria = load_targeting_criteria()
     prospector = CSVProspector(csv_path) if csv_path else CSVProspector()
     companies = prospector.find(criteria)
+    if postal_code:
+        companies = filter_by_postal_code(companies, postal_code)
     if limit is not None:
         companies = companies[:limit]
 
@@ -184,6 +227,11 @@ def main() -> None:
     parser.add_argument("--csv", default=None, help="Banc d'essai (défaut : config/companies.csv)")
     parser.add_argument("--no-ai", action="store_true", help="Vérification déterministe seule")
     parser.add_argument(
+        "--code-postal",
+        default=None,
+        help="Ne garder que les entreprises de cette zone (ex. 75020, ou 75 pour Paris)",
+    )
+    parser.add_argument(
         "--prepare",
         type=int,
         default=None,
@@ -194,7 +242,10 @@ def main() -> None:
     args = parser.parse_args()
 
     results = run_spontaneous_search(
-        limit=args.limit, use_ai=not args.no_ai, csv_path=args.csv
+        limit=args.limit,
+        use_ai=not args.no_ai,
+        csv_path=args.csv,
+        postal_code=args.code_postal,
     )
 
     for result in results:

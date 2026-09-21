@@ -112,12 +112,17 @@ function escapeCSVField(field) {
   return str;
 }
 
+// Colonnes de config/companies.csv, dans l'ordre. `adresse` et `code_postal`
+// restent vides : une agence ajoutée depuis un domaine n'a aucune adresse relevée,
+// et la déduire du nom de domaine serait l'inventer.
+const CSV_HEADER = 'nom,site,ville,type,statut,poste_vise,adresse,code_postal';
+
 function appendToCSV(csvPath, agencyName, domain) {
-  const line = `${escapeCSVField(agencyName)},https://${domain},,agence_com_engagee,a_qualifier,\n`;
+  const line = `${escapeCSVField(agencyName)},https://${domain},,agence_com_engagee,a_qualifier,,,\n`;
 
   // Ajoute en-tête si le fichier n'existe pas
   if (!fs.existsSync(csvPath)) {
-    fs.writeFileSync(csvPath, 'nom,site,ville,type,statut,poste_vise\n', 'utf-8');
+    fs.writeFileSync(csvPath, `${CSV_HEADER}\n`, 'utf-8');
   }
 
   fs.appendFileSync(csvPath, line, 'utf-8');
@@ -358,6 +363,39 @@ async function prepareAgency(number, agencyName, dry = false) {
   }
 }
 
+// Une passe de prospection crawle des dizaines de domaines et géocode chaque
+// adresse (Nominatim impose ~1,1 s entre deux appels) : compter en minutes, pas
+// en secondes. D'où la file asynchrone plutôt qu'une requête HTTP maintenue.
+const PROSPECTING_TIMEOUT = Number.parseInt(
+  process.env.AGENCY_PROSPECTING_TIMEOUT_MS || String(30 * 60 * 1000),
+  10
+);
+
+const ZONE_PATTERN = /^[a-z0-9-]{1,40}$/;
+
+async function runProspecting({ zone = 'ile-de-france', radiusM = null } = {}) {
+  if (!ZONE_PATTERN.test(zone)) {
+    throw new Error(`Zone invalide : ${zone}`);
+  }
+  const args = ['tools/agency_prospecting_v2.py', '--zone', zone];
+  if (radiusM != null) {
+    const radius = Number.parseInt(radiusM, 10);
+    if (!Number.isInteger(radius) || radius <= 0) {
+      throw new Error(`Rayon invalide : ${radiusM}`);
+    }
+    args.push('--radius', String(radius));
+  }
+
+  const output = await runPython(args, PROSPECTING_TIMEOUT);
+  // Le script imprime son récapitulatif en JSON sur stdout, précédé de lignes de
+  // progression. On repart du dernier objet complet plutôt que de tout parser.
+  const start = output.indexOf('{');
+  if (start === -1) {
+    throw new Error(`Sortie de prospection illisible : ${output.trim().slice(-500)}`);
+  }
+  return JSON.parse(output.slice(start));
+}
+
 export {
   normalizeDomain,
   validateDomain,
@@ -369,5 +407,6 @@ export {
   runPython,
   parseCompanyTopOutput,
   measureAgency,
-  prepareAgency
+  prepareAgency,
+  runProspecting
 };

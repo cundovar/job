@@ -44,9 +44,20 @@ venv.bak/
 .DS_Store
 
 # Data & Logs
-data/
-output/
+# `data/` sans slash initial matchait TOUT dossier nommé data, dont
+# front/public/data/ : l'état du dashboard était invisible de git, et du travail
+# de prospection a été perdu pour cette raison. Ancrer à la racine.
+/data/
+/output/
 *.log
+
+# Sessions de recherche horodatées et index reconstruits : régénérables.
+front/public/data/*/
+front/public/data/*.json
+# Sauf la liste d'agences, qui est un résultat de prospection à conserver.
+!front/public/data/agencies/
+front/public/data/agencies/*
+!front/public/data/agencies/latest.json
 
 # Google Credentials (NEVER COMMIT!)
 *credentials*.json

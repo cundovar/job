@@ -24,6 +24,12 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List
 
+# Racine déduite du fichier. Les défauts codés en dur pointaient vers
+# ~/apps/job-search-automation-package, qui n'existe pas : le bridge cherchait son
+# jeton et son socket hors du dépôt et échouait au démarrage.
+ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = ROOT / "data"
+
 
 class BridgeExecutionError(RuntimeError):
     pass
@@ -456,7 +462,7 @@ def _load_token() -> str:
     token_file = Path(
         os.getenv(
             "CV_CLI_BRIDGE_TOKEN_FILE",
-            "/home/cundo/apps/job-search-automation-package/data/.cv_cli_bridge_token",
+            str(DATA_DIR / ".cv_cli_bridge_token"),
         )
     )
     try:
@@ -497,7 +503,7 @@ def _acquire_instance_lock() -> None:
     lock_path = Path(
         os.getenv(
             "CV_CLI_BRIDGE_LOCK_FILE",
-            "/home/cundo/apps/job-search-automation-package/data/.cv_cli_bridge.lock",
+            str(DATA_DIR / ".cv_cli_bridge.lock"),
         )
     )
     lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -532,7 +538,7 @@ def main() -> None:
     socket_path = Path(
         os.getenv(
             "CV_CLI_BRIDGE_SOCKET",
-            "/home/cundo/apps/job-search-automation-package/data/.cv_cli_bridge.sock",
+            str(DATA_DIR / ".cv_cli_bridge.sock"),
         )
     )
     bridge = CLIAgentBridge()

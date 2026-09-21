@@ -42,6 +42,39 @@ front/ server/   interface de validation (Vite/React + Express)
 - Le code et les commentaires sont en français quand ils s'adressent à l'utilisateur, en anglais pour les identifiants.
 - Les tests sont dans `tests/`, les fixtures dans `tests/fixtures/`.
 
+## Prospection d'agences (voie spontanée)
+
+- **Deux chaînes distinctes, à ne pas confondre.** `job_*` cherche des
+  *annonces*, `company_*` / `agency_*` cherche des *entreprises*. Chaque
+  description d'outil MCP commence par `ANNONCES —` ou `ENTREPRISES/AGENCES —`,
+  et `tests/test_agency_prospecting.py` le vérifie. Un outil ajouté sans ce
+  préfixe fait échouer la suite : c'est voulu.
+- **`tools/agency_prospecting_v2.py` est le seul producteur** de
+  `front/public/data/agencies/latest.json`. Le serveur Node ne le réécrit plus
+  au démarrage. Schéma : `docs/AGENCIES_SCHEMA.md`.
+- **Une position approximative n'est pas une adresse.** Le champ `how` dit d'où
+  vient la position (`adresse`, `contact/legales`, `ville/arr (~centre)`, vide).
+  Seul un `how` valant adresse compte « dans le rayon ». Ne jamais déduire un
+  code postal d'une adresse absente.
+- **Une zone sans résultat lève une erreur nommant les zones connues**, jamais
+  une liste vide : un vide se relit comme « il n'y a rien », et c'est ce qui a
+  conduit un agent à inventer deux agences.
+- `config/companies.csv` (8 colonnes, versionné) porte les adresses relevées à
+  la main. Une ligne sans `site` est ignorée par le prospecteur, volontairement.
+
+## Chemins et ports
+
+- La racine du dépôt est **déduite du fichier** (`Path(__file__).parent…`),
+  jamais écrite en dur. Des chemins absolus vers `~/apps/job-search-automation-package`
+  — qui n'existe sur aucune machine — ont fait travailler des scripts dans le vide.
+- Le port du serveur Node vient de `PORT` dans l'environnement puis dans le
+  `.env` racine. `server/config.js` et `hermes_mcp_server.py` lisent la **même**
+  source : ne pas recoder un port en dur d'un seul côté.
+- `data/` est gitignoré (motif ancré `/data/`, sans quoi il attrapait aussi
+  `front/public/data/`). Un fichier produit pendant une session et jamais
+  commité disparaît au premier `git pull` ou changement de branche : ce qui doit
+  survivre se commite avant la fin de la session.
+
 ## Frontière IA / Python sur la chaîne CV
 
 Les agents décident du contenu éditorial, Python vérifie la vérité, le format et le droit d'exporter — sans jamais réécrire un choix d'agent. Python n'ajoute pas une expérience écartée, ne réordonne pas, ne tronque pas, ne supprime pas une formulation et ne fabrique pas de puce de secours : il produit une erreur localisée que le réviseur traite. Chaque puce cite ses preuves (`experience_id:index` ou `project_id`), et `cv_final.*` n'existe qu'au statut `ready`. Voir `docs/AGENT_OWNED_CV_PIPELINE.md`.

@@ -26,7 +26,8 @@ import {
   appendToCSV,
   appendToYAML,
   measureAgency,
-  prepareAgency
+  prepareAgency,
+  runProspecting
 } from '../services/agenciesService.js';
 
 const MAX_CV_PROCESS_OUTPUT = 10 * 1024 * 1024;
@@ -526,6 +527,74 @@ export default function createApplicationsRouter(repo) {
     return task;
   }
 
+  // ── File de prospection d'agences ─────────────────────────────────
+  // Distincte de la file `agencyTasks` : celle-ci *découvre* des agences (crawl +
+  // géocodage, plusieurs minutes), l'autre *cible* une agence déjà connue.
+  const searchTasks = new Map();
+  let searchSequence = 0;
+  let searchChain = Promise.resolve();
+  let activeSearchTask = null;
+
+  function publicSearchTask(task) {
+    if (!task) return null;
+    return {
+      task_id: task.task_id,
+      zone: task.zone,
+      radius_m: task.radius_m,
+      state: task.state,
+      queued_at: task.queued_at,
+      started_at: task.started_at,
+      completed_at: task.completed_at,
+      error: task.error,
+      result: task.result,
+    };
+  }
+
+  function enqueueSearchTask({ zone, radiusM }) {
+    // Une seule prospection à la fois : deux crawls concurrents se disputeraient
+    // le quota de géocodage Nominatim et écriraient tous deux latest.json.
+    if (activeSearchTask && ['queued', 'running'].includes(activeSearchTask.state)) {
+      return activeSearchTask;
+    }
+
+    searchSequence += 1;
+    const task = {
+      task_id: `agency_search_${Date.now().toString(36)}_${searchSequence}`,
+      zone,
+      radius_m: radiusM,
+      state: 'queued',
+      queued_at: new Date().toISOString(),
+      started_at: null,
+      completed_at: null,
+      error: null,
+      result: null,
+    };
+    searchTasks.set(task.task_id, task);
+    activeSearchTask = task;
+
+    searchChain = searchChain.then(async () => {
+      task.state = 'running';
+      task.started_at = new Date().toISOString();
+      try {
+        task.result = await runProspecting({ zone, radiusM });
+        task.state = 'completed';
+      } catch (err) {
+        task.state = 'failed';
+        task.error = String(err?.message || err || 'Erreur inconnue').trim().slice(-4000);
+        console.error(`[agency search ${task.task_id}]`, task.error);
+      } finally {
+        task.completed_at = new Date().toISOString();
+        if (activeSearchTask === task) activeSearchTask = null;
+        const cleanup = setTimeout(() => {
+          searchTasks.delete(task.task_id);
+        }, AGENCY_TASK_RETENTION_MS);
+        cleanup.unref();
+      }
+    });
+
+    return task;
+  }
+
   // GET /api/health — Vérifie que le serveur tourne
   router.get('/health', (_req, res) => {
     res.json({ ok: true });
@@ -709,6 +778,37 @@ export default function createApplicationsRouter(repo) {
       const status = err.message.includes('introuvable') ? 404 : 500;
       res.status(status).json({ error: err.message });
     }
+  });
+
+  // POST /api/agencies/search — Lance une passe de prospection (découverte)
+  // Répond 202 : le crawl et les géocodages durent plusieurs minutes.
+  router.post('/agencies/search', (req, res) => {
+    const zone = String(req.body?.zone || 'ile-de-france').trim();
+    const radiusM = req.body?.radius_m ?? null;
+
+    if (radiusM != null && (!Number.isInteger(Number(radiusM)) || Number(radiusM) <= 0)) {
+      return res.status(400).json({ error: 'radius_m doit être un nombre de mètres positif' });
+    }
+
+    try {
+      const task = enqueueSearchTask({ zone, radiusM: radiusM == null ? null : Number(radiusM) });
+      res.status(202).json({
+        accepted: true,
+        task_id: task.task_id,
+        status: publicSearchTask(task),
+      });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // GET /api/agencies/search/status/:taskId — Suit la passe de prospection
+  router.get('/agencies/search/status/:taskId', (req, res) => {
+    const task = searchTasks.get(req.params.taskId);
+    if (!task) {
+      return res.status(404).json({ error: 'Tâche de prospection introuvable ou expirée' });
+    }
+    res.json(publicSearchTask(task));
   });
 
   // POST /api/agencies/target — Ajoute une agence puis met la préparation en file

@@ -80,6 +80,11 @@ def build_opportunity(
         "title": target_title,
         "company": company_name,
         "location": str(company.get("ville") or "").strip(),
+        # L'adresse vient du CSV, relevée à la main. Elle est recopiée telle quelle :
+        # une ville seule ne devient jamais une adresse, et un code postal n'est
+        # jamais déduit d'une adresse absente.
+        "address": str(company.get("adresse") or "").strip(),
+        "postal_code": str(company.get("code_postal") or "").strip(),
         "description": _description(company_name, describable),
         "url": str(company.get("site") or "").strip(),
         "source": SOURCE,

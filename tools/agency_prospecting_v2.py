@@ -26,10 +26,14 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote_plus, unquote, urljoin, urlparse
 from urllib.request import Request, urlopen
 
-OUT_DIR = Path('/home/cundo/Bureau/JOB')
-ROOT = Path('/home/cundo/apps/job-search-automation-package')
+# Racine déduite du fichier, jamais codée en dur : les chemins absolus précédents
+# pointaient vers ~/apps/job-search-automation-package, qui n'existe pas. Le script
+# tournait donc en écrivant dans le vide, et le cache du dépôt restait désespérément
+# vide. Même convention que server/config.js (PROJECT_ROOT = resolve(__dirname, '..')).
+ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / 'data'
 FRONT_DIR = ROOT / 'front/public/data/agencies'
+DEFAULT_OUT_DIR = ROOT / 'output' / 'agencies'
 
 # Distance depuis l'adresse de référence de Cundo (point fixe, choisi par lui).
 # Adresse relevée sur le site de chaque agence — jamais déduite, jamais devinée.
@@ -424,6 +428,54 @@ def enrich_with_distances(results: list[dict]) -> str:
     return f'{o_lat:.5f},{o_lon:.5f}'
 
 
+def address_how(agency: dict) -> str:
+    """Vocabulaire du contrat de sortie : *comment* la position a été obtenue.
+
+    C'est la garantie anti-invention. « adresse » et « contact/legales » viennent
+    d'une adresse lue sur le site ; « ville/arr (~centre) » n'est qu'un centre
+    d'arrondissement, et ne vaut pas adresse. Sans position : chaîne vide.
+    """
+    source = agency.get('address_source') or ''
+    if not source:
+        return ''
+    if source.startswith('~centre'):
+        return 'ville/arr (~centre)'
+    if source.startswith('site (') and source != 'site (pages crawlées)':
+        return 'contact/legales'
+    return 'adresse'
+
+
+def partition_by_radius(results: list[dict], radius_m: int) -> dict:
+    """Range chaque agence selon sa distance à l'origine, et selon ce qu'on en sait.
+
+    Quatre cas, pas trois : une position déduite du centre d'un arrondissement
+    peut tomber sous le rayon sans qu'aucune adresse n'ait jamais été lue. La
+    compter comme « dans le rayon » ferait passer une approximation pour un fait,
+    ce qui est exactement la confusion à l'origine des agences inventées.
+    """
+    inside: list[dict] = []
+    approximate: list[dict] = []
+    outside: list[dict] = []
+    unknown: list[dict] = []
+    for agency in results:
+        agency['how'] = address_how(agency)
+        distance = agency.get('distance_m')
+        if distance is None:
+            unknown.append(agency)
+        elif distance > radius_m:
+            outside.append(agency)
+        elif agency.get('address'):
+            inside.append(agency)
+        else:
+            approximate.append(agency)
+    return {
+        'inside': inside,
+        'approximate': approximate,
+        'outside': outside,
+        'unknown': unknown,
+    }
+
+
 def parse_links(page: str, base: str) -> list[tuple[str, str]]:
     lp = LinkParser(); lp.feed(page)
     out=[]
@@ -625,9 +677,10 @@ def score_candidate(name: str, base: str, text: str, links: list[tuple[str,str]]
 
 
 def run():
-    OUT_DIR.mkdir(parents=True, exist_ok=True); DATA_DIR.mkdir(parents=True, exist_ok=True); FRONT_DIR.mkdir(parents=True, exist_ok=True)
     # Zone géographique : --zone ile-de-france (défaut) | paris-20 | paris-19 | ouest-paris
     args = sys.argv[1:]
+    out_dir = Path(args[args.index('--out') + 1]).expanduser().resolve() if '--out' in args else DEFAULT_OUT_DIR
+    out_dir.mkdir(parents=True, exist_ok=True); DATA_DIR.mkdir(parents=True, exist_ok=True); FRONT_DIR.mkdir(parents=True, exist_ok=True)
     zone_key = args[args.index('--zone') + 1] if '--zone' in args else 'ile-de-france'
     if zone_key not in ZONES:
         # Pas de repli silencieux : chercher une autre zone que celle demandée
@@ -635,6 +688,18 @@ def run():
         known = ', '.join(sorted(ZONES))
         print(f"Zone inconnue : « {zone_key} ». Zones disponibles : {known}.", file=sys.stderr)
         raise SystemExit(2)
+    radius_m = None
+    if '--radius' in args:
+        raw = args[args.index('--radius') + 1]
+        if not raw.isdigit() or int(raw) <= 0:
+            print(f"Rayon invalide : « {raw} ». Attendu un nombre de mètres, ex. 2000.", file=sys.stderr)
+            raise SystemExit(2)
+        radius_m = int(raw)
+        if '--no-distance' in args:
+            # Un rayon sans mesure de distance ne filtrerait rien tout en
+            # annonçant un périmètre : contradiction, pas une valeur par défaut.
+            print("--radius exige les distances : retire --no-distance.", file=sys.stderr)
+            raise SystemExit(2)
     zone = ZONES[zone_key]
     queries = SEARCH_QUERIES + FORMATION_QUERIES + ZONE_QUERIES.get(zone_key, [])
     seeds: list[tuple[str,str,str]]=[]
@@ -723,6 +788,31 @@ def run():
     results=sorted(results, key=lambda r: (-zone_rank.get(r['zone_match'], 2), r['score'], len(r['stack']), bool(r['emails'] or r['contact_urls'])), reverse=True)
     # Distance depuis l'adresse de référence de Cundo (--no-distance pour sauter).
     origin_coords = '' if '--no-distance' in args else enrich_with_distances(results)
+    radius_report = None
+    if radius_m is not None:
+        buckets = partition_by_radius(results, radius_m)
+        radius_report = {
+            'radius_m': radius_m,
+            'origin_query': ORIGIN_ADDRESS,
+            'inside': len(buckets['inside']),
+            'approximate': len(buckets['approximate']),
+            'outside': len(buckets['outside']),
+            'unknown': len(buckets['unknown']),
+            # Les écartés restent nommés : « rien dans le rayon » doit pouvoir se
+            # relire comme « ces N-là étaient trop loin », pas comme un vide.
+            'outside_radius': [
+                {'name': a['name'], 'website': a['website'], 'dist_m': a['distance_m'], 'how': a['how']}
+                for a in buckets['outside']
+            ],
+            'approximate_position': [
+                {'name': a['name'], 'website': a['website'], 'dist_m': a['distance_m'], 'how': a['how']}
+                for a in buckets['approximate']
+            ],
+            'unknown_position': [
+                {'name': a['name'], 'website': a['website']} for a in buckets['unknown']
+            ],
+        }
+        results = buckets['inside']
     ts=datetime.now().strftime('%Y%m%d-%H%M%S')
     payload={
         'ok': True,
@@ -742,10 +832,11 @@ def run():
             'hors_zone_ecartes': zone_dropped,
         },
         'hors_zone_ecartes_details': dropped_hors_zone,
+        'radius': radius_report,
         'agencies': results,
     }
-    json_path=OUT_DIR/f'agences-web-v2-{ts}.json'
-    md_path=OUT_DIR/f'agences-web-v2-{ts}.md'
+    json_path=out_dir/f'agences-web-v2-{ts}.json'
+    md_path=out_dir/f'agences-web-v2-{ts}.md'
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
     if results:
         (DATA_DIR/'agencies_cache.json').write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -754,8 +845,17 @@ def run():
         f'# 🏢 Prospection agences web V2 — {datetime.now().strftime("%d/%m/%Y %H:%M")}', '',
         f'- Seeds collectés : {len(seeds)}', f'- Domaines scannés : {scanned}', f'- Agences/studios retenus : {len(results)}',
         f'- Zone : {zone["label"]}', '',
-        '## Top agences/studios & organismes de formation'
     ]
+    if radius_report:
+        lines += [
+            f'- Rayon : {radius_report["radius_m"]} m depuis {radius_report["origin_query"]}',
+            f'- Dans le rayon (adresse lue) : {radius_report["inside"]}'
+            f' · position approximative : {radius_report["approximate"]}'
+            f' · hors rayon : {radius_report["outside"]}'
+            f' · position inconnue : {radius_report["unknown"]}',
+            '',
+        ]
+    lines.append('## Top agences/studios & organismes de formation')
     for i,r in enumerate(results[:60],1):
         lines += [
             '', f'### {i}. {r["name"]}', '', f'- Score : {r["score"]}', f'- Site : {r["website"]}',
@@ -773,8 +873,30 @@ def run():
         lines += ['', '## Écartés hors zone', '']
         for r in dropped_hors_zone:
             lines.append(f'- {r["name"]} — {r["website"]} (score {r["score"]})')
+    if radius_report:
+        for heading, key in (
+            ('Position approximative (centre d’arrondissement, pas une adresse)', 'approximate_position'),
+            ('Hors rayon', 'outside_radius'),
+        ):
+            if radius_report[key]:
+                lines += ['', f'## {heading}', '']
+                for r in radius_report[key]:
+                    lines.append(f'- {r["name"]} — {r["website"]} ({fmt_distance(r["dist_m"])}, {r["how"]})')
+        if radius_report['unknown_position']:
+            lines += ['', '## Position inconnue (aucune adresse publiée trouvée)', '']
+            for r in radius_report['unknown_position']:
+                lines.append(f'- {r["name"]} — {r["website"]}')
     md_path.write_text('\n'.join(lines)+'\n', encoding='utf-8')
-    print(json.dumps({'ok': True, 'version':'v2', 'zone': zone_key, 'zone_label': zone['label'], 'total': len(results), 'scanned_domains': scanned, 'seed_count': len(seeds), 'md': str(md_path), 'json': str(json_path), 'front': str(FRONT_DIR/'latest.json'), 'top': results[:10]}, ensure_ascii=False, indent=2))
+    if radius_report and not results:
+        # latest.json n'est pas écrasé quand il n'y a rien (le garde `if results`
+        # ci-dessus) : le dire, sinon le dashboard affiche l'ancienne passe et on
+        # croit que le rayon a trouvé ces agences-là.
+        print(
+            f"Aucune agence avec adresse lue dans {radius_m} m : latest.json inchangé. "
+            f"Détail dans {json_path}.",
+            file=sys.stderr,
+        )
+    print(json.dumps({'ok': True, 'version':'v2', 'zone': zone_key, 'zone_label': zone['label'], 'radius': radius_report and {k: v for k, v in radius_report.items() if not isinstance(v, list)}, 'total': len(results), 'scanned_domains': scanned, 'seed_count': len(seeds), 'md': str(md_path), 'json': str(json_path), 'front': str(FRONT_DIR/'latest.json'), 'top': results[:10]}, ensure_ascii=False, indent=2))
 
 if __name__ == '__main__':
     run()
