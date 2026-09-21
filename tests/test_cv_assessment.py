@@ -56,6 +56,7 @@ def _cv():
                     "organization": "Example",
                     "title": "Développeur back-end",
                     "bullets": ["Développement Symfony"],
+                    "bullet_sources": [["backend:0"]],
                 }
             ],
             "education": [],
@@ -196,3 +197,85 @@ def test_conditional_experience_golden_cases(case):
 
     assert set(case["expected_conditional"]).issubset(selected_ids)
     assert set(case["forbidden_conditional"]).isdisjoint(selected_ids)
+
+
+def test_unsourced_bullet_fails_truthfulness():
+    """Une puce sans provenance n'est pas une donnée inconnue : c'est une invention."""
+    cv = _cv()
+    cv["cv"]["experiences"][0].pop("bullet_sources")
+
+    assessment = build_cv_assessment(
+        {"title": "Développeur PHP Symfony", "description": "PHP et Symfony."},
+        _master(),
+        _plan(),
+        cv,
+        parseability={"status": "pass", "missing": [], "reason": "PDF lisible"},
+    )
+
+    assert assessment["truthfulness"]["status"] == "fail"
+    assert assessment["overall_status"] == "blocked"
+    assert any(
+        item["code"] == "BULLET_WITHOUT_SOURCE"
+        for item in assessment["truthfulness"]["details"]
+    )
+
+
+def test_scores_never_exceed_one_hundred():
+    """Plus de preuves que de puces planifiées ne produit jamais un score > 100."""
+    cv = _cv()
+    cv["grounding"]["experience_bullets"] = [{"experience_id": "backend"}] * 12
+
+    assessment = build_cv_assessment(
+        {"title": "Développeur PHP Symfony", "description": "PHP et Symfony."},
+        _master(),
+        _plan(),
+        cv,
+        parseability={"status": "pass", "missing": [], "reason": "PDF lisible"},
+    )
+
+    for dimension in ("match", "human_quality"):
+        assert 0 <= assessment[dimension]["score"] <= 100
+        for component in assessment[dimension]["components"].values():
+            assert 0 <= component["score"] <= 100
+
+
+def test_grouped_block_counts_its_members_in_the_coverage():
+    """Un bloc groupé prouve chacune de ses missions, pas seulement le groupe."""
+    master = _master()
+    master["experience_catalog"]["frontend"] = {
+        "organization": "Example",
+        "title": "Développeur front-end",
+        "highlights": ["Intégration"],
+    }
+    master["experience_groups"] = {
+        "missions": {
+            "title": "Missions",
+            "member_ids": ["backend", "frontend"],
+            "min_selected_members": 2,
+        }
+    }
+    cv = _cv()
+    cv["cv"]["experiences"] = [
+        {
+            "id": "missions",
+            "source_experience_ids": ["backend", "frontend"],
+            "organization": "Example",
+            "title": "Missions",
+            "bullets": ["Développement Symfony", "Intégration"],
+            "bullet_sources": [["backend:0"], ["frontend:0"]],
+        }
+    ]
+    plan = _plan()
+    plan["experience_plan"] = [{"experience_id": "backend"}, {"experience_id": "frontend"}]
+
+    assessment = build_cv_assessment(
+        {"title": "Développeur PHP Symfony", "description": "PHP et Symfony."},
+        master,
+        plan,
+        cv,
+        parseability={"status": "pass", "missing": [], "reason": "PDF lisible"},
+    )
+
+    assert assessment["truthfulness"]["status"] == "pass"
+    assert assessment["match"]["components"]["experience_evidence"]["score"] == 100
+    assert assessment["human_quality"]["components"]["relevance"]["score"] == 100

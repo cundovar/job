@@ -1491,7 +1491,8 @@ def test_truthfulness_rejects_group_with_unknown_member():
     result = evaluate_truthfulness(master, final_cv)
 
     assert result["status"] == "fail"
-    assert result["issues"] == [{"type": "unknown_experience", "value": "g1"}]
+    assert result["issues"] == [{"type": "unknown_experience", "value": "mission_fantome"}]
+    assert result["details"][0]["code"] == "GROUP_MEMBER_NOT_IN_CATALOG"
 
 
 def test_truthfulness_rejects_group_with_unexpected_source_ids():
@@ -1507,7 +1508,8 @@ def test_truthfulness_rejects_group_with_unexpected_source_ids():
     result = evaluate_truthfulness(master, final_cv)
 
     assert result["status"] == "fail"
-    assert result["issues"] == [{"type": "unknown_experience", "value": "g1"}]
+    assert result["issues"] == [{"type": "unknown_experience", "value": "mission_b"}]
+    assert result["details"][0]["code"] == "UNDECLARED_GROUP_MEMBER"
 
 
 def test_final_review_cannot_downgrade_blocked():

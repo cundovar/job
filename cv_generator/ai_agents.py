@@ -878,6 +878,7 @@ def _sanitize_cv_content(
         # as long as the cited highlight exists in the master catalogue.
         allowed_indexes = set(range(len(highlights)))
         bullets: List[str] = []
+        bullet_sources: List[List[str]] = []
         raw_bullets = proposed_exp.get("bullets") if proposed_exp else None
         for bullet in raw_bullets if isinstance(raw_bullets, list) else []:
             if not isinstance(bullet, dict):
@@ -893,6 +894,7 @@ def _sanitize_cv_content(
             if not text or normalize(text) in {normalize(existing) for existing in bullets}:
                 continue
             bullets.append(text)
+            bullet_sources.append([f"{exp_id}:{index}" for index in indexes])
             grounding.append(
                 {
                     "experience_id": exp_id,
@@ -910,6 +912,7 @@ def _sanitize_cv_content(
                 if not text:
                     continue
                 bullets.append(text)
+                bullet_sources.append([f"{exp_id}:{index}"])
                 grounding.append(
                     {
                         "experience_id": exp_id,
@@ -927,6 +930,7 @@ def _sanitize_cv_content(
                     "title": source.get("title", ""),
                     "period": period_to_text(source.get("period")),
                     "bullets": bullets,
+                    "bullet_sources": bullet_sources,
                     "links": source.get("links", [])[:2],
                 }
             )

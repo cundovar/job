@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
+from .cv_truth_validator import sourced_experience_ids, validate_cv_content
 from .job_analyzer import _max_experiences
-from .utils import flatten_skills, job_text, normalize
+from .utils import job_text, normalize
 
 
 DEFAULT_CONFIG_PATH = "config/cv_assessment.json"
@@ -121,7 +122,10 @@ def _cv_text(final_cv: Dict[str, Any]) -> str:
 
 
 def _ratio_score(found: int, total: int) -> int:
-    return 100 if total <= 0 else round(100 * found / total)
+    """Ratio borné : une couverture excédentaire reste 100, jamais davantage."""
+    if total <= 0:
+        return 100
+    return max(0, min(100, round(100 * found / total)))
 
 
 def _weighted_score(components: Dict[str, Dict[str, Any]], weights: Dict[str, int]) -> int:
@@ -152,7 +156,10 @@ def evaluate_match(
     keywords = [str(item) for item in plan.get("priority_keywords", []) if str(item).strip()]
     matched_keywords = [item for item in keywords if normalize(item) in text]
     planned_ids = [item.get("experience_id") for item in plan.get("experience_plan", [])]
+    # Un bloc groupé prouve chacune des missions qu'il source, pas seulement
+    # l'identifiant du groupe.
     present_ids = {item.get("id") for item in cv.get("experiences", [])}
+    present_ids.update(sourced_experience_ids(cv))
     matched_experiences = [item for item in planned_ids if item in present_ids]
 
     job_title_tokens = {token for token in normalize(job.get("title")).split() if len(token) > 3}
@@ -203,41 +210,57 @@ def evaluate_match(
     return {"score": score, "band": _band(score, config), "components": components}
 
 
-def evaluate_truthfulness(master: Dict[str, Any], final_cv: Dict[str, Any]) -> Dict[str, Any]:
-    cv = _cv_payload(final_cv)
-    catalog = master.get("experience_catalog", {})
-    groups = master.get("experience_groups", {})
-    allowed_skills = set(master.get("skills_confidence", {}).keys())
-    for variant in master.get("cv_variants", []):
-        allowed_skills.update(flatten_skills(variant.get("skills", {})))
-    normalized_allowed = {normalize(item) for item in allowed_skills}
-    issues: List[Dict[str, str]] = []
-    for experience in cv.get("experiences", []):
-        exp_id = experience.get("id")
-        if exp_id in catalog:
-            continue
-        # Un bloc groupé est accepté seulement si le groupe est déclaré,
-        # si les membres utilisés sont des membres déclarés du groupe,
-        # et si chaque membre déclaré existe dans le catalogue unitaire.
-        group = groups.get(exp_id)
-        if group is not None:
-            member_ids = set(group.get("member_ids", []))
-            used_ids = set(experience.get("source_experience_ids") or member_ids)
-            if member_ids and used_ids <= member_ids and member_ids <= set(catalog):
-                continue
-        issues.append({"type": "unknown_experience", "value": str(exp_id)})
-    for section in cv.get("skills", []):
-        for item in section.get("items", []):
-            if normalize(item) not in normalized_allowed:
-                issues.append({"type": "unknown_skill", "value": str(item)})
-    text = _cv_text(final_cv)
-    for claim in master.get("forbidden_claims", []):
-        if normalize(claim) in text:
-            issues.append({"type": "forbidden_claim", "value": str(claim)})
+#: Traduction des codes du validateur vers les types historiques de la dimension
+#: Véracité, conservés pour ne pas casser la lecture des anciens dossiers.
+_TRUTH_ISSUE_TYPES = {
+    "UNKNOWN_EXPERIENCE": "unknown_experience",
+    "DUPLICATE_EXPERIENCE": "unknown_experience",
+    "UNDECLARED_GROUP_MEMBER": "unknown_experience",
+    "GROUP_MEMBER_NOT_IN_CATALOG": "unknown_experience",
+    "GROUP_TOO_FEW_MEMBERS": "unknown_experience",
+    "GROUP_MUTUALLY_EXCLUSIVE": "unknown_experience",
+    "UNKNOWN_SKILL": "unknown_skill",
+    "EXCLUDED_SKILL": "unknown_skill",
+    "FORBIDDEN_CLAIM": "forbidden_claim",
+    "UNKNOWN_PROJECT": "unknown_project",
+    "UNKNOWN_PROJECT_TECHNOLOGY": "unknown_project",
+    "UNKNOWN_EDUCATION": "unknown_education",
+    "BULLET_WITHOUT_SOURCE": "unsourced_claim",
+    "UNKNOWN_SOURCE_REFERENCE": "unsourced_claim",
+    "SOURCE_OUT_OF_RANGE": "unsourced_claim",
+    "SOURCE_OUTSIDE_EXPERIENCE": "unsourced_claim",
+}
+
+
+def evaluate_truthfulness(
+    master: Dict[str, Any],
+    final_cv: Dict[str, Any],
+    plan: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Véracité : toute affirmation doit se relier au profil maître.
+
+    Le contrôle est entièrement délégué à ``cv_truth_validator``, qui lit sans
+    rien réécrire. Une référence absente ou incohérente fait échouer la
+    dimension : c'est la règle 2 du CLAUDE.md, elle ne s'assouplit pas.
+    """
+    report = validate_cv_content(final_cv, master, plan)
+    issues = [
+        {
+            "type": _TRUTH_ISSUE_TYPES.get(item["code"], "unknown_claim"),
+            "value": str(item.get("reference") or item["path"]),
+        }
+        for item in report["truth_issues"]
+    ]
     return {
         "status": "fail" if issues else "pass",
         "issues": issues,
-        "reason": "Contenu entièrement relié au profil maître." if not issues else "Contenu non autorisé détecté.",
+        "details": report["truth_issues"],
+        "format_issues": report["format_issues"],
+        "reason": (
+            "Contenu entièrement relié au profil maître."
+            if not issues
+            else "Contenu non autorisé détecté."
+        ),
     }
 
 
@@ -252,6 +275,9 @@ def evaluate_human_quality(
     experiences = cv.get("experiences", [])
     planned = plan.get("experience_plan", [])
     grounding = final_cv.get("grounding", {}).get("experience_bullets", [])
+    # Un bloc groupé couvre plusieurs missions planifiées : la pertinence se
+    # mesure sur les missions sourcées, pas sur le nombre de blocs affichés.
+    covered = sourced_experience_ids(cv)
     bullet_count = sum(len(item.get("bullets", [])) for item in experiences)
     long_bullets = sum(
         len(str(bullet)) > int(constraints.get("max_bullet_chars", 145))
@@ -261,7 +287,7 @@ def evaluate_human_quality(
     profile = str(cv.get("profile") or "")
     max_experiences = _max_experiences(master, str(plan.get("selected_base_variant") or ""))
     components = {
-        "relevance": {"score": _ratio_score(len(experiences), len(planned))},
+        "relevance": {"score": _ratio_score(len(covered), len(planned))},
         "clarity": {"score": 100 if 80 <= len(profile) <= int(constraints.get("max_profile_chars", 240)) else 70},
         "evidence": {"score": _ratio_score(len(grounding), bullet_count)},
         "concision": {"score": max(0, 100 - long_bullets * 25)},
@@ -285,7 +311,7 @@ def build_cv_assessment(
 ) -> Dict[str, Any]:
     config = load_assessment_config(config_path)
     eligibility = evaluate_eligibility(job, master, config)
-    truthfulness = evaluate_truthfulness(master, final_cv)
+    truthfulness = evaluate_truthfulness(master, final_cv, plan)
     match = evaluate_match(job, master, plan, final_cv, eligibility, config)
     human_quality = evaluate_human_quality(master, plan, final_cv, config)
     parsing = parseability or {

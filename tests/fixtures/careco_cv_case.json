@@ -1,0 +1,181 @@
+{
+  "_comment": "Cas synthetique reproduisant le defaut CARECO : un bloc groupe qui perdait les preuves e-commerce, stack et support. Aucune donnee reelle, aucun lien avec le profil maitre prive.",
+  "master": {
+    "schema_version": "1.0",
+    "source": {"platform": "fixture", "design_id": "careco-0000"},
+    "usage": {"purpose": "Fixture de non-regression. Ne decrit personne de reel."},
+    "person": {
+      "first_name": "Camille",
+      "last_name": "Dupont",
+      "display_name": "Camille Dupont",
+      "location": "Ville-Exemple, France",
+      "contact": {
+        "email": "camille.dupont@example.invalid",
+        "phone": "+33 6 00 00 00 00",
+        "portfolio": "https://example.invalid/camille"
+      },
+      "languages": [{"name": "Francais", "level": "Langue maternelle"}],
+      "eligibility": {
+        "driver_license": {"value": null, "evidence": null},
+        "english": {"value": null, "evidence": "Aucun test de niveau declare."}
+      },
+      "education": [
+        {
+          "year": 2019,
+          "title": "Titre professionnel Developpeur web (fictif)",
+          "school": "Centre de formation Exemple",
+          "tags": ["web", "php"],
+          "visibility": "public"
+        }
+      ]
+    },
+    "positioning": {
+      "title_variants": {"webmaster": "Webmaster"},
+      "summary_variants": {"webmaster": "Webmaster de test, profil entierement invente."},
+      "default_priority": ["webmaster"]
+    },
+    "skills_confidence": {
+      "WordPress": "confirme",
+      "WooCommerce": "confirme",
+      "API REST": "confirme",
+      "Twig": "partiel",
+      "Bootstrap": "confirme",
+      "Git": "confirme",
+      "Support utilisateurs": "confirme"
+    },
+    "experience_catalog": {
+      "boutique_fictive": {
+        "organization": "Boutique Fictive",
+        "title": "Webmaster e-commerce",
+        "period": {"start": "2026-03", "end": null},
+        "tags": ["woocommerce", "ecommerce", "wordpress"],
+        "visibility": "public",
+        "highlights": [
+          "Mise en place d'un catalogue WooCommerce inventé pour la demonstration.",
+          "Branchement d'une API REST fictive entre la boutique et un stock simule.",
+          "Suivi des commandes d'un client imaginaire."
+        ],
+        "links": ["https://example.invalid/boutique"]
+      },
+      "atelier_imaginaire": {
+        "organization": "Atelier Imaginaire",
+        "title": "Developpeur web",
+        "period": {"start": "2026-03", "end": null},
+        "tags": ["twig", "bootstrap", "git"],
+        "visibility": "public",
+        "highlights": [
+          "Maintenance de gabarits Twig et Bootstrap sur un site invente.",
+          "Travail en branches Git sur une base de code fictive.",
+          "Correction de regressions d'affichage imaginaires."
+        ],
+        "links": ["https://example.invalid/atelier"]
+      },
+      "permanence_test": {
+        "organization": "Permanence Test",
+        "title": "Support utilisateurs",
+        "period": {"start": "2024-01", "end": "2025-12"},
+        "tags": ["support", "accompagnement"],
+        "visibility": "public",
+        "highlights": [
+          "Accompagnement d'usagers fictifs sur des outils bureautiques.",
+          "Redaction de fiches d'aide inventees."
+        ],
+        "links": []
+      }
+    },
+    "project_catalog": {
+      "projet_vitrine": {
+        "year": 2025,
+        "title": "Projet vitrine de demonstration",
+        "description": "Site invente, utilise uniquement pour les tests.",
+        "technologies": ["WordPress", "Bootstrap"],
+        "tags": ["wordpress", "vitrine"],
+        "visibility": "public",
+        "preferred_for": ["webmaster"]
+      }
+    },
+    "experience_groups": {
+      "missions_techniques_2026": {
+        "title": "Missions et projets professionnels",
+        "period": {"start": "2026-03", "end": null},
+        "member_ids": ["boutique_fictive", "atelier_imaginaire"],
+        "mutually_exclusive_sets": [],
+        "allowed_variants": ["webmaster"],
+        "min_selected_members": 2,
+        "display_mode": "grouped_missions"
+      }
+    },
+    "evidence_catalog": {
+      "preuve_ecommerce": {
+        "label": "Preuve e-commerce",
+        "summary": "Preuve fictive de mise en place d'une boutique.",
+        "technologies": ["WooCommerce", "API REST"],
+        "capabilities": ["E-commerce"],
+        "evidence_level": "demonstrable",
+        "source_project_ids": [],
+        "source_experience_ids": ["boutique_fictive"],
+        "usable_for": ["webmaster"]
+      }
+    },
+    "cv_variants": [
+      {
+        "id": "webmaster",
+        "title": "Webmaster",
+        "profile": "Webmaster de test, profil entierement invente.",
+        "tags": ["wordpress", "webmaster", "maintenance"],
+        "skills": {
+          "cms": ["WordPress", "WooCommerce"],
+          "dev": ["API REST", "Twig", "Bootstrap", "Git"],
+          "relation": ["Support utilisateurs"]
+        },
+        "experience_refs": ["boutique_fictive", "atelier_imaginaire", "permanence_test"],
+        "project_refs": ["projet_vitrine"]
+      }
+    ],
+    "approved_phrases": {"webmaster": ["Maintenance de sites inventes."]},
+    "forbidden_claims": ["Expert", "10 ans d'experience"],
+    "layout_constraints": {
+      "target_format": "A4",
+      "max_pages": 1,
+      "allowed_overflow_pages": 0,
+      "max_profile_chars": 240,
+      "min_experiences": 2,
+      "max_experiences": 4,
+      "max_experiences_by_variant": {},
+      "max_bullets_per_experience": 3,
+      "max_bullet_chars": 145,
+      "max_skill_sections": 4,
+      "max_skill_items_total": 10,
+      "max_education_items": 2,
+      "max_projects": 1,
+      "max_projects_by_variant": {}
+    },
+    "adaptation_rules": {
+      "variant_selection": {"webmaster": ["wordpress", "webmaster", "woocommerce", "maintenance"]},
+      "required_projects_by_variant": {},
+      "experience_priority_by_variant": {
+        "webmaster": ["boutique_fictive", "atelier_imaginaire", "permanence_test"]
+      },
+      "preferred_skills_by_variant": {},
+      "editorial_guidance_by_variant": {},
+      "standing_experience_preferences_by_variant": {},
+      "contact_fields_by_variant": {},
+      "style": {"tone": "factuel", "avoid": ["superlatifs"], "prefer": ["faits verifiables"]},
+      "required_experiences_by_variant": {},
+      "excluded_experiences_by_variant": {},
+      "excluded_skills_by_variant": {}
+    },
+    "agent_contracts": {},
+    "export_targets": {},
+    "normalization_notes": []
+  },
+  "job": {
+    "title": "Webmaster e-commerce (H/F)",
+    "company": "Entreprise Exemple",
+    "location": "Ville-Exemple",
+    "contract_type": "CDI",
+    "url": "https://example.invalid/offre/webmaster",
+    "description": "Maintenance d'un site WordPress et WooCommerce, interventions sur les gabarits Twig et Bootstrap, suivi des correctifs sous Git, support utilisateurs au quotidien. Connaissance d'une API REST appreciee. Poste oriente marketplace et comptabilite automobile, anglais professionnel demande."
+  },
+  "unsourced_terms": ["marketplace", "comptabilite automobile", "anglais professionnel"]
+}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from .cv_truth_validator import TRUTH, validate_cv_content
 from .utils import normalize
 from .layout import title_requires_wrap
 
@@ -20,9 +21,42 @@ def _collect_cv_text(draft: Dict[str, Any]) -> str:
     return normalize(" ".join(parts))
 
 
+#: Une erreur de vérité bloque; une erreur de gabarit se corrige en révision.
+_SEVERITY_BY_KIND = {TRUTH: "high", "format": "medium"}
+
+#: Rattachement des codes du validateur aux sections lues par le juge IA.
+_SECTION_BY_CODE = {
+    "PROFILE_TOO_LONG": "profile",
+    "TOO_MANY_SKILLS": "skills",
+    "TOO_MANY_SKILL_SECTIONS": "skills",
+    "UNKNOWN_SKILL": "skills",
+    "EXCLUDED_SKILL": "skills",
+    "FORBIDDEN_CLAIM": "truthfulness",
+    "UNKNOWN_SECTION": "header",
+}
+
+
+def _section_for(issue: Dict[str, Any]) -> str:
+    code = str(issue.get("code") or "")
+    if code in _SECTION_BY_CODE:
+        return _SECTION_BY_CODE[code]
+    path = str(issue.get("path") or "")
+    for section in ("experiences", "projects", "education", "skills", "profile"):
+        if path.startswith(section):
+            return section
+    return "truthfulness" if issue.get("kind") == TRUTH else "general"
+
+
 def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any], draft: Dict[str, Any]) -> Dict[str, Any]:
-    constraints = master.get("layout_constraints", {})
+    """Contrôle Python non modificatif, transmis au juge IA comme signalement.
+
+    La vérité et le gabarit viennent de ``cv_truth_validator`` : ce module ne
+    les recalcule plus. Il n'ajoute ici que les heuristiques de couverture
+    (mots-clés, preuves visibles, positionnement) qui aident le juge sans
+    jamais décider à sa place de la pertinence éditoriale.
+    """
     cv = draft.get("cv", {})
+    validation = validate_cv_content(draft, master, plan)
     cv_text = _collect_cv_text(draft)
     problems = []
     missing = []
@@ -60,37 +94,24 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
                 "problem": f"L'exigence importante « {requirement} » ne possède aucune preuve visible dans le CV.",
                 "suggested_fix": "Ajouter un projet ou une expérience sourcée correspondant à cette exigence.",
             })
-    profile = cv.get("profile", "")
-    if len(profile) > int(constraints.get("max_profile_chars", 240)):
-        problems.append({"severity": "medium", "section": "profile", "problem": "Résumé trop long pour Canva.", "suggested_fix": "Réduire le résumé à deux phrases."})
-    skill_count = sum(len(section.get("items", [])) for section in cv.get("skills", []))
-    max_skills = int(constraints.get("max_skill_items_total", 10))
-    if skill_count > max_skills:
-        problems.append({
-            "severity": "medium",
-            "section": "skills",
-            "problem": f"Le CV présente {skill_count} compétences, au-delà de la limite de {max_skills}.",
-            "suggested_fix": "Conserver uniquement les compétences les plus utiles à l'annonce.",
-        })
-    max_bullets = int(constraints.get("max_bullets_per_experience", 3))
-    max_bullet_chars = int(constraints.get("max_bullet_chars", 145))
-    for exp in cv.get("experiences", []):
-        if len(exp.get("bullets", [])) > max_bullets:
-            problems.append({"severity": "low", "section": "experiences", "problem": f"Trop de bullets pour {exp.get('organization')}", "suggested_fix": "Garder les 3 bullets les plus pertinents."})
-        for bullet in exp.get("bullets", []):
-            if len(bullet) > max_bullet_chars:
-                problems.append({"severity": "low", "section": "experiences", "problem": "Bullet trop long.", "suggested_fix": "Raccourcir à environ 145 caractères."})
-    forbidden_hits = []
-    for claim in master.get("forbidden_claims", []):
-        if normalize(claim) in cv_text:
-            forbidden_hits.append(claim)
-    if forbidden_hits:
-        problems.append({
-            "severity": "high",
-            "section": "truthfulness",
-            "problem": "Formulation interdite ou trop survendue détectée.",
-            "suggested_fix": "Supprimer ou reformuler les affirmations interdites.",
-        })
+    for issue in validation["issues"]:
+        problems.append(
+            {
+                "code": issue["code"],
+                "severity": _SEVERITY_BY_KIND.get(issue["kind"], "medium"),
+                "section": _section_for(issue),
+                "problem": issue["detail"],
+                "suggested_fix": (
+                    "Corriger en s'appuyant uniquement sur le profil maître, "
+                    "ou retirer l'affirmation."
+                ),
+            }
+        )
+    forbidden_hits = [
+        str(issue.get("reference") or "")
+        for issue in validation["truth_issues"]
+        if issue["code"] == "FORBIDDEN_CLAIM"
+    ]
     if title_requires_wrap(str(cv.get("title") or "")):
         problems.append({
             "severity": "medium",

@@ -70,15 +70,33 @@ def _experiences(plan: Dict[str, Any], master: Dict[str, Any]) -> List[Dict[str,
     max_bullets = int(master.get("layout_constraints", {}).get("max_bullets_per_experience", 3))
     max_chars = int(master.get("layout_constraints", {}).get("max_bullet_chars", 145))
     for item in plan.get("experience_plan", []):
-        exp = catalog.get(item.get("experience_id"), {})
-        bullets = compact_items(item.get("highlights", exp.get("highlights", [])), max_bullets, max_chars)
+        exp_id = item.get("experience_id")
+        exp = catalog.get(exp_id, {})
+        highlights = exp.get("highlights", [])
+        chosen = item.get("highlights", highlights)
+        bullets = compact_items(chosen, max_bullets, max_chars)
+        # Chaque puce du brouillon cite l'indice du highlight qui la prouve, afin
+        # que la provenance existe dès le premier maillon de la chaîne.
+        sources = []
+        for bullet in bullets:
+            index = next(
+                (
+                    position
+                    for position, highlight in enumerate(highlights)
+                    if str(highlight).startswith(bullet.rstrip("…"))
+                    or bullet.startswith(str(highlight))
+                ),
+                None,
+            )
+            sources.append([f"{exp_id}:{index}"] if index is not None else [])
         result.append({
-            "id": item.get("experience_id"),
+            "id": exp_id,
             "selection_role": item.get("selection_role", "core"),
             "organization": exp.get("organization", ""),
             "title": exp.get("title", ""),
             "period": period_to_text(exp.get("period")),
             "bullets": bullets,
+            "bullet_sources": sources,
             "links": exp.get("links", [])[:2],
         })
     return result
@@ -105,19 +123,37 @@ def apply_experience_presentation(
     for alternatives in group.get("mutually_exclusive_sets", []):
         if member_ids.intersection(alternatives):
             suppressed_ids.update(alternatives)
-    bullets = []
+    pairs: List[tuple[str, List[str]]] = []
     links = []
     organizations = []
     for item in members:
         organization = str(item.get("organization") or "").strip()
         if organization and organization not in organizations:
             organizations.append(organization)
-        first_bullet = next(iter(item.get("bullets", [])), "")
+        member_bullets = item.get("bullets", [])
+        member_sources = item.get("bullet_sources", [])
+        first_bullet = next(iter(member_bullets), "")
         if first_bullet:
-            bullets.append(f"{organization} — {first_bullet}" if organization else first_bullet)
+            sources = member_sources[0] if member_sources else []
+            pairs.append(
+                (
+                    f"{organization} — {first_bullet}" if organization else first_bullet,
+                    list(sources),
+                )
+            )
         for link in item.get("links", []):
             if link not in links:
                 links.append(link)
+    # Le texte est compacté comme ailleurs, mais sa provenance reste alignée.
+    limit = int(master.get("layout_constraints", {}).get("max_bullets_per_experience", 3))
+    max_chars = int(master.get("layout_constraints", {}).get("max_bullet_chars", 145))
+    bullets = compact_items((text for text, _ in pairs), limit=limit, max_chars=max_chars)
+    grouped_sources: List[List[str]] = []
+    for text in bullets:
+        stem = text.rstrip("…")
+        grouped_sources.append(
+            next((sources for original, sources in pairs if original.startswith(stem)), [])
+        )
     grouped = {
         "id": group_id,
         "source_experience_ids": [item.get("id") for item in members],
@@ -125,11 +161,8 @@ def apply_experience_presentation(
         "organization": " · ".join(organizations),
         "title": group.get("title", "Missions et projets professionnels"),
         "period": period_to_text(group.get("period")),
-        "bullets": compact_items(
-            bullets,
-            limit=int(master.get("layout_constraints", {}).get("max_bullets_per_experience", 3)),
-            max_chars=int(master.get("layout_constraints", {}).get("max_bullet_chars", 145)),
-        ),
+        "bullets": bullets,
+        "bullet_sources": grouped_sources,
         "links": links[:2],
     }
     result = []
