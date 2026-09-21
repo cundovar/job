@@ -41,105 +41,155 @@ from cv_generator.pipeline import _apply_final_review_status, _trace_item
 from cv_generator.utils import load_json
 
 
-class FakeCVAgentClient:
-    def __init__(self):
+CARECO = json.loads(
+    (Path(__file__).parent / "fixtures" / "careco_cv_case.json").read_text(encoding="utf-8")
+)
+
+
+@pytest.fixture()
+def careco_master(tmp_path):
+    path = tmp_path / "master.json"
+    path.write_text(json.dumps(CARECO["master"], ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+class CarecoAgentClient:
+    """Agent simulé qui écrit lui-même son bloc groupé et ses puces sourcées."""
+
+    def __init__(self, *, experiences=None, projects=None, skills=None, education=None):
         self.calls = []
-        self.payloads = []
-        self.system_prompts = []
+        self._experiences = experiences
+        self._projects = projects
+        self._skills = skills
+        self._education = education
+
+    def default_experiences(self):
+        return [
+            {
+                "id": "missions_techniques_2026",
+                "source_experience_ids": ["boutique_fictive", "atelier_imaginaire"],
+                "bullets": [
+                    {
+                        "text": "Catalogue WooCommerce et API REST sur une boutique inventée.",
+                        "sources": ["boutique_fictive:0", "boutique_fictive:1"],
+                    },
+                    {
+                        "text": "Gabarits Twig et Bootstrap maintenus sur un site inventé.",
+                        "sources": ["atelier_imaginaire:0"],
+                    },
+                    {
+                        "text": "Travail en branches Git sur une base de code fictive.",
+                        "sources": ["atelier_imaginaire:1"],
+                    },
+                ],
+            },
+            {
+                "id": "permanence_test",
+                "bullets": [
+                    {
+                        "text": "Accompagnement d'usagers fictifs sur des outils bureautiques.",
+                        "sources": ["permanence_test:0"],
+                    }
+                ],
+            },
+        ]
 
     def complete_json(self, *, agent_name, system_prompt, payload):
         self.calls.append(agent_name)
-        self.payloads.append(payload)
-        self.system_prompts.append(system_prompt)
         if agent_name == "cv_job_analyzer":
             data = {
                 "selected_base_variant": "webmaster",
-                "target_title": "Webmaster / Administrateur de sites web",
-                "positioning": "Webmaster orienté WordPress, maintenance et accompagnement des utilisateurs.",
-                "priority_keywords": ["WordPress", "maintenance"],
+                "target_title": "Webmaster e-commerce",
+                "positioning": "Webmaster de test, profil entierement invente.",
+                "priority_keywords": ["WordPress", "WooCommerce", "Git"],
                 "experience_plan": [
-                    {
-                        "experience_id": "la_magicieuse",
-                        "priority": 10,
-                        "reason": "Expérience WordPress récente.",
-                        "highlight_indexes": [0],
-                    },
-                    {
-                        "experience_id": "freelance_wordpress",
-                        "priority": 8,
-                        "reason": "Administration et refonte WordPress.",
-                        "highlight_indexes": [0, 1],
-                    },
+                    {"experience_id": "boutique_fictive", "priority": 10, "highlight_indexes": [0, 1]},
+                    {"experience_id": "atelier_imaginaire", "priority": 9, "highlight_indexes": [0, 1]},
+                    {"experience_id": "permanence_test", "priority": 5, "highlight_indexes": [0]},
                 ],
-                "skills_to_emphasize": {
-                    "web_cms": ["WordPress", "Maintenance"],
-                    "support": ["Documentation technique"],
+                "presentation_strategy": {
+                    "experience_display_mode": "grouped_missions",
+                    "experience_group_id": "missions_techniques_2026",
+                    "member_ids": ["boutique_fictive", "atelier_imaginaire"],
                 },
-                "skills_to_reduce": [],
-                "warnings": ["Ne pas survendre le niveau RGAA."],
+                "section_order": ["profile", "skills", "experiences", "projects", "education"],
+                "selected_projects": ["projet_vitrine"],
+                "skills_to_emphasize": {
+                    "cms": ["WordPress", "WooCommerce"],
+                    "dev": ["Twig", "Bootstrap", "Git"],
+                },
+                "warnings": [],
             }
         elif agent_name in {"cv_creator", "cv_style_reviser"}:
             data = {
-                "title": "Webmaster / Administrateur de sites web",
-                "profile": "Webmaster orienté WordPress, maintenance de sites et accompagnement des utilisateurs.",
-                "skills": [
-                    {"title": "Web / CMS", "items": ["WordPress", "Maintenance"]},
-                    {"title": "Support", "items": ["Documentation technique"]},
+                "title": "Webmaster e-commerce",
+                "profile": "Webmaster de test, profil entierement invente.",
+                "skills": self._skills
+                if self._skills is not None
+                else [
+                    {"title": "CMS", "items": ["WordPress", "WooCommerce"]},
+                    {"title": "Développement", "items": ["Twig", "Bootstrap", "Git"]},
                 ],
-                "experiences": [
-                    {
-                        "id": "la_magicieuse",
-                        "bullets": [
-                            {
-                                "text": "Développement d'un site e-commerce headless pour une maison d'édition",
-                                "source_highlight_indexes": [0],
-                            }
-                        ],
-                    },
-                    {
-                        "id": "freelance_wordpress",
-                        "bullets": [
-                            {
-                                "text": "Refonte complète et personnalisation de sites WordPress",
-                                "source_highlight_indexes": [0, 1],
-                            }
-                        ],
-                    },
-                ],
-                "projects": [],
+                "experiences": self._experiences
+                if self._experiences is not None
+                else self.default_experiences(),
+                "projects": self._projects
+                if self._projects is not None
+                else [{"id": "projet_vitrine", "technologies": ["WordPress"]}],
+                "education": self._education
+                if self._education is not None
+                else ["Titre professionnel Developpeur web (fictif)"],
             }
         elif agent_name == "cv_truth_checker":
             data = {"verdict": "accepted", "claims": [], "summary": "Toutes les puces sont sourcées."}
         elif agent_name == "cv_quality_checker":
             data = {
-                "quality_score": 96,
-                "ats_score": 94,
+                "quality_score": 92,
+                "ats_score": 90,
                 "status": "validated",
-                "strengths": ["Contenu ciblé et correctement sourcé."],
+                "strengths": ["Preuves techniques visibles."],
                 "problems": [],
                 "missing_keywords": [],
-                "overrepresented_keywords": [],
                 "forbidden_claims_found": [],
-                "verdict": "CV cohérent avec l'annonce et le profil.",
+                "verdict": "CV cohérent.",
             }
         else:
-            raise AssertionError(f"Unexpected agent: {agent_name}")
-        return AgentResult(data=data, provider="fake", model="fake-cv-model")
+            raise AssertionError(f"Agent inattendu : {agent_name}")
+        return AgentResult(data=data, provider="fake", model="fake-careco")
+
+
+
+class FakeCVAgentClient(CarecoAgentClient):
+    """Agent simulé par défaut, entièrement adossé à la fixture CARECO.
+
+    Il enregistre aussi les charges utiles reçues : plusieurs tests vérifient
+    ce que chaque rôle a — ou n'a pas — le droit de voir.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.payloads = []
+        self.system_prompts = []
+
+    def complete_json(self, *, agent_name, system_prompt, payload):
+        self.payloads.append(payload)
+        self.system_prompts.append(system_prompt)
+        return super().complete_json(
+            agent_name=agent_name, system_prompt=system_prompt, payload=payload
+        )
 
 
 class RetryCVAgentClient(FakeCVAgentClient):
     """Juge sévère deux fois, et réviseur qui corrige réellement entre deux passes."""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.review_count = 0
         self.revision_count = 0
 
     def complete_json(self, *, agent_name, system_prompt, payload):
         result = super().complete_json(
-            agent_name=agent_name,
-            system_prompt=system_prompt,
-            payload=payload,
+            agent_name=agent_name, system_prompt=system_prompt, payload=payload
         )
         if agent_name == "cv_style_reviser":
             # Un vrai réviseur rend un contenu différent : sans cela, la
@@ -150,13 +200,10 @@ class RetryCVAgentClient(FakeCVAgentClient):
             experiences[0] = dict(experiences[0])
             experiences[0]["bullets"] = [
                 {
-                    "text": (
-                        "Développement d'un site e-commerce headless pour une maison d'édition"
-                        f" (révision {self.revision_count})"
-                    ),
-                    "sources": ["la_magicieuse:0"],
+                    "text": f"Catalogue WooCommerce inventé (révision {self.revision_count}).",
+                    "sources": ["boutique_fictive:0"],
                 }
-            ]
+            ] + list(experiences[0]["bullets"][1:])
             data["experiences"] = experiences
             return AgentResult(data=data, provider=result.provider, model=result.model)
         if agent_name != "cv_quality_checker":
@@ -176,11 +223,11 @@ class RetryCVAgentClient(FakeCVAgentClient):
 
 
 class AlwaysRetryCVAgentClient(FakeCVAgentClient):
+    """Juge qui ne valide jamais, et réviseur qui ne change rien."""
+
     def complete_json(self, *, agent_name, system_prompt, payload):
         result = super().complete_json(
-            agent_name=agent_name,
-            system_prompt=system_prompt,
-            payload=payload,
+            agent_name=agent_name, system_prompt=system_prompt, payload=payload
         )
         if agent_name != "cv_quality_checker":
             return result
@@ -195,134 +242,14 @@ class AlwaysRetryCVAgentClient(FakeCVAgentClient):
         return AgentResult(data=data, provider=result.provider, model=result.model)
 
 
-class HybridTrainerCorrectionClient:
-    def __init__(self):
-        self.calls = []
-        self.review_count = 0
-
-    def complete_json(self, *, agent_name, system_prompt, payload):
-        self.calls.append(agent_name)
-        if agent_name == "cv_job_analyzer":
-            data = {
-                "selected_base_variant": "formateur_developpement_web",
-                "target_title": "Formateur développement web & IA générative",
-                "positioning": "Formateur et développeur web auprès d'apprenants adultes, avec une pratique de l'IA générative.",
-                "priority_keywords": ["JavaScript", "HTML", "CSS", "React", "IA", "adultes"],
-                "experience_plan": [
-                    {"experience_id": "qualiscope_backend", "priority": 10, "reason": "Production", "highlight_indexes": [0]},
-                    {"experience_id": "pole_s", "priority": 10, "reason": "Formation et IA", "highlight_indexes": [1, 2, 5]},
-                    {"experience_id": "konexio_formateur_benevole", "priority": 8, "reason": "Pédagogie web", "highlight_indexes": [0, 1]},
-                    {"experience_id": "mairie_chelles", "priority": 7, "reason": "Animation et projets pédagogiques", "highlight_indexes": [0, 1]},
-                ],
-                "skills_to_emphasize": {
-                    "Programmation": ["Python", "JavaScript ES6+"],
-                    "Développement web": ["HTML5", "CSS3", "React"],
-                    "Pédagogie": ["Conception de parcours", "Animation de groupe"],
-                    "IA": ["ChatGPT", "Claude"],
-                },
-                "skills_to_reduce": [],
-                "warnings": ["Ne pas inventer Java, C++ ou R."],
-            }
-        elif agent_name == "cv_creator":
-            data = {
-                "title": "Formateur développement web & IA générative",
-                "profile": "Formateur et développeur web auprès d'apprenants adultes, avec une pratique de ChatGPT et Claude.",
-                "skills": [
-                    {"title": "Programmation", "items": ["Python", "JavaScript ES6+"]},
-                    {"title": "Web", "items": ["HTML5", "CSS3", "React"]},
-                    {"title": "Pédagogie", "items": ["Conception de parcours", "Animation de groupe"]},
-                    {"title": "IA", "items": ["ChatGPT", "Claude"]},
-                ],
-                "experiences": [
-                    {"id": "qualiscope_backend", "bullets": [{"text": "Contribution back-end sur une plateforme SaaS d'évaluation de formations en PHP 8.4 et Symfony 7.4", "source_highlight_indexes": [0]}]},
-                    {"id": "pole_s", "bullets": [{"text": "Animation de formations pour 12 apprenants adultes en reconversion", "source_highlight_indexes": [2]}, {"text": "Utilisation de ChatGPT et Claude pour créer des exercices adaptés et vulgariser les concepts", "source_highlight_indexes": [5]}]},
-                    {"id": "konexio_formateur_benevole", "bullets": [{"text": "Enseignement des bases HTML, CSS et JavaScript", "source_highlight_indexes": [1]}]},
-                    {"id": "mairie_chelles", "bullets": [{"text": "Animation en centre de loisirs pour des enfants de 3 à 12 ans", "source_highlight_indexes": [0]}]},
-                ],
-                "projects": [{
-                    "id": "devdoc_platform",
-                    "description": "Plateforme pédagogique de cours, exercices et QCM.",
-                    "technologies": ["Vue.js 3"],
-                }],
-                "education": [
-                    "Titre Professionnel Concepteur Développeur d'Applications",
-                    "Développeur Web et Web Mobile",
-                ],
-            }
-        elif agent_name == "cv_style_reviser":
-            data = {
-                "title": "Formateur développement web & IA générative",
-                "profile": "Formateur et développeur web auprès d'apprenants adultes, avec des réalisations full-stack et une pratique de ChatGPT et Claude.",
-                "skills": [
-                    {"title": "Programmation", "items": ["Python", "JavaScript ES6+"]},
-                    {"title": "Web", "items": ["HTML5", "CSS3", "React"]},
-                    {"title": "Pédagogie", "items": ["Conception de parcours", "Animation de groupe"]},
-                    {"title": "IA", "items": ["ChatGPT", "Claude"]},
-                ],
-                "experiences": [
-                    {"id": "qualiscope_backend", "bullets": [{"text": "Contribution back-end sur une plateforme SaaS d'évaluation de formations en PHP 8.4 et Symfony 7.4", "source_highlight_indexes": [0]}]},
-                    {"id": "helene_massage_ayurveda", "bullets": [{"text": "Développement fullstack d'un site vitrine et CMS en Next.js 16 et Symfony 7.4", "source_highlight_indexes": [0]}]},
-                    {"id": "pole_s", "bullets": [{"text": "Animation de formations pour 12 apprenants adultes en reconversion", "source_highlight_indexes": [2]}, {"text": "Utilisation de ChatGPT et Claude pour créer des exercices adaptés et vulgariser les concepts", "source_highlight_indexes": [5]}]},
-                    {"id": "konexio_formateur_benevole", "bullets": [{"text": "Enseignement des bases HTML, CSS et JavaScript", "source_highlight_indexes": [1]}]},
-                    {"id": "mairie_chelles", "bullets": [{"text": "Animation en centre de loisirs pour des enfants de 3 à 12 ans", "source_highlight_indexes": [0]}]},
-                ],
-                "projects": [{
-                    "id": "devdoc_platform",
-                    "description": "Plateforme pédagogique de cours, exercices et QCM.",
-                    "technologies": ["Symfony 6.4", "API Platform", "Doctrine ORM", "Vue.js 3", "Docker"],
-                }],
-                "education": [
-                    "Titre Professionnel Concepteur Développeur d'Applications",
-                    "Développeur Web et Web Mobile",
-                ],
-            }
-        elif agent_name == "cv_quality_checker":
-            self.review_count += 1
-            missing_public_proof = self.review_count == 1
-            data = {
-                "quality_score": 76 if missing_public_proof else 94,
-                "ats_score": 84,
-                "status": "needs_revision" if missing_public_proof else "validated",
-                "strengths": ["Pédagogie, développement web et IA sont sourcés."],
-                "problems": ([{
-                    "severity": "medium",
-                    "section": "evidence",
-                    "problem": "Aucune réalisation client publique n'est visible.",
-                    "suggested_fix": "Ajouter une réalisation sourcée avec son lien public.",
-                }] if missing_public_proof else []),
-                "missing_keywords": [],
-                "overrepresented_keywords": [],
-                "forbidden_claims_found": [],
-                "evidence_coverage": [
-                    {"pillar": "pedagogy", "status": "covered", "experience_ids": ["pole_s", "konexio_formateur_benevole"], "project_ids": [], "gap": ""},
-                    {"pillar": "technical_delivery", "status": "covered", "experience_ids": ["qualiscope_backend"], "project_ids": ["devdoc_platform"], "gap": ""},
-                    {"pillar": "ai_practice", "status": "covered", "experience_ids": ["pole_s"], "project_ids": [], "gap": ""},
-                    {"pillar": "public_proof", "status": "missing" if missing_public_proof else "covered", "experience_ids": [] if missing_public_proof else ["helene_massage_ayurveda"], "project_ids": ["devdoc_platform"], "gap": "Ajouter une réalisation client publique." if missing_public_proof else ""},
-                    {"pillar": "human_group_facilitation", "status": "covered", "experience_ids": ["mairie_chelles"], "project_ids": [], "gap": ""},
-                ],
-                "verdict": "Ajouter une preuve publique." if missing_public_proof else "CV hybride crédible et sourcé.",
-            }
-        else:
-            raise AssertionError(f"Unexpected agent: {agent_name}")
-        return AgentResult(data=data, provider="fake", model="fake-hybrid-model")
+def _careco_cv(tmp_path, master_path, client):
+    result = prepare_custom_cv(
+        CARECO["job"], application_dir=tmp_path, master_path=master_path, llm_client=client
+    )
+    return result, json.loads((tmp_path / "cv" / "cv_content.json").read_text(encoding="utf-8"))
 
 
-HYBRID_TRAINER_JOB = {
-    "title": "Formateur(trice) en ligne – Intelligence artificielle et développement web",
-    "company": "Entreprise Test",
-    "description": """
-Concevoir et animer des formations en ligne sur l’intelligence artificielle, le développement
-web et la programmation auprès d’un public adulte, en adaptant les contenus aux niveaux et
-besoins des apprenants. Concevoir des modules de formation en ligne, animer des sessions
-interactives à distance, utiliser des outils pédagogiques numériques, évaluer la progression et
-transmettre des feedbacks constructifs. Solide connaissance de Python, JavaScript, Java, C++,
-HTML/CSS et R. Connaissance pratique de React et Node.js appréciée. Expérience significative
-dans l’enseignement ou la formation en ligne auprès d’un public adulte.
-""".strip(),
-}
-
-
-def test_prepare_custom_cv_generates_webmaster_files(tmp_path):
+def test_prepare_custom_cv_generates_webmaster_files(tmp_path, careco_master):
     job = {
         "title": "Webmaster WordPress / administrateur de site",
         "company": "Ville Test",
@@ -335,7 +262,7 @@ def test_prepare_custom_cv_generates_webmaster_files(tmp_path):
     result = prepare_custom_cv(
         job,
         application_dir=tmp_path,
-        master_path="data/cv_master_profile.json",
+        master_path=careco_master,
         llm_client=client,
     )
 
@@ -364,7 +291,7 @@ def test_prepare_custom_cv_generates_webmaster_files(tmp_path):
     assert not (tmp_path / "cv" / "cv_canva_copy.md").exists()
 
 
-def test_pipeline_automatically_applies_relevant_corrections_until_validated(tmp_path):
+def test_pipeline_automatically_applies_relevant_corrections_until_validated(tmp_path, careco_master):
     job = {
         "title": "Webmaster WordPress",
         "company": "Ville Test",
@@ -376,7 +303,7 @@ def test_pipeline_automatically_applies_relevant_corrections_until_validated(tmp
     result = prepare_custom_cv(
         job,
         application_dir=tmp_path,
-        master_path="data/cv_master_profile.json",
+        master_path=careco_master,
         llm_client=client,
     )
     trace = json.loads((tmp_path / "cv" / "cv_agent_trace.json").read_text(encoding="utf-8"))
@@ -408,7 +335,7 @@ def test_pipeline_automatically_applies_relevant_corrections_until_validated(tmp
     assert "Mettre en avant DevDoc" not in json.dumps(trace, ensure_ascii=False)
 
 
-def test_empty_candidate_instructions_preserve_the_existing_agent_contract(tmp_path):
+def test_empty_candidate_instructions_preserve_the_existing_agent_contract(tmp_path, careco_master):
     job = {
         "title": "Webmaster WordPress",
         "company": "Ville Test",
@@ -419,7 +346,7 @@ def test_empty_candidate_instructions_preserve_the_existing_agent_contract(tmp_p
     prepare_custom_cv(
         job,
         application_dir=tmp_path,
-        master_path="data/cv_master_profile.json",
+        master_path=careco_master,
         llm_client=client,
     )
     trace = json.loads((tmp_path / "cv" / "cv_agent_trace.json").read_text(encoding="utf-8"))
@@ -438,7 +365,7 @@ def test_empty_candidate_instructions_preserve_the_existing_agent_contract(tmp_p
         assert "source de vérité" in prompt
 
 
-def test_pipeline_stops_early_when_a_revision_makes_no_progress(tmp_path):
+def test_pipeline_stops_early_when_a_revision_makes_no_progress(tmp_path, careco_master):
     """Deux fois le même contenu et les mêmes reproches : on arrête, avec la cause."""
     job = {
         "title": "Webmaster WordPress",
@@ -450,7 +377,7 @@ def test_pipeline_stops_early_when_a_revision_makes_no_progress(tmp_path):
     result = prepare_custom_cv(
         job,
         application_dir=tmp_path,
-        master_path="data/cv_master_profile.json",
+        master_path=careco_master,
         llm_client=client,
     )
     trace = json.loads((tmp_path / "cv" / "cv_agent_trace.json").read_text(encoding="utf-8"))
@@ -461,7 +388,7 @@ def test_pipeline_stops_early_when_a_revision_makes_no_progress(tmp_path):
     assert trace["automatic_corrections_exhausted"] is True
 
 
-def test_persistent_revision_publishes_no_final_artefact(tmp_path):
+def test_persistent_revision_publishes_no_final_artefact(tmp_path, careco_master):
     """Un CV que le juge refuse encore ne produit aucun fichier `cv_final`."""
     job = {
         "title": "Webmaster WordPress",
@@ -472,7 +399,7 @@ def test_persistent_revision_publishes_no_final_artefact(tmp_path):
     result = prepare_custom_cv(
         job,
         application_dir=tmp_path,
-        master_path="data/cv_master_profile.json",
+        master_path=careco_master,
         llm_client=AlwaysRetryCVAgentClient(),
     )
 
@@ -486,7 +413,7 @@ def test_persistent_revision_publishes_no_final_artefact(tmp_path):
     assert (tmp_path / "cv" / "cv_truth_check.json").exists()
 
 
-def test_a_refused_regeneration_removes_the_previous_final_files(tmp_path):
+def test_a_refused_regeneration_removes_the_previous_final_files(tmp_path, careco_master):
     """Le CV final d'un run précédent ne survit pas à un refus : il serait périmé."""
     job = {
         "title": "Webmaster WordPress",
@@ -495,13 +422,13 @@ def test_a_refused_regeneration_removes_the_previous_final_files(tmp_path):
     }
 
     prepare_custom_cv(
-        job, application_dir=tmp_path, master_path="data/cv_master_profile.json",
+        job, application_dir=tmp_path, master_path=careco_master,
         llm_client=FakeCVAgentClient(),
     )
     assert (tmp_path / "cv" / "cv_final.pdf").exists()
 
     result = prepare_custom_cv(
-        job, application_dir=tmp_path, master_path="data/cv_master_profile.json",
+        job, application_dir=tmp_path, master_path=careco_master,
         llm_client=AlwaysRetryCVAgentClient(),
     )
 
@@ -696,7 +623,7 @@ def test_ai_review_owns_semantic_scores_and_verdict():
         proposed,
         deterministic,
         AgentResult(data=proposed, provider="claude_cli", model="opus"),
-        load_json("data/cv_master_profile.json"),
+        CARECO["master"],
     )
 
     assert review["quality_score"] == 91
@@ -707,7 +634,8 @@ def test_ai_review_owns_semantic_scores_and_verdict():
 
 
 def test_ai_evidence_coverage_keeps_only_grounded_ids():
-    master = load_json("data/cv_master_profile.json")
+    """Un identifiant inventé par le juge est retiré, les identifiants réels restent."""
+    master = CARECO["master"]
     proposed = {
         "quality_score": 86,
         "ats_score": 80,
@@ -719,15 +647,15 @@ def test_ai_evidence_coverage_keeps_only_grounded_ids():
             {
                 "pillar": "pedagogy",
                 "status": "covered",
-                "experience_ids": ["pole_s", "invented_training"],
+                "experience_ids": ["permanence_test", "invented_training"],
                 "project_ids": [],
                 "gap": "",
             },
             {
                 "pillar": "public_proof",
                 "status": "partial",
-                "experience_ids": ["helene_massage_ayurveda", "fake_client"],
-                "project_ids": ["devdoc_platform", "fake_project"],
+                "experience_ids": ["boutique_fictive", "fake_client"],
+                "project_ids": ["projet_vitrine", "fake_project"],
                 "gap": "Afficher une réalisation publique pertinente.",
             },
         ],
@@ -744,15 +672,15 @@ def test_ai_evidence_coverage_keeps_only_grounded_ids():
         {
             "pillar": "pedagogy",
             "status": "covered",
-            "experience_ids": ["pole_s"],
+            "experience_ids": ["permanence_test"],
             "project_ids": [],
             "gap": "",
         },
         {
             "pillar": "public_proof",
             "status": "partial",
-            "experience_ids": ["helene_massage_ayurveda"],
-            "project_ids": ["devdoc_platform"],
+            "experience_ids": ["boutique_fictive"],
+            "project_ids": ["projet_vitrine"],
             "gap": "Afficher une réalisation publique pertinente.",
         },
     ]
@@ -856,7 +784,7 @@ def test_cv_llm_client_prefers_subscription_cli_bridge(monkeypatch):
 
 
 def test_quality_checker_reports_skill_without_visible_evidence():
-    master = load_json("data/cv_master_profile.json")
+    master = CARECO["master"]
     plan = {
         "selected_base_variant": "automatisation",
         "priority_keywords": ["MCP"],
@@ -1019,130 +947,6 @@ def test_final_review_downgrades_ready():
 # --------------------------------------------------------------------------- #
 # Les agents décident, Python vérifie — cas CARECO, entièrement hors `data/`
 # --------------------------------------------------------------------------- #
-
-CARECO = json.loads(
-    (Path(__file__).parent / "fixtures" / "careco_cv_case.json").read_text(encoding="utf-8")
-)
-
-
-@pytest.fixture()
-def careco_master(tmp_path):
-    path = tmp_path / "master.json"
-    path.write_text(json.dumps(CARECO["master"], ensure_ascii=False), encoding="utf-8")
-    return path
-
-
-class CarecoAgentClient:
-    """Agent simulé qui écrit lui-même son bloc groupé et ses puces sourcées."""
-
-    def __init__(self, *, experiences=None, projects=None, skills=None, education=None):
-        self.calls = []
-        self._experiences = experiences
-        self._projects = projects
-        self._skills = skills
-        self._education = education
-
-    def default_experiences(self):
-        return [
-            {
-                "id": "missions_techniques_2026",
-                "source_experience_ids": ["boutique_fictive", "atelier_imaginaire"],
-                "bullets": [
-                    {
-                        "text": "Catalogue WooCommerce et API REST sur une boutique inventée.",
-                        "sources": ["boutique_fictive:0", "boutique_fictive:1"],
-                    },
-                    {
-                        "text": "Gabarits Twig et Bootstrap maintenus sur un site inventé.",
-                        "sources": ["atelier_imaginaire:0"],
-                    },
-                    {
-                        "text": "Travail en branches Git sur une base de code fictive.",
-                        "sources": ["atelier_imaginaire:1"],
-                    },
-                ],
-            },
-            {
-                "id": "permanence_test",
-                "bullets": [
-                    {
-                        "text": "Accompagnement d'usagers fictifs sur des outils bureautiques.",
-                        "sources": ["permanence_test:0"],
-                    }
-                ],
-            },
-        ]
-
-    def complete_json(self, *, agent_name, system_prompt, payload):
-        self.calls.append(agent_name)
-        if agent_name == "cv_job_analyzer":
-            data = {
-                "selected_base_variant": "webmaster",
-                "target_title": "Webmaster e-commerce",
-                "positioning": "Webmaster de test, profil entierement invente.",
-                "priority_keywords": ["WordPress", "WooCommerce", "Git"],
-                "experience_plan": [
-                    {"experience_id": "boutique_fictive", "priority": 10, "highlight_indexes": [0, 1]},
-                    {"experience_id": "atelier_imaginaire", "priority": 9, "highlight_indexes": [0, 1]},
-                    {"experience_id": "permanence_test", "priority": 5, "highlight_indexes": [0]},
-                ],
-                "presentation_strategy": {
-                    "experience_display_mode": "grouped_missions",
-                    "experience_group_id": "missions_techniques_2026",
-                    "member_ids": ["boutique_fictive", "atelier_imaginaire"],
-                },
-                "section_order": ["profile", "skills", "experiences", "projects", "education"],
-                "selected_projects": ["projet_vitrine"],
-                "skills_to_emphasize": {
-                    "cms": ["WordPress", "WooCommerce"],
-                    "dev": ["Twig", "Bootstrap", "Git"],
-                },
-                "warnings": [],
-            }
-        elif agent_name in {"cv_creator", "cv_style_reviser"}:
-            data = {
-                "title": "Webmaster e-commerce",
-                "profile": "Webmaster de test, profil entierement invente.",
-                "skills": self._skills
-                if self._skills is not None
-                else [
-                    {"title": "CMS", "items": ["WordPress", "WooCommerce"]},
-                    {"title": "Développement", "items": ["Twig", "Bootstrap", "Git"]},
-                ],
-                "experiences": self._experiences
-                if self._experiences is not None
-                else self.default_experiences(),
-                "projects": self._projects
-                if self._projects is not None
-                else [{"id": "projet_vitrine", "technologies": ["WordPress"]}],
-                "education": self._education
-                if self._education is not None
-                else ["Titre professionnel Developpeur web (fictif)"],
-            }
-        elif agent_name == "cv_truth_checker":
-            data = {"verdict": "accepted", "claims": [], "summary": "Toutes les puces sont sourcées."}
-        elif agent_name == "cv_quality_checker":
-            data = {
-                "quality_score": 92,
-                "ats_score": 90,
-                "status": "validated",
-                "strengths": ["Preuves techniques visibles."],
-                "problems": [],
-                "missing_keywords": [],
-                "forbidden_claims_found": [],
-                "verdict": "CV cohérent.",
-            }
-        else:
-            raise AssertionError(f"Agent inattendu : {agent_name}")
-        return AgentResult(data=data, provider="fake", model="fake-careco")
-
-
-def _careco_cv(tmp_path, master_path, client):
-    result = prepare_custom_cv(
-        CARECO["job"], application_dir=tmp_path, master_path=master_path, llm_client=client
-    )
-    return result, json.loads((tmp_path / "cv" / "cv_content.json").read_text(encoding="utf-8"))
-
 
 def test_careco_group_keeps_ecommerce_stack_and_support_evidence(tmp_path, careco_master):
     """Le défaut CARECO : le groupe ne conserve plus qu'une seule preuve."""

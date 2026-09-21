@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 ---
 
 # Instruction: Non-régression CARECO et assainissement des anciens garde-fous

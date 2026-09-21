@@ -42,6 +42,10 @@ front/ server/   interface de validation (Vite/React + Express)
 - Le code et les commentaires sont en français quand ils s'adressent à l'utilisateur, en anglais pour les identifiants.
 - Les tests sont dans `tests/`, les fixtures dans `tests/fixtures/`.
 
+## Frontière IA / Python sur la chaîne CV
+
+Les agents décident du contenu éditorial, Python vérifie la vérité, le format et le droit d'exporter — sans jamais réécrire un choix d'agent. Python n'ajoute pas une expérience écartée, ne réordonne pas, ne tronque pas, ne supprime pas une formulation et ne fabrique pas de puce de secours : il produit une erreur localisée que le réviseur traite. Chaque puce cite ses preuves (`experience_id:index` ou `project_id`), et `cv_final.*` n'existe qu'au statut `ready`. Voir `docs/AGENT_OWNED_CV_PIPELINE.md`.
+
 ## Dette connue
 
-`tests/test_cv_generator.py` charge `data/cv_master_profile.json` en dur (lignes 306, 345, 385, 409, 427, 550, 620), sans fixture ni skip. La suite ne peut donc pas tourner sur un clone neuf ni en CI. Une fixture `tests/fixtures/cv_master_sample.json` reste à écrire.
+Hors chaîne CV, plusieurs suites lisent encore `data/` en dur et ne tournent pas sur un clone neuf : `tests/test_cv_selector.py`, `tests/test_application_builder.py`, `tests/test_application_tracker.py`, `tests/test_hermes_commands.py`, `tests/test_hermes_mcp_server.py`. La chaîne CV, elle, est entièrement hors-ligne depuis `tests/fixtures/careco_cv_case.json`.

@@ -1,6 +1,6 @@
 ---
 objective: "Les agents IA décident seuls du contenu éditorial du CV tandis que Python valide la vérité, le format et le droit d'exporter sans réécrire leurs choix."
-status: pending
+status: done
 ---
 
 # Plan: Pipeline CV piloté par les agents IA
