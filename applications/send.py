@@ -24,6 +24,7 @@ from typing import Any, List
 from company_analysis.duplicate import duplicate_check
 
 from .application_tracker import ApplicationTracker
+from .mail_template import render_mail_html
 from .sender import EmailSender, SendResult
 
 CONTACT_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -67,23 +68,6 @@ def _mail_parts(mail_path: Path) -> tuple[str, str]:
     if lines and lines[0].lower().startswith("objet :"):
         return lines[0].split(":", 1)[1].strip(), "\n".join(lines[1:]).strip()
     return "Candidature", "\n".join(lines).strip()
-
-
-def _mail_html(body: str) -> str:
-    """Version HTML sobre du corps texte, CSS inline (les clients mail
-    suppriment les <style>) : paragraphes aérés, lisibilité d'abord."""
-    from html import escape
-
-    blocks = [block.strip() for block in body.split("\n\n") if block.strip()]
-    rendered = "".join(
-        f'<p style="margin:0 0 14px 0;font-size:14px;line-height:1.6;'
-        f'color:#111111;">{escape(block).replace(chr(10), "<br>")}</p>'
-        for block in blocks
-    )
-    return (
-        '<div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;'
-        f'margin:0 auto;padding:8px 0;">{rendered}</div>'
-    )
 
 
 def run_controls(
@@ -221,7 +205,8 @@ def send_dossier(
         return result
 
     send_result: SendResult = sender.send(
-        to=address, subject=subject, body=body, attachments=attachments, html=_mail_html(body)
+        to=address, subject=subject, body=body, attachments=attachments,
+        html=render_mail_html(subject, body, sender_email=getattr(sender, "sender", "") or ""),
     )
     if send_result.ok:
         tracker.mark_sent(
@@ -238,25 +223,29 @@ def send_dossier(
         result["sent"] = True
         result["message_id"] = send_result.message_id
         result["attachments"] = [Path(a).name for a in attachments]
-        # Accusé de réception vers l'expéditeur : récap de ce qui vient de partir.
+        # Accusé de réception vers la boîte de Cundo : le contenu de l'envoi.
         confirm_to = (os.getenv("BREVO_CONFIRM_TO") or os.getenv("EMAIL_SENDER") or "").strip()
-        if confirm_to and confirm_to.lower() != address.lower():
-            recap = (
-                f"Candidature envoyée.\n\n"
-                f"Entreprise : {job.get('company', '')}\n"
-                f"Poste : {job.get('title', '')}\n"
-                f"Destinataire : {address}\n"
-                f"Objet : {subject}\n"
-                f"Pièces jointes : {', '.join(result['attachments']) or 'aucune'}\n"
-                f"Message : {result.get('message_id') or 'n/a'}\n"
-                f"Dossier : {dossier_path}\n"
-            )
+        if confirm_to:
+            recap_lignes = [
+                f"Entreprise : {job.get('company', '')}",
+                f"Poste : {job.get('title', '')}",
+                f"Destinataire : {address}",
+                f"Objet : {subject}",
+                f"Pièces jointes : {', '.join(result['attachments']) or 'aucune'}",
+                f"Message : {result.get('message_id') or 'n/a'}",
+                f"Dossier : {dossier_path}",
+            ]
+            recap = "Candidature envoyée.\n\n" + "\n\n".join(recap_lignes)
             try:
                 sender.send(
                     to=confirm_to,
                     subject=f"✓ Candidature envoyée à {job.get('company', '')}",
                     body=recap,
-                    html=_mail_html(recap),
+                    html=render_mail_html(
+                        f"✓ Candidature envoyée à {job.get('company', '')}",
+                        "Candidature envoyée.\n\n" + "\n\n".join(recap_lignes),
+                        sender_email=getattr(sender, "sender", "") or "",
+                    ),
                 )
             except Exception:
                 pass  # l'accusé ne doit jamais casser la confirmation d'envoi

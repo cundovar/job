@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>{{ objet }}</title>
+<!--[if mso]>
+<xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml>
+<![endif]-->
+<style>
+  /* Seul bloc <style> : uniquement pour le responsive et quelques resets.
+     Tout le reste est en inline, car Gmail supprime souvent les <style>. */
+  body { margin:0 !important; padding:0 !important; width:100% !important; }
+  table { border-collapse:collapse !important; }
+  img { border:0; outline:none; text-decoration:none; -ms-interpolation-mode:bicubic; }
+  a { color:#0F6E66; }
+  @media only screen and (max-width:620px) {
+    .wrap { width:100% !important; }
+    .pad { padding-left:24px !important; padding-right:24px !important; }
+    .h1 { font-size:20px !important; line-height:28px !important; }
+  }
+</style>
+</head>
+<body style="margin:0; padding:0; background-color:#EFEDE8;">
+
+<!-- Pré-en-tête : visible dans l'aperçu de la boîte mail, invisible dans le message -->
+<div style="display:none; max-height:0; overflow:hidden; opacity:0; mso-hide:all; font-size:1px; line-height:1px; color:#EFEDE8;">
+  {{ preheader | default("Candidature spontanée — développeur web, PHP/Symfony, Vue.js/React, WordPress.") }}
+  &#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;
+</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#EFEDE8;">
+  <tr>
+    <td align="center" style="padding:28px 12px 36px 12px;">
+
+      <table role="presentation" class="wrap" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px; background-color:#FFFFFF; border:1px solid #DFDBD2;">
+
+        <!-- Filet de couleur en tête -->
+        <tr>
+          <td style="height:4px; line-height:4px; font-size:0; background-color:#0F6E66;">&nbsp;</td>
+        </tr>
+
+        <!-- Identité -->
+        <tr>
+          <td class="pad" style="padding:30px 40px 0 40px; font-family:Georgia,'Times New Roman',serif;">
+            <p class="h1" style="margin:0; font-size:22px; line-height:30px; color:#16211F; font-weight:normal;">
+              {{ expediteur_nom | default("Facundo Varas") }}
+            </p>
+            <p style="margin:6px 0 0 0; font-family:Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#6B6660;">
+              {{ expediteur_titre | default("Développeur web full-stack &amp; formateur — Paris") }}
+            </p>
+          </td>
+        </tr>
+
+        <!-- Séparateur -->
+        <tr>
+          <td class="pad" style="padding:22px 40px 0 40px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="height:1px; line-height:1px; font-size:0; background-color:#E7E3DB;">&nbsp;</td></tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Corps du message -->
+        <tr>
+          <td class="pad" style="padding:26px 40px 0 40px; font-family:Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#2C302E;">
+
+            <p style="margin:0 0 18px 0;">{{ salutation | default("Bonjour,") }}</p>
+
+            {% for paragraphe in paragraphes %}
+            <p style="margin:0 0 18px 0;">{{ paragraphe }}</p>
+            {% endfor %}
+
+          </td>
+        </tr>
+
+        <!-- Encadré : pièces jointes et liens -->
+        <tr>
+          <td class="pad" style="padding:8px 40px 0 40px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F6F5F2; border-left:3px solid #0F6E66;">
+              <tr>
+                <td style="padding:18px 20px; font-family:Helvetica,Arial,sans-serif; font-size:14px; line-height:22px; color:#2C302E;">
+                  {% if cv_intitule %}
+                  <p style="margin:0 0 6px 0;">
+                    CV joint&nbsp;: <span style="color:#57534E;">{{ cv_intitule }}</span>
+                  </p>
+                  {% endif %}
+                  <p style="margin:0;">
+                    Portfolio&nbsp;:
+                    <a href="{{ portfolio_url | default('https://varascundo.com') }}" style="color:#0F6E66; text-decoration:underline;">{{ portfolio_label | default("varascundo.com") }}</a>
+                    {% if github_url %}
+                    &nbsp;·&nbsp;
+                    <a href="{{ github_url }}" style="color:#0F6E66; text-decoration:underline;">{{ github_label | default("GitHub") }}</a>
+                    {% endif %}
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Phrase de clôture -->
+        <tr>
+          <td class="pad" style="padding:24px 40px 0 40px; font-family:Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#2C302E;">
+            <p style="margin:0 0 22px 0;">{{ cloture | default("Je me tiens à votre disposition pour un échange.") }}</p>
+            <p style="margin:0 0 4px 0;">{{ formule | default("Cordialement,") }}</p>
+          </td>
+        </tr>
+
+        <!-- Signature -->
+        <tr>
+          <td class="pad" style="padding:8px 40px 34px 40px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="font-family:Georgia,'Times New Roman',serif; font-size:17px; line-height:24px; color:#16211F;">
+                  {{ expediteur_nom | default("Facundo Varas") }}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding-top:4px; font-family:Helvetica,Arial,sans-serif; font-size:13px; line-height:21px; color:#6B6660;">
+                  {{ expediteur_titre | default("Développeur web full-stack &amp; formateur") }}<br>
+                  {% if telephone %}<span style="color:#6B6660;">{{ telephone }}</span> · {% endif %}
+                  <a href="mailto:{{ email }}" style="color:#0F6E66; text-decoration:none;">{{ email }}</a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Pied -->
+        <tr>
+          <td style="background-color:#F6F5F2; border-top:1px solid #E7E3DB; padding:16px 40px; font-family:Helvetica,Arial,sans-serif; font-size:11px; line-height:18px; color:#8A847C;">
+            {{ mention_pied | default("Message envoyé à titre de candidature. Si vous ne souhaitez plus être contacté, répondez simplement à ce message.") }}
+          </td>
+        </tr>
+
+      </table>
+
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>
