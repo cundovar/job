@@ -39,6 +39,9 @@ COPY notifications/ ./notifications/
 COPY prospectors/ ./prospectors/
 COPY scrapers/ ./scrapers/
 COPY storage/ ./storage/
+# tools/ contient google_places.py (importé par agency_scout) et le
+# prospecteur V2, seul producteur des données d'agences.
+COPY tools/ ./tools/
 COPY utils/ ./utils/
 
 WORKDIR /app/server
