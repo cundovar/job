@@ -3,7 +3,7 @@
   "version": "v2",
   "search_id": "paris-20-20260922-145101",
   "generated_at": "2026-09-22T14:51:02",
-  "total": 1,
+  "total": 0,
   "scanned_domains": 75,
   "seed_count": 223,
   "queries": [
@@ -286,48 +286,5 @@
     "limite_appels": 15,
     "seuil_min_score": 45
   },
-  "agencies": [
-    {
-      "name": "YOTTA",
-      "website": "https://www.yotta-agency.com/",
-      "siren": null,
-      "origin": "csv",
-      "score": 0,
-      "raw_score": 0,
-      "stack": [],
-      "emails": [],
-      "contact_urls": [],
-      "reasons": [
-        "cible versionnée dans config/companies.csv"
-      ],
-      "sources": [
-        "config/companies.csv"
-      ],
-      "fetched_pages": [],
-      "snippet": "",
-      "zone_match": "tier1",
-      "zone_term": "75020",
-      "category": "agence",
-      "category_reason": "retenue à la main dans config/companies.csv",
-      "category_evidence": [],
-      "page_texts": [],
-      "address": "10 rue Désirée",
-      "postal_code": "75020",
-      "address_source": "relevé à la main (config/companies.csv)",
-      "distance_m": 1153,
-      "origins": [
-        "csv"
-      ],
-      "identity_match": "",
-      "identity_conflicts": [],
-      "site_match": "aucun",
-      "site_match_evidence": "",
-      "site_candidates": [],
-      "identity_candidates": [],
-      "siret": null,
-      "legal_address": null,
-      "legal_address_source": null,
-      "how": "adresse"
-    }
-  ]
+  "agencies": []
 }

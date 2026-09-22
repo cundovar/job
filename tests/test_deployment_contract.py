@@ -147,6 +147,14 @@ def test_agencies_view_carries_the_search_context():
     assert "Incertains registre" in app
     assert "agencyCategoryLabel" in app
     assert "agencyScoreLabel" in app
+    # Une passe terminée pendant que l'écran reste ouvert devient visible sans
+    # rechargement manuel et sans réponse HTTP mise en cache.
+    assert "window.setInterval(load, 15000)" in app
+    assert "if (changed) setSelectedId(latestId)" in app
+    assert "cache: 'no-store'" in app
+    # Les anciens snapshots ne doivent plus présenter une cible purement CSV
+    # comme si elle avait été découverte pendant la passe.
+    assert "origins.length === 1 && origins[0] === 'csv'" in app
     assert ".agency-search-picker" in css
     assert ".agency-category-filter" in css
 

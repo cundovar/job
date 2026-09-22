@@ -1279,20 +1279,31 @@ function AgenciesView() {
   const [fetchError, setFetchError] = useState(null)
   const [categoryFilter, setCategoryFilter] = useState('agence') // toutes | agence | formation | incertain | ecarte
   const [targetingState, setTargetingState] = useState({}) // { [domain]: { pending, done, error } }
+  const latestSearchRef = useRef(null)
 
   // 1) L'index d'abord : c'est lui qui dit quelles recherches existent.
   // Repli sur le fichier statique puis sur `latest.json` — une installation
   // antérieure à la phase 3 n'a ni route ni index, et doit rester utilisable.
+  // L'index est relu périodiquement : une prospection lancée par Hermes peut se
+  // terminer pendant que cet écran reste ouvert.
   useEffect(() => {
     let cancelled = false
     const load = async () => {
-      for (const url of ['/api/agencies/searches', `${DATA_URL}/agencies/index.json`]) {
+      const stamp = Date.now()
+      for (const url of ['/api/agencies/searches', `${DATA_URL}/agencies/index.json?t=${stamp}`]) {
         try {
-          const res = await fetch(url)
+          const res = await fetch(url, { cache: 'no-store' })
           if (!res.ok) continue
           const data = await res.json()
           if (Array.isArray(data?.searches) && data.searches.length > 0) {
-            if (!cancelled) setIndex(data)
+            if (!cancelled) {
+              const latestId = data.latest_search_id || data.searches[0]?.search_id
+              const changed = latestId && latestId !== latestSearchRef.current
+              latestSearchRef.current = latestId || null
+              setIndex(data)
+              if (changed) setSelectedId(latestId)
+              setFetchError(null)
+            }
             return
           }
         } catch {
@@ -1301,11 +1312,11 @@ function AgenciesView() {
       }
       // Ni route ni index : on tente l'alias de compatibilité seul.
       try {
-        const res = await fetch(`${DATA_URL}/agencies/latest.json`)
+        const res = await fetch(`${DATA_URL}/agencies/latest.json?t=${stamp}`, { cache: 'no-store' })
         if (!res.ok) throw new Error(String(res.status))
         const latest = await res.json()
         if (cancelled) return
-        setIndex({
+        const fallbackIndex = {
           source: 'latest',
           latest_search_id: latest.search_id || 'latest',
           searches: [{
@@ -1317,13 +1328,22 @@ function AgenciesView() {
             total: (latest.agencies || []).length,
             state: 'ok',
           }],
-        })
+        }
+        const latestId = fallbackIndex.latest_search_id
+        const changed = latestId !== latestSearchRef.current
+        latestSearchRef.current = latestId
+        setIndex(fallbackIndex)
+        if (changed) setSelectedId(latestId)
       } catch {
         if (!cancelled) setFetchError('Données agences non disponibles. Lance "lance prospection agences web".')
       }
     }
     load()
-    return () => { cancelled = true }
+    const refresh = window.setInterval(load, 15000)
+    return () => {
+      cancelled = true
+      window.clearInterval(refresh)
+    }
   }, [])
 
   // 2) La recherche à afficher : celle mémorisée si elle existe encore,
@@ -1353,7 +1373,8 @@ function AgenciesView() {
     const load = async () => {
       for (const url of [`/api/agencies/searches/${encodeURIComponent(selectedId)}`, staticUrl]) {
         try {
-          const res = await fetch(url)
+          const requestUrl = url.includes('/api/') ? url : `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`
+          const res = await fetch(requestUrl, { cache: 'no-store' })
           if (!res.ok) continue
           const data = await res.json()
           if (cancelled) return
@@ -1376,7 +1397,7 @@ function AgenciesView() {
   // 4) Analyses persistées : elles survivent aux runs, et comblent les
   // recherches produites avant la phase 2. Leur absence n'est pas une erreur.
   useEffect(() => {
-    fetch('/api/agencies/analyses')
+    fetch('/api/agencies/analyses', { cache: 'no-store' })
       .then(r => (r.ok ? r.json() : null))
       .then(data => setPersisted(data?.analyses || {}))
       .catch(() => setPersisted({}))
@@ -1384,7 +1405,13 @@ function AgenciesView() {
 
   const searches = index?.searches || []
   const selected = searches.find(s => s.search_id === selectedId) || null
-  const allAgencies = payload?.agencies || []
+  // Les anciens snapshots peuvent encore contenir des lignes injectées depuis
+  // config/companies.csv sans découverte pendant la passe. Elles restent dans
+  // l'archive historique, mais ne sont plus présentées comme des résultats.
+  const allAgencies = (payload?.agencies || []).filter(agency => {
+    const origins = agency.origins || [agency.origin].filter(Boolean)
+    return !(origins.length === 1 && origins[0] === 'csv')
+  })
   const agencies = categoryFilter === 'toutes'
     ? allAgencies
     : allAgencies.filter(a => (a.category || 'agence') === categoryFilter)

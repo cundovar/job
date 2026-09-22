@@ -139,7 +139,7 @@ def test_postal_code_is_extracted_only_from_a_real_address():
     assert v2.postal_code_from_address(None) is None
 
 
-def test_curated_csv_is_merged_without_losing_crawl_data(tmp_path):
+def test_curated_csv_enriches_discovered_agencies_without_injecting_old_targets(tmp_path):
     v2 = load_v2()
     csv_path = tmp_path / "companies.csv"
     csv_path.write_text(
@@ -169,8 +169,32 @@ def test_curated_csv_is_merged_without_losing_crawl_data(tmp_path):
     assert by_name["Agence Test"]["postal_code"] == "75020"
     assert "config/companies.csv" in by_name["Agence Test"]["sources"]
     assert "moteur" in by_name["Agence Test"]["sources"]
-    assert by_name["Sans site"]["website"] is None
+    assert "Sans site" not in by_name
     assert "Ecartee" not in by_name
+
+
+def test_paris_20_keeps_only_verified_75020_addresses():
+    v2 = load_v2()
+    agencies = [
+        {"name": "Dans le 20e", "postal_code": "75020"},
+        {"name": "Paris voisin", "postal_code": "75019"},
+        {"name": "Adresse inconnue", "postal_code": None},
+    ]
+
+    kept, rejected = v2.filter_strict_postal_zone(agencies, "paris-20")
+
+    assert [agency["name"] for agency in kept] == ["Dans le 20e"]
+    assert {agency["name"] for agency in rejected} == {"Paris voisin", "Adresse inconnue"}
+
+
+def test_paris_20_uses_only_targeted_queries():
+    v2 = load_v2()
+
+    families, queries = v2.queries_for_zone("paris-20")
+
+    assert len(queries) <= 8
+    assert all("Paris 20" in query or "75020" in query for query in queries)
+    assert set(families) == {"agence", "formation"}
 
 
 def test_manual_address_survives_a_geocoding_failure(monkeypatch):

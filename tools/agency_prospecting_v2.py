@@ -103,6 +103,7 @@ from official_site import (  # noqa: E402
     exclusion_reason as site_exclusion_reason,
     find_official_site,
 )
+from google_places import discover_paris_20  # noqa: E402
 
 EXCLUSION_LABELS = {EXCLUSION_DIRECTORY, EXCLUSION_PROFILE, EXCLUSION_INFRA}
 from company_analysis.duplicate import normalize_name  # noqa: E402
@@ -215,20 +216,14 @@ ZONES = {
         'tier2': [],
     },
     'paris-20': {
-        'label': 'Paris 20e et est parisien',
+        'label': 'Paris 20e (75020)',
         'tier1': [
             '75020', 'paris 20', '20ème', '20eme', '20e arr',
-            'ménilmontant', 'menilmontant', 'belleville', 'gambetta',
-            'père-lachaise', 'pere lachaise', 'charonne', 'bercy', 'picpus',
-            'saint-fargeau', 'saint blaise', 'nation',
+            'ménilmontant', 'menilmontant', 'gambetta',
+            'père-lachaise', 'pere lachaise', 'charonne',
+            'saint-fargeau', 'saint blaise',
         ],
-        'tier2': [
-            'paris', '75010', '75011', '75012', '75019',
-            '11ème', '12ème', '19ème', '10ème', '11e arr', '12e arr', '19e arr', '10e arr',
-            'montreuil', 'bagnolet', 'vincennes', 'fontenay-sous-bois',
-            'saint-mandé', 'saint-mande', 'les lilas', 'rosny-sous-bois',
-            'pré-saint-gervais', 'pre-saint-gervais',
-        ],
+        'tier2': [],
     },
     'paris-19': {
         'label': 'Paris 19e et nord-est parisien',
@@ -272,8 +267,8 @@ ZONE_QUERIES = {
     'paris-20': [
         'agence web Paris 20 WordPress',
         'agence digitale Paris 20e site internet',
-        'studio web Belleville Ménilmontant agence',
-        'agence web Gambetta Charonne création site',
+        'studio web Belleville Ménilmontant Paris 20 75020',
+        'agence web Gambetta Charonne Paris 20 75020',
     ],
     'paris-19': [
         'agence web Paris 19 WordPress',
@@ -291,6 +286,38 @@ ZONE_QUERIES = {
     ],
     'ile-de-france': [],
 }
+
+STRICT_POSTAL_ZONES = {
+    'paris-20': {'75020'},
+}
+
+ZONE_FORMATION_QUERIES = {
+    'paris-20': [
+        'organisme formation numérique Paris 20 75020',
+        'formation développeur web Paris 20 75020',
+    ],
+}
+
+
+def queries_for_zone(zone_key: str) -> tuple[dict[str, list[str]], list[str]]:
+    """Requêtes du périmètre demandé, sans élargissement implicite.
+
+    Les anciens presets ajoutaient les requêtes nationales/IDF à « Paris 20 » :
+    31 recherches partaient alors pour une demande locale. Un preset qui possède
+    ses requêtes propres reste désormais strictement sur celles-ci.
+    """
+    targeted = ZONE_QUERIES.get(zone_key)
+    if targeted:
+        families = {
+            FAMILY_AGENCY: list(targeted),
+            FAMILY_FORMATION: list(ZONE_FORMATION_QUERIES.get(zone_key, [])),
+        }
+    else:
+        families = {
+            FAMILY_AGENCY: list(SEARCH_QUERIES),
+            FAMILY_FORMATION: list(FORMATION_QUERIES),
+        }
+    return families, families[FAMILY_AGENCY] + families[FAMILY_FORMATION]
 
 
 _TERM_PATTERNS: dict[str, re.Pattern] = {}
@@ -849,9 +876,29 @@ def excluded_hosts_from_csv(path: Path = COMPANIES_CSV) -> dict[str, str]:
 
 
 def merge_curated_agencies(results: list[dict], zone_key: str, path: Path = COMPANIES_CSV) -> list[dict]:
-    """Fusionne le crawl avec le CSV, en donnant priorité aux relevés manuels."""
+    """Enrichit les découvertes avec le CSV sans injecter d'anciennes cibles.
+
+    Le CSV reste utile pour corriger une adresse ou confirmer un SIREN, mais une
+    ligne manuelle ne constitue pas un résultat de la recherche en cours. Elle
+    n'entre donc dans la fusion que si le domaine a réellement été découvert.
+    """
     crawled = [{**agency, 'origin': agency.get('origin', ORIGIN_WEB)} for agency in results]
-    return merge_records(crawled + load_curated_agencies(zone_key, path))
+    discovered_hosts = {host_of(agency.get('website') or '') for agency in crawled}
+    curated = [
+        agency for agency in load_curated_agencies(zone_key, path)
+        if host_of(agency.get('website') or '') in discovered_hosts
+    ]
+    return merge_records(crawled + curated)
+
+
+def filter_strict_postal_zone(results: list[dict], zone_key: str) -> tuple[list[dict], list[dict]]:
+    """Applique les périmètres administratifs qui ne tolèrent aucun voisinage."""
+    expected = STRICT_POSTAL_ZONES.get(zone_key)
+    if not expected:
+        return results, []
+    kept = [agency for agency in results if str(agency.get('postal_code') or '') in expected]
+    rejected = [agency for agency in results if agency not in kept]
+    return kept, rejected
 
 
 def fmt_distance(m) -> str:
@@ -2130,35 +2177,55 @@ def run():
         families = query_families(commune)
         queries = city_queries(commune)
     else:
-        families = {
-            FAMILY_AGENCY: SEARCH_QUERIES + ZONE_QUERIES.get(zone_key, []),
-            FAMILY_FORMATION: FORMATION_QUERIES,
-        }
-        queries = SEARCH_QUERIES + FORMATION_QUERIES + ZONE_QUERIES.get(zone_key, [])
+        families, queries = queries_for_zone(zone_key)
 
     seeds: list[tuple[str,str,str]]=[]
+    places_by_host: dict[str, dict] = {}
     with steps.step('decouverte_web') as measures:
-        # 1 search engines
+        # Source locale structurée, explicitement activée : deux requêtes Places
+        # maximum pour Paris 20. La présence d'une clé seule ne déclenche rien,
+        # afin qu'un déploiement ne commence jamais à facturer implicitement.
+        places_enabled = os.getenv('GOOGLE_PLACES_ENABLED', '').casefold() in {'1', 'true', 'yes'}
+        places_key = os.getenv('GOOGLE_PLACES_API_KEY', '')
+        places_rows = []
+        if zone_key == 'paris-20' and places_enabled and places_key:
+            try:
+                places_rows = discover_paris_20(places_key)
+            except Exception as exc:  # la source de repli reste disponible
+                print(f'WARN: Google Places indisponible ({type(exc).__name__})', file=sys.stderr)
+        for place in places_rows:
+            host = host_of(place.get('website') or '')
+            if not host:
+                continue
+            places_by_host[host] = place
+            seeds.append((place['website'], place['name'], 'google_places'))
+
+        # Repli par moteurs HTML.
         for q in queries:
             seeds.extend(search_ddg(q, max_results=8))
             seeds.extend(search_bing(q, max_results=8))
             time.sleep(0.5)
-        # 2 directories as link sources
-        for url in DIRECTORY_SEEDS:
-            seeds.extend(extract_agency_links_from_directory(url))
-            time.sleep(0.7)
+        # Les annuaires IDF élargissent une recherche administrative stricte et
+        # ajoutent surtout du bruit. Ils restent un repli pour les zones larges.
+        if zone_key not in STRICT_POSTAL_ZONES:
+            for url in DIRECTORY_SEEDS:
+                seeds.extend(extract_agency_links_from_directory(url))
+                time.sleep(0.7)
         measures['queries'] = len(queries)
         measures['seeds'] = len(seeds)
-    # 3 add known previous good roots to avoid regressions
-    for url,label in [
-        ('https://opus.paris/', 'Opus agence WordPress'),
-        ('https://reactive-tech-solutions.com/', 'Reactive Tech Solutions'),
-        ('https://www.wordpress-paris.com/', 'WordPress Paris'),
-    ]:
-        seeds.append((url,label,'known'))
-    # 3b organismes de formation connus (cible formateur) — toujours crawlés
-    for url,label in FORMATION_ROOTS:
-        seeds.append((url,label,'known-formation'))
+        measures['google_places'] = len(places_rows)
+        measures['google_places_active'] = bool(places_enabled and places_key)
+    if zone_key not in STRICT_POSTAL_ZONES:
+        # Racines connues utiles aux recherches régionales, jamais injectées
+        # dans une recherche administrative locale.
+        for url,label in [
+            ('https://opus.paris/', 'Opus agence WordPress'),
+            ('https://reactive-tech-solutions.com/', 'Reactive Tech Solutions'),
+            ('https://www.wordpress-paris.com/', 'WordPress Paris'),
+        ]:
+            seeds.append((url,label,'known'))
+        for url,label in FORMATION_ROOTS:
+            seeds.append((url,label,'known-formation'))
 
     # Dedupe by host
     by_host={}
@@ -2225,6 +2292,7 @@ def run():
             continue
         if not keeps_candidate(scored):
             continue
+        place = places_by_host.get(h) or {}
         results.append({
             'name': c['name'][:160],
             'website': c['base'],
@@ -2240,12 +2308,20 @@ def run():
             'sources': sorted(c['sources'])[:6],
             'fetched_pages': fetched[:7],
             'snippet': text[:700],
-            'zone_match': scored['zone_match'],
-            'zone_term': scored['zone_term'],
+            'zone_match': (
+                'tier1' if place.get('postal_code') in STRICT_POSTAL_ZONES.get(zone_key, set())
+                else scored['zone_match']
+            ),
+            'zone_term': place.get('postal_code') or scored['zone_term'],
             'category': scored['category'],
             'category_reason': scored['category_reason'],
             'category_evidence': scored['category_evidence'],
             'page_texts': pages[:4],
+            'address': place.get('address'),
+            'postal_code': place.get('postal_code'),
+            'address_source': 'Google Places' if place.get('address') else None,
+            'place_id': place.get('place_id'),
+            'google_maps_url': place.get('google_maps_url'),
         })
         time.sleep(0.2)
     steps.stop(crawl_step, crawles=len(crawl_plan), retenus=len(results), ecartes=len(ecartes))
@@ -2302,9 +2378,11 @@ def run():
         results = [r for r in results if r['zone_match'] != 'none']
         zone_dropped = n_none
     results=sorted(results, key=lambda r: (-zone_rank.get(r['zone_match'], 2), r['score'], len(r['stack']), bool(r['emails'] or r['contact_urls'])), reverse=True)
-    # Distance depuis l'adresse de référence de Cundo (--no-distance pour sauter).
+    # Une distance n'est calculée que lorsqu'un rayon a été explicitement demandé.
+    # Pour « Paris 20 », l'adresse et le code postal sont la règle, pas la distance
+    # à une adresse personnelle de référence.
     with steps.step('geocodage') as measures:
-        if options['no_distance']:
+        if options['no_distance'] or radius_m is None:
             origin_coords = ''
             for agency in results:
                 agency.setdefault('address', None)
@@ -2322,6 +2400,12 @@ def run():
                 agency['how'] = address_how(agency)
         measures['adresses_lues'] = sum(1 for a in results if a.get('how') in ADDRESS_HOW_READ)
         measures['positions_inconnues'] = sum(1 for a in results if not a.get('how'))
+
+    # Les presets administratifs stricts (actuellement Paris 20) ne publient
+    # jamais une adresse voisine ou inconnue. Les rejets restent comptés pour le
+    # diagnostic, mais ne deviennent pas des cartes utilisateur.
+    strict_postal_dropped = []
+    results, strict_postal_dropped = filter_strict_postal_zone(results, zone_key)
 
     # Appartenance à la commune : sur adresse lue ou code commune du registre.
     # Elle est calculée APRÈS le géocodage, parce qu'avant l'adresse n'existe pas
@@ -2396,8 +2480,12 @@ def run():
             _cache = _fit.load_cache(_cache_path)
             _eligibles=[
                 r for r in results
-                if (r.get('score') or 0) >= _fit.DEFAULT_MIN_SCORE
+                if r.get('website')
                 and r.get('category') in ('agence', 'formation')
+                and (
+                    zone_key in STRICT_POSTAL_ZONES
+                    or (r.get('score') or 0) >= _fit.DEFAULT_MIN_SCORE
+                )
             ]
             _analyzer=_fit.FitAnalyzer()
             fit_stats=_analyzer.analyze_batch(_eligibles, _profile, _cache)
@@ -2463,6 +2551,7 @@ def run():
             'tier2': sum(1 for r in results if r['zone_match'] == 'tier2'),
             'hors_zone_gardes': sum(1 for r in results if r['zone_match'] == 'none'),
             'hors_zone_ecartes': zone_dropped,
+            'hors_code_postal_strict': len(strict_postal_dropped),
         },
         'hors_zone_ecartes_details': dropped_hors_zone,
         'radius': radius_report,
