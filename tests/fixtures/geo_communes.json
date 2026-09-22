@@ -1,0 +1,289 @@
+{
+  "communes": {
+    "montreuil": [
+      {
+        "nom": "Montreuil",
+        "code": "93048",
+        "codesPostaux": [
+          "93100"
+        ],
+        "codeDepartement": "93",
+        "codeRegion": "11",
+        "centre": {
+          "type": "Point",
+          "coordinates": [
+            2.4491,
+            48.8637
+          ]
+        },
+        "population": 111934,
+        "_score": 1.2861348155342625
+      },
+      {
+        "nom": "Montreuillon",
+        "code": "58179",
+        "codesPostaux": [
+          "58800"
+        ],
+        "codeDepartement": "58",
+        "codeRegion": "27",
+        "centre": {
+          "type": "Point",
+          "coordinates": [
+            3.7935,
+            47.168
+          ]
+        },
+        "population": 243,
+        "_score": 0.7967429672299315
+      },
+      {
+        "nom": "Montreuil",
+        "code": "85148",
+        "codesPostaux": [
+          "85200"
+        ],
+        "codeDepartement": "85",
+        "codeRegion": "52",
+        "centre": {
+          "type": "Point",
+          "coordinates": [
+            -0.8407,
+            46.3975
+          ]
+        },
+        "population": 818,
+        "_score": 0.6118203772520373
+      },
+      {
+        "nom": "Montreuil",
+        "code": "28267",
+        "codesPostaux": [
+          "28500"
+        ],
+        "codeDepartement": "28",
+        "codeRegion": "24",
+        "centre": {
+          "type": "Point",
+          "coordinates": [
+            1.3807,
+            48.7791
+          ]
+        },
+        "population": 538,
+        "_score": 0.6101211796322613
+      },
+      {
+        "nom": "Vaux-Montreuil",
+        "code": "08467",
+        "codesPostaux": [
+          "08270"
+        ],
+        "codeDepartement": "08",
+        "codeRegion": "44",
+        "centre": {
+          "type": "Point",
+          "coordinates": [
+            4.5546,
+            49.5858
+          ]
+        },
+        "population": 110,
+        "_score": 0.4435691153457889
+      },
+      {
+        "nom": "Montreuil-sur-Mer",
+        "code": "62588",
+        "codesPostaux": [
+          "62170"
+        ],
+        "codeDepartement": "62",
+        "codeRegion": "32",
+        "centre": {
+          "type": "Point",
+          "coordinates": [
+            1.777,
+            50.4654
+          ]
+        },
+        "population": 1912,
+        "_score": 0.4420685503709771
+      },
+      {
+        "nom": "Montreuil-Juigné",
+        "code": "49214",
+        "codesPostaux": [
+          "49460"
+        ],
+        "codeDepartement": "49",
+        "codeRegion": "52",
+        "centre": {
+          "type": "Point",
+          "coordinates": [
+            -0.6178,
+            47.5451
+          ]
+        },
+        "population": 7808,
+        "_score": 0.3987083551366766
+      },
+      {
+        "nom": "Montreuil-en-Auge",
+        "code": "14448",
+        "codesPostaux": [
+          "14340"
+        ],
+        "codeDepartement": "14",
+        "codeRegion": "28",
+        "centre": {
+          "type": "Point",
+          "coordinates": [
+            0.0672,
+            49.1687
+          ]
+        },
+        "population": 65,
+        "_score": 0.39815410269116774
+      }
+    ],
+    "lille": [
+      {
+        "nom": "Lille",
+        "code": "59350",
+        "codesPostaux": [
+          "59000",
+          "59160",
+          "59260",
+          "59777",
+          "59800"
+        ],
+        "codeDepartement": "59",
+        "codeRegion": "32",
+        "centre": {
+          "type": "Point",
+          "coordinates": [
+            3.0468,
+            50.6311
+          ]
+        },
+        "population": 238246,
+        "_score": 1.8082078747980779
+      },
+      {
+        "nom": "Lillers",
+        "code": "62516",
+        "codesPostaux": [
+          "62190"
+        ],
+        "codeDepartement": "62",
+        "codeRegion": "32",
+        "centre": {
+          "type": "Point",
+          "coordinates": [
+            2.4824,
+            50.5622
+          ]
+        },
+        "population": 10193,
+        "_score": 0.5930316358519863
+      },
+      {
+        "nom": "Lillemer",
+        "code": "35153",
+        "codesPostaux": [
+          "35111"
+        ],
+        "codeDepartement": "35",
+        "codeRegion": "53",
+        "centre": {
+          "type": "Point",
+          "coordinates": [
+            -1.8538,
+            48.5703
+          ]
+        },
+        "population": 398,
+        "_score": 0.5403173538815326
+      },
+      {
+        "nom": "Saint-André-lez-Lille",
+        "code": "59527",
+        "codesPostaux": [
+          "59350"
+        ],
+        "codeDepartement": "59",
+        "codeRegion": "32",
+        "centre": {
+          "type": "Point",
+          "coordinates": [
+            3.0415,
+            50.6599
+          ]
+        },
+        "population": 13233,
+        "_score": 0.4120008545816538
+      }
+    ],
+    "quimper": [
+      {
+        "nom": "Quimper",
+        "code": "29232",
+        "codesPostaux": [
+          "29000"
+        ],
+        "codeDepartement": "29",
+        "codeRegion": "53",
+        "centre": {
+          "type": "Point",
+          "coordinates": [
+            -4.0972,
+            47.9982
+          ]
+        },
+        "population": 64385,
+        "_score": 1.2156554285779833
+      },
+      {
+        "nom": "Quimperlé",
+        "code": "29233",
+        "codesPostaux": [
+          "29300"
+        ],
+        "codeDepartement": "29",
+        "codeRegion": "53",
+        "centre": {
+          "type": "Point",
+          "coordinates": [
+            -3.5586,
+            47.8558
+          ]
+        },
+        "population": 12469,
+        "_score": 0.757071136507598
+      }
+    ],
+    "zzzzville": []
+  },
+  "departements": {
+    "93": {
+      "code": "93",
+      "nom": "Seine-Saint-Denis"
+    },
+    "59": {
+      "code": "59",
+      "nom": "Nord"
+    },
+    "29": {
+      "code": "29",
+      "nom": "Finistère"
+    },
+    "85": {
+      "code": "85",
+      "nom": "Vendée"
+    },
+    "28": {
+      "code": "28",
+      "nom": "Eure-et-Loir"
+    }
+  }
+}
