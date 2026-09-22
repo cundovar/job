@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import base64
 import mimetypes
+import re
 from html import escape
 from pathlib import Path
 from typing import Any, Dict, List
@@ -600,3 +601,100 @@ def cv_to_pdf(
 
     c.showPage()
     c.save()
+
+
+def _parse_lettre_markdown(raw: str) -> tuple[str, str, list[str]]:
+    """Découpe une lettre markdown : ligne de lieu/date, objet, paragraphes."""
+    date_re = re.compile(r"^\[?([A-ZÀ-Ý][\wà-ÿ'’ \-]*,\s*le\s+[^\]]+)\]?$")
+    date_line, objet, blocks, current = "", "", [], []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            if current:
+                blocks.append(" ".join(current))
+                current = []
+            continue
+        if line.lower().startswith("objet :"):
+            objet = line
+            continue
+        if not objet and not blocks and not current:
+            match = date_re.match(line)
+            if match:
+                date_line = match.group(1).strip()
+                continue
+        current.append(line)
+    if current:
+        blocks.append(" ".join(current))
+    return date_line, objet, blocks
+
+
+def lettre_to_pdf(
+    markdown_path: str | Path,
+    output_path: str | Path,
+    design_system_path: str | Path = DEFAULT_DESIGN_SYSTEM,
+    candidate_name: str = "Facundo Varas",
+    contact_line: str = "varas.cundo@gmail.com · varascundo.com",
+) -> None:
+    """Lettre de motivation en PDF A4 unique, sobre, aux couleurs du design system.
+
+    Le markdown est la source : ligne « Objet : » en gras, ligne de lieu/date à
+    droite si présente, le reste en paragraphes justifiés.
+    """
+    from html import escape as _xml_escape
+
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_JUSTIFY
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
+
+    design = _load_design_system(design_system_path)
+    colors_cfg = design.get("colors", {})
+    primary = colors.HexColor(colors_cfg.get("text_primary", "#111111"))
+    secondary = colors.HexColor(colors_cfg.get("text_secondary", "#606665"))
+    accent = colors.HexColor(colors_cfg.get("accent", "#788481"))
+
+    regular_font, bold_font = "Helvetica", "Helvetica-Bold"
+    font_dir = Path("/usr/share/fonts/truetype/dejavu")
+    try:
+        pdfmetrics.registerFont(TTFont("CVSans", str(font_dir / "DejaVuSans.ttf")))
+        pdfmetrics.registerFont(TTFont("CVSans-Bold", str(font_dir / "DejaVuSans-Bold.ttf")))
+        regular_font, bold_font = "CVSans", "CVSans-Bold"
+    except Exception:
+        pass
+
+    raw = Path(markdown_path).read_text(encoding="utf-8")
+    date_line, objet, paragraphs = _parse_lettre_markdown(raw)
+
+    def esc(text: str) -> str:
+        return _xml_escape(str(text))
+
+    style_header = ParagraphStyle("lettre-header", fontName=bold_font, fontSize=14, leading=17, textColor=primary)
+    style_contact = ParagraphStyle("lettre-contact", fontName=regular_font, fontSize=9, leading=12, textColor=secondary)
+    style_date = ParagraphStyle("lettre-date", fontName=regular_font, fontSize=10, leading=13, textColor=secondary)
+    style_objet = ParagraphStyle("lettre-objet", fontName=bold_font, fontSize=10.5, leading=14, textColor=primary)
+    style_body = ParagraphStyle("lettre-body", fontName=regular_font, fontSize=10.5, leading=15.5,
+                                textColor=primary, alignment=TA_JUSTIFY, spaceAfter=9)
+
+    doc = SimpleDocTemplate(str(output_path), pagesize=A4,
+                            leftMargin=56, rightMargin=56, topMargin=52, bottomMargin=48,
+                            title="Lettre de motivation", author=candidate_name)
+    story: list = [
+        Paragraph(esc(candidate_name), style_header),
+        Spacer(1, 2),
+        Paragraph(esc(contact_line), style_contact),
+        Spacer(1, 8),
+        HRFlowable(width="100%", thickness=0.8, color=accent),
+        Spacer(1, 14),
+    ]
+    if date_line:
+        story.append(Paragraph(esc(date_line), style_date))
+        story.append(Spacer(1, 10))
+    if objet:
+        story.append(Paragraph(esc(objet), style_objet))
+        story.append(Spacer(1, 10))
+    for block in paragraphs:
+        story.append(Paragraph(esc(block), style_body))
+    doc.build(story)

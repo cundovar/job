@@ -718,6 +718,11 @@ function CandidaturesView({ mission = 'annonce' }) {
         <button className="copy-btn" onClick={() => copyLettre(c?.lettre || '')}>
           {copied ? <><Check /> Copié !</> : <><Clipboard /> Copier la lettre</>}
         </button>
+        {c?.metadata?.files?.motivation_letter_pdf && (
+          <a className="download-btn" href={`/api/applications/${selected}/lettre/download`} download>
+            <FileDown /> Lettre PDF
+          </a>
+        )}
         <pre className="lettre-content">{c?.lettre}</pre>
         {c?.mail && (
           <>

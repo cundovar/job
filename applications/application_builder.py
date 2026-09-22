@@ -110,10 +110,29 @@ def build_application_package(
         generate_motivation_letter(job, recommendation, user_profile),
         encoding="utf-8",
     )
+    # Le PDF part en pièce jointe avec le CV : un échec d'export ne fait pas
+    # échouer le dossier, le .md reste la source de vérité de la lettre.
+    lettre_pdf_path: Path | None = directory / "lettre_motivation.pdf"
+    try:
+        from cv_generator.exporters import lettre_to_pdf
+
+        lettre_to_pdf(motivation_letter_path, lettre_pdf_path)
+    except Exception:
+        lettre_pdf_path = None
     application_email_path.write_text(
         generate_application_email(job, recommendation, user_profile),
         encoding="utf-8",
     )
+
+    files = {
+        "job": str(job_path),
+        "resume": str(resume_path),
+        "motivation_letter": str(motivation_letter_path),
+        "application_email": str(application_email_path),
+        "metadata": str(metadata_path),
+    }
+    if lettre_pdf_path is not None:
+        files["motivation_letter_pdf"] = str(lettre_pdf_path)
 
     metadata = {
         "job_title": _job_value(job, "title"),
@@ -124,13 +143,7 @@ def build_application_package(
         "status": "ready_to_apply",
         "created_at": created_at.isoformat(),
         "recommended_cv": asdict(recommendation),
-        "files": {
-            "job": str(job_path),
-            "resume": str(resume_path),
-            "motivation_letter": str(motivation_letter_path),
-            "application_email": str(application_email_path),
-            "metadata": str(metadata_path),
-        },
+        "files": files,
     }
     metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
 

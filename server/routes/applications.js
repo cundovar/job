@@ -727,6 +727,25 @@ export default function createApplicationsRouter(repo) {
     }
   });
 
+  // GET /api/applications/:id/lettre/download — Lettre de motivation en PDF
+  router.get('/applications/:id/lettre/download', async (req, res) => {
+    try {
+      const dir = applicationDir(req.params.id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      const filePath = path.join(dir, 'lettre_motivation.pdf');
+      if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Aucun PDF de lettre pour ce dossier' });
+      const application = await repo.getById(req.params.id);
+      const metadata = readApplicationMetadata(req.params.id);
+      res.download(filePath, downloadFilename(application || {
+        entreprise: metadata.company,
+        poste: metadata.job_title,
+      }, 'Lettre.pdf'));
+    } catch (err) {
+      console.error('[GET /applications/:id/lettre/download]', err.message);
+      res.status(400).json({ error: err.message });
+    }
+  });
+
   // GET /api/applications/:id/cv/download/:file — Télécharge un fichier CV généré
   router.get('/applications/:id/cv/download/:file', async (req, res) => {
     try {
