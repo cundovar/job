@@ -101,3 +101,70 @@ def test_cv_page_exposes_ai_review_and_regeneration():
     ).read_text(encoding="utf-8")
     assert "Jugement détaillé des agents IA" in assessment
     assert "Pourquoi le CV doit être corrigé" in assessment
+
+
+def test_agency_search_history_is_exposed_by_routes_not_only_static_files():
+    """Le front doit pouvoir distinguer « pas encore d'index » de « index vide ».
+
+    Un 404 sur un fichier statique ne dit ni l'un ni l'autre : d'où des routes
+    JSON dédiées, avec `latest.json` conservé en repli de compatibilité.
+    """
+    routes = (
+        PROJECT_ROOT / "server" / "routes" / "applications.js"
+    ).read_text(encoding="utf-8")
+    service = (
+        PROJECT_ROOT / "server" / "services" / "agenciesService.js"
+    ).read_text(encoding="utf-8")
+
+    assert "router.get('/agencies/searches'" in routes
+    assert "router.get('/agencies/searches/:searchId'" in routes
+    assert "router.get('/agencies/analyses'" in routes
+    # Le ciblage porte sur la recherche affichée, jamais sur « la plus récente ».
+    assert "req.body?.search_id" in routes
+    assert "readSearchPayload(searchId)" in routes
+
+    assert "SEARCH_ID_PATTERN" in service
+    assert "Recherches disponibles" in service
+    # `data/agency_analyses.json` n'est jamais servi brut ni rendu modifiable.
+    assert "readPersistedAnalyses" in service
+    assert "writeFileSync(ANALYSES_PATH" not in service
+
+
+def test_agencies_view_carries_the_search_context():
+    app = (PROJECT_ROOT / "front" / "src" / "App.jsx").read_text(encoding="utf-8")
+    css = (PROJECT_ROOT / "front" / "src" / "App.css").read_text(encoding="utf-8")
+
+    assert "/api/agencies/searches" in app
+    assert "agency-search-picker" in app
+    assert "AGENCY_SEARCH_STORAGE_KEY" in app
+    # Le ciblage envoie l'identifiant de la recherche consultée.
+    assert "JSON.stringify({ domain, search_id: selectedId })" in app
+    # Repli de compatibilité : une installation sans index reste utilisable.
+    assert "/agencies/latest.json" in app
+    # Les deux catégories restent visibles par défaut.
+    assert "categoryFilter, setCategoryFilter] = useState('toutes')" in app
+    assert ".agency-search-picker" in css
+    assert ".agency-category-filter" in css
+
+
+def test_the_durable_conventions_name_the_agency_runbook():
+    """Un nouvel agent doit trouver sources, limites et règles anti-invention."""
+    runbook = PROJECT_ROOT / "docs" / "AGENCY_PROSPECTING_RUNBOOK.md"
+    assert runbook.exists()
+    text = runbook.read_text(encoding="utf-8")
+
+    for expected in (
+        "donnée non fiable",           # texte web
+        "ne se déduit jamais",          # adresse
+        "pas juge d'activité",          # registre
+        "formation",                    # catégories
+        "DEFAULT_MAX_CALLS",            # plafond de coût IA
+        "pinned",                       # rétention
+        "Reprise après incident",
+    ):
+        assert expected in text, f"runbook incomplet : « {expected} » absent"
+
+    claude_md = (PROJECT_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "AGENCY_PROSPECTING_RUNBOOK.md" in claude_md
+    schema = (PROJECT_ROOT / "docs" / "AGENCIES_SCHEMA.md").read_text(encoding="utf-8")
+    assert "search_id" in schema and "index.json" in schema

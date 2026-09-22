@@ -49,9 +49,28 @@ front/ server/   interface de validation (Vite/React + Express)
   description d'outil MCP commence par `ANNONCES —` ou `ENTREPRISES/AGENCES —`,
   et `tests/test_agency_prospecting.py` le vérifie. Un outil ajouté sans ce
   préfixe fait échouer la suite : c'est voulu.
-- **`tools/agency_prospecting_v2.py` est le seul producteur** de
-  `front/public/data/agencies/latest.json`. Le serveur Node ne le réécrit plus
-  au démarrage. Schéma : `docs/AGENCIES_SCHEMA.md`.
+- **`tools/agency_prospecting_v2.py` est le seul producteur** des données
+  d'agences. Le serveur Node ne les réécrit plus au démarrage. Schéma :
+  `docs/AGENCIES_SCHEMA.md` ; commandes, plafonds et reprise :
+  `docs/AGENCY_PROSPECTING_RUNBOOK.md`, **la source que toute skill Hermes
+  externe doit référencer** plutôt que redécrire ces règles.
+- **Une passe vit sous son identifiant immuable**, pas dans un fichier unique.
+  `searches/<search_id>.json` + `index.json` ; `latest.json` n'est plus que
+  l'alias de compatibilité de la dernière passe **réussie**. Un run Lille
+  n'efface donc plus Montreuil — c'est ce qu'il faisait avant, sans le dire. Une
+  passe vide est quand même indexée (`state: vide`) : son absence se relirait
+  comme « pas de run ». La rétention ne supprime jamais une recherche `pinned`
+  ni celle que `latest.json` recopie, et annonce ce qu'elle supprime.
+- **Le ciblage porte sur la recherche affichée.** `POST /api/agencies/target`
+  prend un `search_id` et relit l'agence dans ce fichier-là ; un identifiant
+  inconnu est refusé en **nommant les recherches connues**, jamais par une liste
+  vide.
+- **Le verdict IA est figé dans le snapshot** (`agencies[].analysis`), tandis que
+  `data/agency_analyses.json` est le cache runtime qui survit aux runs (hors Git,
+  volume persistant en prod). Le front dit laquelle des deux sources il affiche
+  et si l'analyse est obsolète — il ne requalifie jamais l'une en l'autre. Une
+  sortie IA invalide ou indisponible donne `fit_status: review`, jamais un texte
+  inventé. Plafond dur : 15 appels IA par run, `--no-ai` pour s'en passer.
 - **Une position approximative n'est pas une adresse.** Le champ `how` dit d'où
   vient la position (`adresse`, `contact/legales`, `siège (registre)`,
   `ville/arr (~centre)`, vide). Seul un `how` valant adresse compte « dans le

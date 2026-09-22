@@ -1,4 +1,11 @@
-# Schéma de `front/public/data/agencies/latest.json`
+# Schéma des données d'agences
+
+> Depuis la phase 3, la vérité d'une passe vit sous son identifiant immuable
+> (`searches/<search_id>.json`) et `latest.json` n'en est plus que l'**alias de
+> compatibilité**. Voir « Historique par recherche » plus bas, et le
+> [runbook](./AGENCY_PROSPECTING_RUNBOOK.md) pour les commandes et la reprise.
+
+## Pourquoi un seul producteur
 
 Ce fichier est la liste d'agences que le dashboard affiche. Il a longtemps eu
 **deux formes incompatibles** : celle produite par `tools/agency_prospecting_v2.py`
@@ -16,8 +23,8 @@ le seul producteur de ce fichier.**
 | Rôle | Où |
 | --- | --- |
 | Producteur | `tools/agency_prospecting_v2.py` |
-| Consommateur (API) | `server/routes/applications.js` — `POST /api/agencies/target` |
-| Consommateur (UI) | `front/src/App.jsx` — liste « Agences web » |
+| Consommateur (API) | `server/routes/applications.js` — `GET /api/agencies/searches`, `GET /api/agencies/searches/:searchId`, `GET /api/agencies/analyses`, `POST /api/agencies/target` |
+| Consommateur (UI) | `front/src/App.jsx` — liste « Agences web », sélecteur de recherche |
 | Source manuelle | `config/companies.csv` — adresses relevées à la main |
 | Source registre | `tools/agency_registry.py` — API Recherche d'Entreprises (Sirene/RNE) |
 
@@ -241,3 +248,78 @@ Le registre n'est interrogé que sur les zones portant des **codes postaux
 explicites**. Une zone comme `ile-de-france` n'en porte pas : deviner ses
 communes reviendrait à choisir le périmètre de la recherche à la place de
 l'utilisateur. Le cas remonte dans `registry.warnings`, jamais en silence.
+
+## Historique par recherche (phase 3)
+
+Une passe s'écrit sous un identifiant immuable, `search_id`, produit par
+`make_search_id(zone_key, ts)` : `<zone-slug>-<AAAAMMJJ-HHMMSS>`. Le payload le
+porte lui aussi, pour qu'un fichier lu isolément sache de quelle passe il vient.
+
+```
+front/public/data/agencies/
+├── index.json                       # index des recherches publiées
+├── latest.json                      # alias de compatibilité (dernière passe réussie)
+└── searches/
+    ├── montreuil-20260922-010000.json
+    └── lille-20260922-020000.json
+```
+
+### `index.json`
+
+```json
+{
+  "version": 1,
+  "updated_at": "2026-09-22T02:00:00",
+  "latest_search_id": "lille-20260922-020000",
+  "searches": [
+    {
+      "search_id": "lille-20260922-020000",
+      "zone": "lille", "zone_label": "Lille",
+      "generated_at": "2026-09-22T02:00:00",
+      "radius_m": 2000, "origin": "21 Rue Monte-Cristo, 75020 Paris",
+      "total": 12, "address_known": 7,
+      "categories": { "agence": 9, "formation": 3 },
+      "analyses": { "analyzed": 4, "cache_hits": 8, "review": 1 },
+      "state": "ok", "pinned": false,
+      "file": "searches/lille-20260922-020000.json"
+    }
+  ]
+}
+```
+
+- `address_known` ne compte que les positions issues d'une adresse **lue**
+  (`how` ∈ `adresse`, `contact/legales`). Un centre d'arrondissement n'est pas
+  une adresse, et l'index n'est pas l'endroit où cette règle se perd.
+- `state` vaut `ok` ou `vide`. Une passe sans résultat est **quand même**
+  enregistrée : son absence se relirait comme « pas de run ».
+- `pinned` est une décision humaine, posée à la main dans le fichier. La
+  rétention ne la contredit jamais.
+
+### Règles de publication
+
+`publish_search()` applique trois garanties :
+
+1. `searches/<search_id>.json` est écrit **toujours** (atomiquement, `tmp` +
+   `os.replace`), même si la passe n'a rien retenu ;
+2. `latest.json` n'est mis à jour qu'en cas de succès — une passe vide ne
+   remplace pas un historique utile, et `latest_search_id` reste sur la
+   précédente ;
+3. la rétention (20 recherches) ne supprime jamais une recherche `pinned`, celle
+   que `latest.json` recopie, ni celle qui vient d'être publiée. Les
+   identifiants supprimés sont listés dans `search.pruned` du récapitulatif.
+
+### Le verdict IA voyage avec la recherche
+
+Chaque agence du snapshot porte son bloc `analysis` (phase 2). Le snapshot est
+donc relisible tel quel, sans dépendre du cache runtime
+`data/agency_analyses.json` — lequel sert, lui, à survivre aux runs et à combler
+une recherche antérieure à la phase 2. Le front affiche l'origine du jugement
+(`recherche` ou `analyse persistée`) et son état (`obsolète`) sans jamais
+requalifier l'un en l'autre.
+
+### Ciblage
+
+`POST /api/agencies/target` prend un `search_id` et relit l'agence dans **ce**
+fichier. Sans `search_id` (ou avec `latest`), il retombe sur l'alias de
+compatibilité. Un identifiant inconnu est refusé par un `404` qui **nomme les
+recherches disponibles** : une liste vide se relirait comme « il n'y a rien ».

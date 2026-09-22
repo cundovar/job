@@ -1087,19 +1087,235 @@ function distanceLabel(agency) {
   return `${d} de la Monte-Cristo${approx}${agency.address ? ` — ${agency.address}` : ''}`
 }
 
+const AGENCY_SEARCH_STORAGE_KEY = 'job-search:selected-agency-search'
+
+// Le sélecteur mémorise la recherche consultée : revenir sur l'onglet ne doit
+// pas rebasculer silencieusement sur une autre ville que celle qu'on lisait.
+function storedSearchId() {
+  if (typeof window === 'undefined') return null
+  try {
+    return window.localStorage.getItem(AGENCY_SEARCH_STORAGE_KEY) || null
+  } catch {
+    return null
+  }
+}
+
+function rememberSearchId(searchId) {
+  if (typeof window === 'undefined' || !searchId) return
+  try {
+    window.localStorage.setItem(AGENCY_SEARCH_STORAGE_KEY, searchId)
+  } catch {
+    /* mode privé : le sélecteur marche quand même, il n'est juste pas mémorisé */
+  }
+}
+
+function searchOptionLabel(search) {
+  const place = search.zone_label || search.zone || search.search_id
+  const date = (search.generated_at || '').replace('T', ' ').slice(0, 16)
+  const radius = search.radius_m ? ` · ${(search.radius_m / 1000).toFixed(1).replace('.', ',')} km` : ''
+  const empty = search.state === 'vide' ? ' · aucun résultat' : ''
+  return `${place}${date ? ` — ${date}` : ''}${radius}${empty}`
+}
+
+function domainOf(website) {
+  if (!website) return null
+  try {
+    return new URL(website).hostname.replace(/^www\./, '')
+  } catch {
+    return null
+  }
+}
+
+// Le bloc `analysis` du snapshot fait foi : il a été figé avec la recherche.
+// L'analyse persistée ne sert qu'à combler une recherche antérieure à la phase 2,
+// et son état (courant / obsolète) reste affiché tel quel — jamais requalifié.
+function analysisOf(agency, persisted) {
+  const domain = domainOf(agency.website)
+  const embedded = agency.analysis && typeof agency.analysis === 'object' ? agency.analysis : null
+  if (embedded) {
+    return { ...embedded, origin: 'recherche', obsolete: false, domain }
+  }
+  const stored = domain ? persisted?.[domain] : null
+  if (!stored) return null
+  return {
+    ...stored,
+    fit_status: stored.status,
+    origin: 'analyse persistée',
+    obsolete: stored.obsolete === true,
+  }
+}
+
+function AgencyAnalysisBlock({ analysis }) {
+  if (!analysis) return null
+  const ok = (analysis.fit_status || analysis.status) === 'ok'
+  return (
+    <div className="job-points agency-analysis">
+      <div className="agency-analysis-head">
+        <strong>{ok ? 'Analyse d’adéquation' : 'Analyse à revoir'}</strong>
+        <span className="agency-analysis-tags">
+          {ok && analysis.fit_score != null && <span className="agency-tag">{analysis.fit_score}/10</span>}
+          {analysis.confidence && <span className="agency-tag">confiance {analysis.confidence}</span>}
+          {analysis.origin && <span className="agency-tag muted">{analysis.origin}</span>}
+          {analysis.obsolete && <span className="agency-tag warn">obsolète</span>}
+          {analysis.analyzed_at && (
+            <span className="agency-tag muted">{String(analysis.analyzed_at).replace('T', ' ').slice(0, 16)}</span>
+          )}
+        </span>
+      </div>
+      {analysis.fit_summary && <p className="agency-analysis-summary">{analysis.fit_summary}</p>}
+      {analysis.strengths?.length > 0 && (
+        <ul>{analysis.strengths.map((f, idx) => <li key={`s${idx}`}>✅ {f}</li>)}</ul>
+      )}
+      {analysis.weaknesses?.length > 0 && (
+        <ul>{analysis.weaknesses.map((f, idx) => <li key={`w${idx}`}>⚠️ {f}</li>)}</ul>
+      )}
+      {analysis.application_angle && (
+        <p className="agency-analysis-angle"><Target /> {analysis.application_angle}</p>
+      )}
+      {analysis.evidence_urls?.length > 0 && (
+        <p className="agency-analysis-evidence">
+          Preuves :{' '}
+          {analysis.evidence_urls.slice(0, 4).map((url, idx) => (
+            <a key={idx} href={url} target="_blank" rel="noopener noreferrer">{url.replace(/^https?:\/\//, '').slice(0, 42)}</a>
+          ))}
+        </p>
+      )}
+      {!ok && analysis.issues?.length > 0 && (
+        <p className="agency-analysis-issues">Non concluant : {analysis.issues.join(' · ')}</p>
+      )}
+    </div>
+  )
+}
+
 function AgenciesView() {
+  const [index, setIndex] = useState(null)
+  const [selectedId, setSelectedId] = useState(() => storedSearchId())
   const [payload, setPayload] = useState(null)
-  const [fetchError, setFetchError] = useState(false)
+  const [persisted, setPersisted] = useState({})
+  const [fetchError, setFetchError] = useState(null)
+  const [categoryFilter, setCategoryFilter] = useState('toutes') // toutes | agence | formation
   const [targetingState, setTargetingState] = useState({}) // { [domain]: { pending, done, error } }
 
+  // 1) L'index d'abord : c'est lui qui dit quelles recherches existent.
+  // Repli sur le fichier statique puis sur `latest.json` — une installation
+  // antérieure à la phase 3 n'a ni route ni index, et doit rester utilisable.
   useEffect(() => {
-    fetch(`${DATA_URL}/agencies/latest.json`)
-      .then(r => { if (!r.ok) throw new Error(r.status); return r.json() })
-      .then(data => { setPayload(data); setFetchError(false) })
-      .catch(() => { setPayload(null); setFetchError(true) })
+    let cancelled = false
+    const load = async () => {
+      for (const url of ['/api/agencies/searches', `${DATA_URL}/agencies/index.json`]) {
+        try {
+          const res = await fetch(url)
+          if (!res.ok) continue
+          const data = await res.json()
+          if (Array.isArray(data?.searches) && data.searches.length > 0) {
+            if (!cancelled) setIndex(data)
+            return
+          }
+        } catch {
+          /* source suivante */
+        }
+      }
+      // Ni route ni index : on tente l'alias de compatibilité seul.
+      try {
+        const res = await fetch(`${DATA_URL}/agencies/latest.json`)
+        if (!res.ok) throw new Error(String(res.status))
+        const latest = await res.json()
+        if (cancelled) return
+        setIndex({
+          source: 'latest',
+          latest_search_id: latest.search_id || 'latest',
+          searches: [{
+            search_id: latest.search_id || 'latest',
+            zone: latest.zone,
+            zone_label: latest.zone_label,
+            generated_at: latest.generated_at,
+            radius_m: latest.radius?.radius_m ?? null,
+            total: (latest.agencies || []).length,
+            state: 'ok',
+          }],
+        })
+      } catch {
+        if (!cancelled) setFetchError('Données agences non disponibles. Lance "lance prospection agences web".')
+      }
+    }
+    load()
+    return () => { cancelled = true }
   }, [])
 
-  const agencies = payload?.agencies || []
+  // 2) La recherche à afficher : celle mémorisée si elle existe encore,
+  // sinon la dernière passe valide.
+  useEffect(() => {
+    if (!index?.searches?.length) return
+    const known = index.searches.map(s => s.search_id)
+    setSelectedId(current => {
+      if (current && known.includes(current)) return current
+      const firstOk = index.searches.find(s => s.state !== 'vide')
+      return index.latest_search_id && known.includes(index.latest_search_id)
+        ? index.latest_search_id
+        : (firstOk?.search_id || known[0])
+    })
+  }, [index])
+
+  // 3) Les résultats de la recherche sélectionnée.
+  useEffect(() => {
+    if (!selectedId) return
+    let cancelled = false
+    rememberSearchId(selectedId)
+    const entry = index?.searches?.find(s => s.search_id === selectedId)
+    const staticUrl = entry?.file
+      ? `${DATA_URL}/agencies/${entry.file}`
+      : `${DATA_URL}/agencies/latest.json`
+
+    const load = async () => {
+      for (const url of [`/api/agencies/searches/${encodeURIComponent(selectedId)}`, staticUrl]) {
+        try {
+          const res = await fetch(url)
+          if (!res.ok) continue
+          const data = await res.json()
+          if (cancelled) return
+          setPayload(data)
+          setFetchError(null)
+          return
+        } catch {
+          /* source suivante */
+        }
+      }
+      if (!cancelled) {
+        setPayload(null)
+        setFetchError(`Recherche « ${selectedId} » illisible.`)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [selectedId, index])
+
+  // 4) Analyses persistées : elles survivent aux runs, et comblent les
+  // recherches produites avant la phase 2. Leur absence n'est pas une erreur.
+  useEffect(() => {
+    fetch('/api/agencies/analyses')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => setPersisted(data?.analyses || {}))
+      .catch(() => setPersisted({}))
+  }, [])
+
+  const searches = index?.searches || []
+  const selected = searches.find(s => s.search_id === selectedId) || null
+  const allAgencies = payload?.agencies || []
+  const agencies = categoryFilter === 'toutes'
+    ? allAgencies
+    : allAgencies.filter(a => (a.category || 'agence') === categoryFilter)
+  const counts = {
+    agence: allAgencies.filter(a => (a.category || 'agence') === 'agence').length,
+    formation: allAgencies.filter(a => a.category === 'formation').length,
+  }
+  const addressKnown = allAgencies.filter(a => ['adresse', 'contact/legales'].includes(a.how)).length
+  const fit = payload?.fit_analysis || null
+  // L'entrée d'index fait foi sur la géographie ; le payload sert de repli pour
+  // une installation où seul `latest.json` existe.
+  const geoPlace = selected?.zone_label || payload?.zone_label || payload?.zone || null
+  const geoRadius = selected?.radius_m ?? payload?.radius?.radius_m ?? null
+  const geoOrigin = selected?.origin || payload?.distance_origin || null
+  const geoDate = selected?.generated_at || payload?.generated_at || null
 
   const handleTargetAgency = async (agency) => {
     if (!agency.website) return
@@ -1111,7 +1327,8 @@ function AgenciesView() {
       const res = await fetch('/api/agencies/target', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain })
+        // Le serveur relit l'agence dans CETTE recherche, pas dans « la dernière ».
+        body: JSON.stringify({ domain, search_id: selectedId })
       })
       const payload = await res.json().catch(() => ({}))
 
@@ -1163,15 +1380,71 @@ function AgenciesView() {
         </div>
       </header>
 
-      {fetchError && (
-        <div className="empty-state">
-          <p>Données agences non disponibles. Lance "lance prospection agences web".</p>
+      {searches.length > 0 && (
+        <div className="agency-search-picker">
+          <label htmlFor="agency-search-select"><Search /> Recherche</label>
+          <select
+            id="agency-search-select"
+            value={selectedId || ''}
+            onChange={e => setSelectedId(e.target.value)}
+            disabled={searches.length === 1}
+          >
+            {searches.map(search => (
+              <option key={search.search_id} value={search.search_id}>
+                {searchOptionLabel(search)}
+              </option>
+            ))}
+          </select>
+          <div className="agency-search-geo">
+            <span><MapPin /> {geoPlace || 'zone inconnue'}</span>
+            {geoRadius && <span><Target /> rayon {geoRadius} m</span>}
+            {geoOrigin && <span>depuis {geoOrigin}</span>}
+            {geoDate && <span><Calendar /> {String(geoDate).replace('T', ' ').slice(0, 16)}</span>}
+          </div>
+          <div className="agency-search-stats">
+            <span>{allAgencies.length} retenues</span>
+            <span>{addressKnown} avec adresse lue</span>
+            <span>{counts.agence} agences · {counts.formation} formations</span>
+            {fit && (
+              <span>{fit.analyzed ?? 0} analyses · {fit.cache_hits ?? 0} cache · {fit.review ?? 0} à revoir</span>
+            )}
+          </div>
+          <div className="agency-category-filter">
+            {[['toutes', `Toutes (${allAgencies.length})`],
+              ['agence', `Agences (${counts.agence})`],
+              ['formation', `Formations (${counts.formation})`]].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={categoryFilter === value ? 'active' : ''}
+                onClick={() => setCategoryFilter(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
-      {!fetchError && agencies.length === 0 && (
+      {fetchError && (
         <div className="empty-state">
-          <p>Aucune agence retenue pour l'instant. Relance une prospection agences web.</p>
+          <p>{fetchError}</p>
+        </div>
+      )}
+
+      {!fetchError && allAgencies.length === 0 && (
+        <div className="empty-state">
+          <p>
+            {selected?.state === 'vide'
+              ? `La recherche « ${selected.zone_label || selected.zone || selected.search_id} » n'a retenu aucune agence. Les recherches précédentes restent consultables dans le sélecteur.`
+              : "Aucune agence retenue pour l'instant. Relance une prospection agences web."}
+          </p>
+        </div>
+      )}
+
+      {!fetchError && allAgencies.length > 0 && agencies.length === 0 && (
+        <div className="empty-state">
+          <p>Aucune structure dans cette catégorie pour cette recherche.</p>
         </div>
       )}
 
@@ -1182,6 +1455,7 @@ function AgenciesView() {
           const isPending = state?.pending
           const isDone = state?.done
           const error = state?.error
+          const analysis = analysisOf(agency, persisted)
           const progressLabel = state?.stage === 'préparation'
             ? 'Création de la candidature et du CV en arrière-plan…'
             : state?.stage === 'mesure'
@@ -1201,22 +1475,14 @@ function AgenciesView() {
               </div>
               <div className="job-meta">
                 <span><MapPin /> {distanceLabel(agency)}</span>
+                {/* `how` dit d'où vient la position : une approximation ne doit
+                    jamais se relire comme une adresse relevée. */}
+                {agency.how && <span className="agency-how">position : {agency.how}</span>}
                 {agency.stack?.length > 0 && <span><Wrench /> {agency.stack.join(', ')}</span>}
                 {agency.emails?.length > 0 && <span><Mail /> {agency.emails[0]}</span>}
                 {agency.query && <span><Search /> {agency.query}</span>}
               </div>
-              {agency.analyse && (
-                <div className="job-points agency-analyse" style={{ borderLeft: '3px solid #7aa7ff', paddingLeft: 10, marginTop: 8 }}>
-                  <strong>{agency.analyse.type}</strong>
-                  <p style={{ margin: '6px 0' }}>{agency.analyse.resume}</p>
-                  {agency.analyse.forts?.length > 0 && (
-                    <ul>{agency.analyse.forts.map((f, i) => <li key={`f${i}`}>✅ {f}</li>)}</ul>
-                  )}
-                  {agency.analyse.faibles?.length > 0 && (
-                    <ul>{agency.analyse.faibles.map((f, i) => <li key={`w${i}`}>⚠️ {f}</li>)}</ul>
-                  )}
-                </div>
-              )}
+              <AgencyAnalysisBlock analysis={analysis} />
               {agency.reasons?.length > 0 && (
                 <div className="job-points">
                   <strong>Signaux du barème :</strong>

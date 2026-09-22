@@ -26,9 +26,11 @@ import html
 import csv
 import json
 import math
+import os
 import re
 import ssl
 import sys
+import tempfile
 import time
 import urllib.parse
 from datetime import datetime
@@ -48,6 +50,14 @@ FRONT_DIR = ROOT / 'front/public/data/agencies'
 DEFAULT_OUT_DIR = ROOT / 'output' / 'agencies'
 COMPANIES_CSV = ROOT / 'config' / 'companies.csv'
 GEOCODE_CACHE = DATA_DIR / 'geocode_cache.json'
+
+# Historique par recherche (phase 3). `latest.json` reste l'alias de compatibilité
+# des consommateurs anciens ; la vérité d'une passe vit sous son identifiant
+# immuable, pour que Montreuil et Lille puissent coexister sans s'écraser.
+SEARCHES_DIRNAME = 'searches'
+SEARCH_INDEX_NAME = 'index.json'
+LATEST_NAME = 'latest.json'
+DEFAULT_SEARCH_RETENTION = 20
 
 # `tools/` n'est pas un package et ce fichier est aussi chargé par `importlib`
 # depuis les tests : le sys.path du processus appelant ne contient ni la racine
@@ -812,6 +822,11 @@ def enrich_with_distances(results: list[dict], cache: dict | None = None) -> str
     return f'{o_lat:.5f},{o_lon:.5f}'
 
 
+# `how` qui vaut « une adresse a été lue ». Le reste (centre d'arrondissement,
+# siège du registre) situe sans prouver où travaille la structure.
+ADDRESS_HOW_READ = ('adresse', 'contact/legales')
+
+
 def address_how(agency: dict) -> str:
     """Vocabulaire du contrat de sortie : *comment* la position a été obtenue.
 
@@ -1256,6 +1271,163 @@ def keeps_candidate(scored: dict) -> bool:
     return True
 
 
+# ── Historique par recherche (phase 3) ───────────────────────────────────────
+
+
+def make_search_id(zone_key: str, ts: str) -> str:
+    """Identifiant immuable d'une passe : `<zone>-<horodatage>`.
+
+    Immuable veut dire : une fois écrit, le fichier de cette recherche n'est
+    plus réécrit par une autre passe. C'est ce qui permet à Montreuil de
+    survivre à un run Lille — le défaut précédent, où `latest.json` était la
+    seule mémoire, effaçait la ville précédente sans le dire.
+    """
+    slug = re.sub(r'[^a-z0-9]+', '-', str(zone_key or '').lower()).strip('-') or 'zone'
+    return f'{slug}-{ts}'
+
+
+def write_json_atomic(path: Path, data) -> Path:
+    """Écriture tmp + os.replace : un run interrompu ne laisse pas un JSON tronqué."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+            json.dump(data, handle, ensure_ascii=False, indent=2)
+        os.replace(tmp_name, path)
+    finally:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+    return path
+
+
+def empty_search_index() -> dict:
+    return {'version': 1, 'updated_at': None, 'latest_search_id': None, 'searches': []}
+
+
+def load_search_index(front_dir: Path) -> dict:
+    """Lecture tolérante de l'index : absent ou corrompu repart vide, jamais en erreur.
+
+    Un index illisible ne doit pas empêcher la passe en cours d'être publiée ;
+    il se reconstruit à partir de ce qui est réellement sur le disque.
+    """
+    path = Path(front_dir) / SEARCH_INDEX_NAME
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return empty_search_index()
+    if not isinstance(data, dict) or not isinstance(data.get('searches'), list):
+        return empty_search_index()
+    data.setdefault('version', 1)
+    data.setdefault('latest_search_id', None)
+    data['searches'] = [s for s in data['searches'] if isinstance(s, dict) and s.get('search_id')]
+    return data
+
+
+def search_index_entry(payload: dict, state: str) -> dict:
+    """Ligne d'index : de quoi choisir une recherche sans ouvrir son fichier.
+
+    `address_known` ne compte que les positions issues d'une adresse réellement
+    lue (`how` ∈ ADDRESS_HOW_READ) : un centre d'arrondissement n'est pas une
+    adresse, et l'index ne doit pas être l'endroit où cette règle se perd.
+    """
+    results = payload.get('agencies') or []
+    radius = payload.get('radius') or {}
+    fit = payload.get('fit_analysis') or {}
+    return {
+        'search_id': payload.get('search_id'),
+        'zone': payload.get('zone'),
+        'zone_label': payload.get('zone_label'),
+        'generated_at': payload.get('generated_at'),
+        'radius_m': radius.get('radius_m'),
+        'origin': payload.get('distance_origin'),
+        'total': len(results),
+        'address_known': sum(1 for a in results if a.get('how') in ADDRESS_HOW_READ),
+        'categories': {
+            category: sum(1 for a in results if a.get('category') == category)
+            for category in ('agence', 'formation')
+        },
+        'analyses': {
+            'analyzed': fit.get('analyzed'),
+            'cache_hits': fit.get('cache_hits'),
+            'review': fit.get('review'),
+        } if fit else None,
+        'state': state,
+        'pinned': False,
+        'file': f'{SEARCHES_DIRNAME}/{payload.get("search_id")}.json',
+    }
+
+
+def publish_search(payload: dict, front_dir: Path,
+                   retention: int = DEFAULT_SEARCH_RETENTION) -> dict:
+    """Publie une passe sous son identifiant, met l'index à jour, puis `latest.json`.
+
+    Trois règles :
+
+    - le fichier de la recherche est écrit **toujours**, même vide : une passe
+      sans résultat est un fait, et son absence se relirait comme « pas de run » ;
+    - `latest.json` n'est mis à jour qu'en cas de succès (au moins une agence),
+      pour ne pas remplacer un historique utile par un vide ;
+    - la rétention ne supprime jamais une recherche épinglée (`pinned: true`,
+      posé à la main dans l'index) ni celle que `latest.json` recopie.
+    """
+    front_dir = Path(front_dir)
+    search_id = str(payload.get('search_id') or '').strip()
+    if not search_id:
+        raise ValueError('publish_search exige un search_id dans le payload')
+
+    results = payload.get('agencies') or []
+    state = 'ok' if results else 'vide'
+
+    search_path = front_dir / SEARCHES_DIRNAME / f'{search_id}.json'
+    write_json_atomic(search_path, payload)
+
+    index = load_search_index(front_dir)
+    previous = {s['search_id']: s for s in index['searches']}
+    entry = search_index_entry(payload, state)
+    # Un ré-enregistrement du même identifiant conserve son épinglage : c'est une
+    # décision humaine, pas une propriété du run.
+    entry['pinned'] = bool(previous.get(search_id, {}).get('pinned'))
+
+    searches = [s for s in index['searches'] if s['search_id'] != search_id] + [entry]
+    searches.sort(key=lambda s: str(s.get('generated_at') or ''), reverse=True)
+
+    latest_updated = False
+    if results:
+        write_json_atomic(front_dir / LATEST_NAME, payload)
+        index['latest_search_id'] = search_id
+        latest_updated = True
+
+    protected = {index.get('latest_search_id'), search_id}
+    kept: list[dict] = []
+    pruned: list[str] = []
+    for search in searches:
+        over_quota = len(kept) >= max(1, int(retention))
+        if over_quota and not search.get('pinned') and search['search_id'] not in protected:
+            pruned.append(search['search_id'])
+            try:
+                (front_dir / SEARCHES_DIRNAME / f'{search["search_id"]}.json').unlink()
+            except OSError:
+                pass  # déjà absent : l'index redevient simplement cohérent
+            continue
+        kept.append(search)
+
+    index['searches'] = kept
+    index['updated_at'] = datetime.now().isoformat(timespec='seconds')
+    index_path = write_json_atomic(front_dir / SEARCH_INDEX_NAME, index)
+
+    return {
+        'search_id': search_id,
+        'state': state,
+        'search_file': str(search_path),
+        'index_file': str(index_path),
+        'latest_updated': latest_updated,
+        'latest_search_id': index['latest_search_id'],
+        'pruned': pruned,
+        'kept': len(kept),
+    }
+
+
 def run():
     # Zone géographique : --zone ile-de-france (défaut) | paris-20 | paris-19 | ouest-paris
     args = sys.argv[1:]
@@ -1463,9 +1635,13 @@ def run():
         except Exception as _fit_exc:  # noqa: BLE001 - l'analyse ne casse jamais un run
             fit_stats={'error': f'{type(_fit_exc).__name__}: {_fit_exc}'}
 
+    search_id = make_search_id(zone_key, ts)
     payload={
         'ok': True,
         'version': 'v2',
+        # Identifiant immuable de CETTE passe : le front, l'API et le ciblage
+        # parlent tous de la même recherche, même si une autre ville tourne après.
+        'search_id': search_id,
         'generated_at': datetime.now().isoformat(timespec='seconds'),
         'total': len(results),
         'scanned_domains': scanned,
@@ -1500,11 +1676,16 @@ def run():
     json_path=out_dir/f'agences-web-v2-{ts}.json'
     md_path=out_dir/f'agences-web-v2-{ts}.md'
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+    # La recherche est publiée sous son identifiant, puis l'index, puis — seulement
+    # si la passe a trouvé quelque chose — l'alias `latest.json`. Le verdict IA
+    # voyage avec (chaque agence porte son bloc `analysis`) : le snapshot est donc
+    # relisible tel quel, sans dépendre du cache runtime.
+    publication = publish_search(payload, FRONT_DIR)
     if results:
         (DATA_DIR/'agencies_cache.json').write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding='utf-8')
-        (FRONT_DIR/'latest.json').write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
     lines=[
         f'# 🏢 Prospection agences web V2 — {datetime.now().strftime("%d/%m/%Y %H:%M")}', '',
+        f'- Recherche : `{search_id}`',
         f'- Seeds collectés : {len(seeds)}', f'- Domaines scannés : {scanned}', f'- Agences/studios retenus : {len(results)}',
         f'- Zone : {zone["label"]}',
         f'- Candidats du registre : {len(registry_rows)}',
@@ -1559,16 +1740,18 @@ def run():
             for r in radius_report['unknown_position']:
                 lines.append(f'- {r["name"]} — {r["website"]}')
     md_path.write_text('\n'.join(lines)+'\n', encoding='utf-8')
-    if radius_report and not results:
-        # latest.json n'est pas écrasé quand il n'y a rien (le garde `if results`
-        # ci-dessus) : le dire, sinon le dashboard affiche l'ancienne passe et on
-        # croit que le rayon a trouvé ces agences-là.
+    if not results:
+        # latest.json n'est pas écrasé quand il n'y a rien (garde dans
+        # publish_search) : le dire, sinon le dashboard affiche l'ancienne passe
+        # et on croit que cette recherche-ci a trouvé ces agences-là.
+        rayon = f"avec adresse lue dans {radius_m} m " if radius_report else ""
         print(
-            f"Aucune agence avec adresse lue dans {radius_m} m : latest.json inchangé. "
+            f"Aucune agence {rayon}: recherche « {search_id} » enregistrée à vide, "
+            f"latest.json inchangé (toujours « {publication['latest_search_id'] or 'aucune'} »). "
             f"Détail dans {json_path}.",
             file=sys.stderr,
         )
-    print(json.dumps({'ok': True, 'version':'v2', 'zone': zone_key, 'zone_label': zone['label'], 'radius': radius_report and {k: v for k, v in radius_report.items() if not isinstance(v, list)}, 'total': len(results), 'scanned_domains': scanned, 'seed_count': len(seeds), 'md': str(md_path), 'json': str(json_path), 'front': str(FRONT_DIR/'latest.json'), 'fit': fit_stats and {k: fit_stats.get(k) for k in ('eligible', 'analyzed', 'cache_hits', 'review', 'calls', 'archive') if k in fit_stats}, 'top': results[:10]}, ensure_ascii=False, indent=2))
+    print(json.dumps({'ok': True, 'version':'v2', 'search_id': search_id, 'zone': zone_key, 'zone_label': zone['label'], 'radius': radius_report and {k: v for k, v in radius_report.items() if not isinstance(v, list)}, 'total': len(results), 'scanned_domains': scanned, 'seed_count': len(seeds), 'md': str(md_path), 'json': str(json_path), 'front': str(FRONT_DIR/'latest.json'), 'search': publication, 'fit': fit_stats and {k: fit_stats.get(k) for k in ('eligible', 'analyzed', 'cache_hits', 'review', 'calls', 'archive') if k in fit_stats}, 'top': results[:10]}, ensure_ascii=False, indent=2))
 
 if __name__ == '__main__':
     run()

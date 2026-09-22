@@ -728,3 +728,221 @@ def test_search_task_deduplication_includes_zone_and_radius():
     )
 
     assert json.loads(completed.stdout) == [True, False, False]
+
+
+# ── Historique par recherche (phase 3) ───────────────────────────────────────
+
+
+def _search_payload(search_id, zone, label, generated_at, agencies, radius_m=None):
+    return {
+        "ok": True,
+        "version": "v2",
+        "search_id": search_id,
+        "zone": zone,
+        "zone_label": label,
+        "generated_at": generated_at,
+        "distance_origin": "21 Rue Monte-Cristo, 75020 Paris",
+        "radius": {"radius_m": radius_m} if radius_m else {},
+        "agencies": agencies,
+    }
+
+
+def test_two_searches_coexist_and_the_second_becomes_latest(tmp_path):
+    """Régression : `latest.json` était la seule mémoire, un run Lille effaçait Montreuil."""
+    v2 = load_v2()
+
+    montreuil = _search_payload(
+        "montreuil-20260922-010000", "montreuil", "Montreuil", "2026-09-22T01:00:00",
+        [{"name": "Studio M", "website": "https://studio-m.fr", "how": "adresse", "category": "agence"}],
+        radius_m=2000,
+    )
+    lille = _search_payload(
+        "lille-20260922-020000", "lille", "Lille", "2026-09-22T02:00:00",
+        [{"name": "Studio L", "website": "https://studio-l.fr", "how": "ville/arr (~centre)", "category": "formation"}],
+    )
+
+    v2.publish_search(montreuil, tmp_path)
+    result = v2.publish_search(lille, tmp_path)
+
+    searches_dir = tmp_path / v2.SEARCHES_DIRNAME
+    assert (searches_dir / "montreuil-20260922-010000.json").exists()
+    assert (searches_dir / "lille-20260922-020000.json").exists()
+
+    # Le premier fichier n'a pas bougé : c'est ce que « snapshot immuable » veut dire.
+    kept = json.loads((searches_dir / "montreuil-20260922-010000.json").read_text(encoding="utf-8"))
+    assert kept["agencies"][0]["name"] == "Studio M"
+
+    latest = json.loads((tmp_path / v2.LATEST_NAME).read_text(encoding="utf-8"))
+    assert latest["search_id"] == "lille-20260922-020000"
+    assert result["latest_updated"] is True
+
+    index = json.loads((tmp_path / v2.SEARCH_INDEX_NAME).read_text(encoding="utf-8"))
+    assert index["latest_search_id"] == "lille-20260922-020000"
+    # Le plus récent d'abord : le sélecteur n'a pas à trier lui-même.
+    assert [s["search_id"] for s in index["searches"]] == [
+        "lille-20260922-020000",
+        "montreuil-20260922-010000",
+    ]
+
+
+def test_the_index_never_counts_an_approximate_position_as_a_known_address(tmp_path):
+    """Même règle que le rayon : un centre d'arrondissement n'est pas une adresse."""
+    v2 = load_v2()
+
+    payload = _search_payload(
+        "paris-20-20260922-030000", "paris-20", "Paris 20e", "2026-09-22T03:00:00",
+        [
+            {"name": "Lue", "website": "https://a.fr", "how": "adresse", "category": "agence"},
+            {"name": "Legales", "website": "https://b.fr", "how": "contact/legales", "category": "agence"},
+            {"name": "Devinee", "website": "https://c.fr", "how": "ville/arr (~centre)", "category": "formation"},
+            {"name": "Siege", "website": "https://d.fr", "how": "siège (registre)", "category": "agence"},
+        ],
+    )
+    v2.publish_search(payload, tmp_path)
+
+    entry = json.loads((tmp_path / v2.SEARCH_INDEX_NAME).read_text(encoding="utf-8"))["searches"][0]
+    assert entry["address_known"] == 2
+    assert entry["categories"] == {"agence": 3, "formation": 1}
+
+
+def test_an_empty_search_is_recorded_without_destroying_the_previous_one(tmp_path):
+    """Une passe vide est un fait ; elle ne remplace pas un historique utile."""
+    v2 = load_v2()
+
+    full = _search_payload(
+        "montreuil-20260922-010000", "montreuil", "Montreuil", "2026-09-22T01:00:00",
+        [{"name": "Studio M", "website": "https://studio-m.fr", "how": "adresse", "category": "agence"}],
+    )
+    v2.publish_search(full, tmp_path)
+
+    empty = _search_payload(
+        "lille-20260922-020000", "lille", "Lille", "2026-09-22T02:00:00", [],
+    )
+    result = v2.publish_search(empty, tmp_path)
+
+    assert result["state"] == "vide"
+    assert result["latest_updated"] is False
+    # latest.json reste sur la passe qui a trouvé quelque chose.
+    assert result["latest_search_id"] == "montreuil-20260922-010000"
+    latest = json.loads((tmp_path / v2.LATEST_NAME).read_text(encoding="utf-8"))
+    assert latest["agencies"][0]["name"] == "Studio M"
+
+    # Mais la passe vide est consultable : son absence se relirait « pas de run ».
+    assert (tmp_path / v2.SEARCHES_DIRNAME / "lille-20260922-020000.json").exists()
+    index = json.loads((tmp_path / v2.SEARCH_INDEX_NAME).read_text(encoding="utf-8"))
+    states = {s["search_id"]: s["state"] for s in index["searches"]}
+    assert states == {"lille-20260922-020000": "vide", "montreuil-20260922-010000": "ok"}
+
+
+def test_retention_never_deletes_a_pinned_or_published_search(tmp_path):
+    """Une suppression est annoncée ; une recherche épinglée n'est jamais touchée."""
+    v2 = load_v2()
+
+    for hour in range(1, 5):
+        v2.publish_search(
+            _search_payload(
+                f"z{hour}-2026092{hour}-000000", f"z{hour}", f"Zone {hour}",
+                f"2026-09-2{hour}T00:00:00",
+                [{"name": f"A{hour}", "website": f"https://a{hour}.fr", "how": "adresse", "category": "agence"}],
+            ),
+            tmp_path,
+        )
+
+    # La plus ancienne est épinglée à la main, comme le ferait l'utilisateur.
+    index_path = tmp_path / v2.SEARCH_INDEX_NAME
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    for search in index["searches"]:
+        if search["search_id"] == "z1-20260921-000000":
+            search["pinned"] = True
+    index_path.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+
+    result = v2.publish_search(
+        _search_payload(
+            "z5-20260925-000000", "z5", "Zone 5", "2026-09-25T00:00:00",
+            [{"name": "A5", "website": "https://a5.fr", "how": "adresse", "category": "agence"}],
+        ),
+        tmp_path,
+        retention=2,
+    )
+
+    survivors = [s["search_id"] for s in json.loads(index_path.read_text(encoding="utf-8"))["searches"]]
+    assert "z5-20260925-000000" in survivors, "la passe publiée ne peut pas être élaguée"
+    assert "z1-20260921-000000" in survivors, "une recherche épinglée n'est jamais supprimée"
+    assert result["pruned"], "une rétention qui supprime doit le dire"
+    for pruned in result["pruned"]:
+        assert not (tmp_path / v2.SEARCHES_DIRNAME / f"{pruned}.json").exists()
+        assert pruned not in survivors
+
+
+def test_a_corrupted_index_does_not_lose_the_search_being_published(tmp_path):
+    v2 = load_v2()
+
+    (tmp_path / v2.SEARCH_INDEX_NAME).write_text("{ pas du json", encoding="utf-8")
+    result = v2.publish_search(
+        _search_payload(
+            "paris-20-20260922-040000", "paris-20", "Paris 20e", "2026-09-22T04:00:00",
+            [{"name": "A", "website": "https://a.fr", "how": "adresse", "category": "agence"}],
+        ),
+        tmp_path,
+    )
+
+    assert result["state"] == "ok"
+    index = json.loads((tmp_path / v2.SEARCH_INDEX_NAME).read_text(encoding="utf-8"))
+    assert [s["search_id"] for s in index["searches"]] == ["paris-20-20260922-040000"]
+
+
+def test_a_search_id_is_a_safe_filename_derived_from_the_zone():
+    v2 = load_v2()
+
+    assert v2.make_search_id("paris-20", "20260922-010000") == "paris-20-20260922-010000"
+    # Une zone exotique ne doit jamais produire un chemin : ni `/`, ni `..`.
+    forged = v2.make_search_id("../../etc/passwd", "20260922-010000")
+    assert "/" not in forged and ".." not in forged
+    assert v2.make_search_id("", "20260922-010000").startswith("zone-")
+
+
+def test_publishing_without_a_search_id_is_refused(tmp_path):
+    """Sans identifiant, une passe écraserait la précédente sans le dire."""
+    v2 = load_v2()
+
+    with pytest.raises(ValueError):
+        v2.publish_search({"agencies": []}, tmp_path)
+
+
+def test_the_server_reads_the_selected_search_and_names_the_unknown_ones(tmp_path):
+    """Le ciblage doit lire le fichier de la recherche affichée, pas « la plus récente »."""
+    script = """
+      import { readSearchIndex, readSearchPayload } from './server/services/agenciesService.js';
+      const index = readSearchIndex();
+      const out = { source: index.source, count: index.searches.length };
+      out.latest = readSearchPayload(null).search_id;
+      try {
+        readSearchPayload('recherche-fantome-20260101-000000');
+        out.unknown = 'ACCEPTE';
+      } catch (err) {
+        out.unknown = err.message;
+      }
+      try {
+        readSearchPayload('../../../etc/passwd');
+        out.traversal = 'ACCEPTE';
+      } catch (err) {
+        out.traversal = 'REFUSE';
+      }
+      console.log(JSON.stringify(out));
+    """
+    completed = subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        cwd=PROJECT_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    out = json.loads(completed.stdout)
+
+    assert out["count"] >= 1, "une installation avec latest.json doit exposer au moins une recherche"
+    assert out["latest"], "l'alias de compatibilité doit rester lisible"
+    # Un identifiant inconnu est refusé en nommant ce qui existe : une liste vide
+    # se relirait « il n'y a rien », et c'est ce qui a fait inventer des agences.
+    assert "Recherche inconnue" in out["unknown"]
+    assert "Recherches disponibles" in out["unknown"]
+    assert out["traversal"] == "REFUSE"

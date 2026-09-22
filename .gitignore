@@ -55,6 +55,11 @@ venv.bak/
 front/public/data/*/
 front/public/data/*.json
 # Sauf la liste d'agences, qui est un résultat de prospection à conserver.
+# `searches/` et `index.json` restent ignorés volontairement : ce sont les
+# fichiers runtime de l'historique par recherche, régénérés à chaque passe et
+# couverts par le volume persistant en prod. Seul `latest.json`, l'alias de
+# compatibilité, est versionné — un clone neuf affiche donc la dernière
+# prospection connue, sans sélecteur, jusqu'au premier run local.
 !front/public/data/agencies/
 front/public/data/agencies/*
 !front/public/data/agencies/latest.json

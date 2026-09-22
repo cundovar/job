@@ -28,7 +28,10 @@ import {
   measureAgency,
   prepareAgency,
   runProspecting,
-  sameProspectingRequest
+  sameProspectingRequest,
+  readSearchIndex,
+  readSearchPayload,
+  readPersistedAnalyses
 } from '../services/agenciesService.js';
 
 const MAX_CV_PROCESS_OUTPUT = 10 * 1024 * 1024;
@@ -542,6 +545,9 @@ export default function createApplicationsRouter(repo) {
       task_id: task.task_id,
       zone: task.zone,
       radius_m: task.radius_m,
+      // Identifiant de la recherche produite : le front sait quoi sélectionner
+      // au retour, sans deviner « la plus récente ».
+      search_id: task.result?.search_id || null,
       state: task.state,
       queued_at: task.queued_at,
       started_at: task.started_at,
@@ -816,10 +822,48 @@ export default function createApplicationsRouter(repo) {
     res.json(publicSearchTask(task));
   });
 
+  // GET /api/agencies/searches — Index des recherches publiées (le plus récent d'abord)
+  // Route JSON plutôt que fichier statique : le front doit pouvoir distinguer
+  // « pas encore d'index » de « index vide », ce qu'un 404 statique ne dit pas.
+  router.get('/agencies/searches', (_req, res) => {
+    try {
+      res.json(readSearchIndex());
+    } catch (err) {
+      console.error('[GET /agencies/searches]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/agencies/searches/:searchId — Résultats d'UNE recherche
+  // `latest` reste accepté comme alias de compatibilité.
+  router.get('/agencies/searches/:searchId', (req, res) => {
+    try {
+      const { payload, search_id, source } = readSearchPayload(req.params.searchId);
+      res.json({ ...payload, search_id, source });
+    } catch (err) {
+      // Un identifiant inconnu est refusé en nommant les recherches connues,
+      // jamais par une liste vide.
+      res.status(404).json({ error: err.message });
+    }
+  });
+
+  // GET /api/agencies/analyses — Analyses persistées, en lecture seule
+  router.get('/agencies/analyses', (_req, res) => {
+    try {
+      res.json(readPersistedAnalyses());
+    } catch (err) {
+      console.error('[GET /agencies/analyses]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // POST /api/agencies/target — Ajoute une agence puis met la préparation en file
   router.post('/agencies/target', (req, res) => {
     const domain = req.body?.domain;
     const dry = req.body?.dry === true;
+    // Le ciblage doit porter sur la recherche AFFICHÉE : sans search_id, deux
+    // passes de villes différentes donneraient la même agence « la plus récente ».
+    const searchId = req.body?.search_id ?? null;
 
     // Validation
     if (!domain || typeof domain !== 'string') {
@@ -831,20 +875,23 @@ export default function createApplicationsRouter(repo) {
       return res.status(400).json({ error: 'Format de domaine invalide' });
     }
 
+    let resolved;
     try {
-      // Charger latest.json
-      const agenciesPath = path.join(PROJECT_ROOT, 'front/public/data/agencies/latest.json');
-      if (!fs.existsSync(agenciesPath)) {
-        return res.status(500).json({ error: 'Fichier agences non trouvé' });
-      }
+      // Charger la recherche demandée (repli contrôlé sur latest.json)
+      resolved = readSearchPayload(searchId);
+    } catch (err) {
+      return res.status(404).json({ error: err.message });
+    }
 
-      const agenciesData = JSON.parse(fs.readFileSync(agenciesPath, 'utf-8'));
-      const agencies = agenciesData.agencies || [];
+    try {
+      const agencies = resolved.payload.agencies || [];
 
       // Trouver l'agence
       const agency = agencies.find(a => domainMatchesAgency(normalizedDomain, a));
       if (!agency) {
-        return res.status(404).json({ error: `Agence avec domaine ${normalizedDomain} non trouvée` });
+        return res.status(404).json({
+          error: `Agence avec domaine ${normalizedDomain} non trouvée dans la recherche « ${resolved.search_id} »`
+        });
       }
 
       // Vérifier idempotence
@@ -867,7 +914,8 @@ export default function createApplicationsRouter(repo) {
           domain: normalizedDomain,
           dry: true,
           already_targeted: alreadyTargeted,
-          agency_name: displayName
+          agency_name: displayName,
+          search_id: resolved.search_id
         });
       }
 
@@ -879,6 +927,7 @@ export default function createApplicationsRouter(repo) {
       res.status(202).json({
         accepted: true,
         task_id: task.task_id,
+        search_id: resolved.search_id,
         status: publicAgencyTask(task),
       });
     } catch (err) {

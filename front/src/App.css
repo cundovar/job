@@ -1807,3 +1807,142 @@ h3 > .lucide {
     max-width: 1360px;
   }
 }
+
+/* --- Sélecteur de recherche d'agences (phase 3) --------------
+   Une carte d'agence ne dit pas de quelle passe elle vient. Le bandeau
+   porte donc la géographie, la date et le rayon de la recherche affichée :
+   sans lui, deux villes se relisent comme une seule liste.
+   ------------------------------------------------------------ */
+.agency-search-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm);
+}
+.agency-search-picker label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.agency-search-picker select {
+  min-height: var(--tap);
+  padding: 0 var(--sp-3);
+  font: inherit;
+  font-size: var(--fs-md);
+  color: var(--text-strong);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+}
+.agency-search-picker select:disabled {
+  color: var(--text-muted);
+}
+.agency-search-geo,
+.agency-search-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-4);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.agency-search-geo span,
+.agency-search-stats span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.agency-search-geo span {
+  color: var(--text);
+}
+
+/* Les deux catégories restent visibles par défaut : masquer « formation »
+   reviendrait à écarter un formateur pour n'être pas une agence. */
+.agency-category-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.agency-category-filter button {
+  min-height: 36px;
+  padding: 0 var(--sp-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  cursor: pointer;
+}
+.agency-category-filter button.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+
+/* --- Analyse d'adéquation sur la carte ----------------------- */
+.agency-analysis {
+  border-left: 3px solid var(--accent-border);
+  padding-left: var(--sp-3);
+  margin-top: var(--sp-3);
+}
+.agency-analysis-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.agency-analysis-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+.agency-tag {
+  padding: 2px var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: var(--r-full);
+}
+.agency-tag.muted {
+  color: var(--text-muted);
+  background: var(--surface-raised);
+}
+.agency-tag.warn {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+.agency-analysis-summary,
+.agency-analysis-angle,
+.agency-analysis-evidence,
+.agency-analysis-issues {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-sm);
+}
+.agency-analysis-angle {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  color: var(--accent);
+}
+.agency-analysis-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+.agency-analysis-issues {
+  color: var(--warn);
+}
+.agency-how {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}

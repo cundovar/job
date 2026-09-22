@@ -5,6 +5,22 @@ import { PROJECT_ROOT } from '../config.js';
 
 const PYTHON_BIN = process.env.PYTHON_BIN || 'python3';
 const COMPANY_TOP_TIMEOUT = 240000; // 4 min
+
+// ── Historique par recherche (phase 3) ────────────────────────────────────
+// `tools/agency_prospecting_v2.py` est le seul producteur de ces fichiers ; le
+// serveur ne fait que les lire. `latest.json` reste l'alias de compatibilité :
+// une installation antérieure à l'index continue de fonctionner sans sélecteur.
+const AGENCIES_DIR = path.join(PROJECT_ROOT, 'front/public/data/agencies');
+const SEARCHES_DIR = path.join(AGENCIES_DIR, 'searches');
+const SEARCH_INDEX_PATH = path.join(AGENCIES_DIR, 'index.json');
+const LATEST_PATH = path.join(AGENCIES_DIR, 'latest.json');
+const ANALYSES_PATH = path.join(PROJECT_ROOT, 'data/agency_analyses.json');
+
+// Identifiant produit par make_search_id : `<zone-slug>-<AAAAMMJJ-HHMMSS>`.
+// Le motif interdit `/` et `..` ; l'appartenance à l'index est vérifiée en plus,
+// pour qu'un identifiant bien formé mais inconnu ne devienne pas un chemin.
+const SEARCH_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,79}$/;
+const LATEST_SEARCH_ID = 'latest';
 const COMPANY_PREPARE_TIMEOUT = Number.parseInt(
   process.env.COMPANY_PREPARE_TIMEOUT_MS || String(20 * 60 * 1000),
   10
@@ -402,6 +418,127 @@ async function runProspecting({ zone = 'ile-de-france', radiusM = null } = {}) {
   return JSON.parse(output.slice(start));
 }
 
+function readJsonFile(file) {
+  if (!fs.existsSync(file)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Index des recherches. Quand il n'existe pas (installation antérieure à la
+ * phase 3, ou clone neuf où seul `latest.json` est versionné), on en synthétise
+ * un d'une seule entrée à partir de `latest.json` : le front garde alors son
+ * comportement d'avant, sélecteur compris, sans afficher un historique vide qui
+ * se relirait comme « aucune recherche n'a eu lieu ».
+ */
+function readSearchIndex() {
+  const index = readJsonFile(SEARCH_INDEX_PATH);
+  if (index && Array.isArray(index.searches) && index.searches.length > 0) {
+    return { ...index, source: 'index' };
+  }
+
+  const latest = readJsonFile(LATEST_PATH);
+  if (!latest) {
+    return { version: 1, updated_at: null, latest_search_id: null, searches: [], source: 'vide' };
+  }
+  const searchId = latest.search_id || LATEST_SEARCH_ID;
+  return {
+    version: 1,
+    updated_at: latest.generated_at || null,
+    latest_search_id: searchId,
+    source: 'latest',
+    searches: [{
+      search_id: searchId,
+      zone: latest.zone || null,
+      zone_label: latest.zone_label || null,
+      generated_at: latest.generated_at || null,
+      radius_m: latest.radius?.radius_m ?? null,
+      origin: latest.distance_origin || null,
+      total: (latest.agencies || []).length,
+      state: 'ok',
+      pinned: false,
+      file: 'latest.json',
+    }],
+  };
+}
+
+function knownSearchIds() {
+  return readSearchIndex().searches.map(search => search.search_id).filter(Boolean);
+}
+
+/**
+ * Charge le payload d'une recherche. Un identifiant absent (ou `latest`) rend
+ * l'alias de compatibilité ; un identifiant inconnu lève une erreur qui **nomme
+ * les recherches connues** — un tableau vide se relirait comme « il n'y a rien »,
+ * et c'est précisément la lecture qui a déjà conduit à inventer des agences.
+ */
+function readSearchPayload(searchId) {
+  if (!searchId || searchId === LATEST_SEARCH_ID) {
+    const latest = readJsonFile(LATEST_PATH);
+    if (!latest) {
+      throw new Error('Aucune recherche publiée : lance une prospection avant de cibler.');
+    }
+    return { payload: latest, search_id: latest.search_id || LATEST_SEARCH_ID, source: 'latest' };
+  }
+
+  const known = knownSearchIds();
+  if (!SEARCH_ID_PATTERN.test(searchId) || !known.includes(searchId)) {
+    throw new Error(
+      `Recherche inconnue : « ${searchId} ». Recherches disponibles : ${known.join(', ') || 'aucune'}.`
+    );
+  }
+
+  const file = path.join(SEARCHES_DIR, `${searchId}.json`);
+  const payload = readJsonFile(file);
+  if (payload) {
+    return { payload, search_id: searchId, source: 'search' };
+  }
+
+  // Indexée mais introuvable sur le disque : c'est le cas de l'index synthétisé
+  // depuis `latest.json`, où le fichier par recherche n'existe pas encore.
+  const latest = readJsonFile(LATEST_PATH);
+  if (latest && (latest.search_id || LATEST_SEARCH_ID) === searchId) {
+    return { payload: latest, search_id: searchId, source: 'latest' };
+  }
+  throw new Error(`Recherche « ${searchId} » indexée mais son fichier est absent.`);
+}
+
+/**
+ * Analyses persistées (`data/agency_analyses.json`), en lecture seule et
+ * aplaties par domaine. Le fichier brut n'est jamais servi tel quel : son
+ * `history` et ses empreintes n'ont pas à transiter vers le navigateur, et
+ * aucune route ne l'écrit.
+ */
+function readPersistedAnalyses() {
+  const cache = readJsonFile(ANALYSES_PATH);
+  const entries = cache && typeof cache.analyses === 'object' ? cache.analyses : {};
+  const analyses = {};
+  for (const [domain, entry] of Object.entries(entries)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const analysis = entry.analysis && typeof entry.analysis === 'object' ? entry.analysis : {};
+    analyses[domain] = {
+      domain,
+      status: entry.status || analysis.fit_status || 'review',
+      obsolete: entry.obsolete === true,
+      analyzed_at: entry.analyzed_at || analysis.analyzed_at || null,
+      provider: entry.provider || null,
+      strengths: analysis.strengths || [],
+      weaknesses: analysis.weaknesses || [],
+      application_angle: analysis.application_angle || '',
+      fit_summary: analysis.fit_summary || '',
+      fit_score: analysis.fit_score ?? null,
+      confidence: analysis.confidence || '',
+      category: analysis.category || '',
+      evidence_urls: analysis.evidence_urls || [],
+      issues: analysis.issues || [],
+    };
+  }
+  return { updated_at: cache?.updated_at || null, count: Object.keys(analyses).length, analyses };
+}
+
 export {
   normalizeDomain,
   validateDomain,
@@ -415,5 +552,11 @@ export {
   measureAgency,
   prepareAgency,
   runProspecting,
-  sameProspectingRequest
+  sameProspectingRequest,
+  readSearchIndex,
+  readSearchPayload,
+  readPersistedAnalyses,
+  knownSearchIds,
+  LATEST_SEARCH_ID,
+  SEARCH_ID_PATTERN
 };
