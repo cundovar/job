@@ -6,6 +6,8 @@
 .scout-actions label { display: flex; align-items: center; gap: var(--sp-1); font-size: 0.85rem; }
 .scout-actions select, .scout-actions input.scout-cp { padding: 0.35rem 0.5rem; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); }
 .scout-actions input.scout-cp { width: 7rem; }
+.scout-emails { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; font-size: 0.8rem; }
+.scout-emails a { color: var(--text-muted); }
 .btn-scout-target { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.6rem; border: 1px solid var(--accent-border); border-radius: 6px; background: var(--surface); color: var(--text-strong); font: inherit; font-size: 0.82rem; cursor: pointer; white-space: nowrap; }
 .btn-scout-target:disabled { opacity: 0.6; cursor: default; }
 .scout-target-error { color: var(--danger, #b3261e); font-size: 0.78rem; margin-top: 0.25rem; max-width: 16rem; }

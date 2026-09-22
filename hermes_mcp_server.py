@@ -469,7 +469,9 @@ def scout_list(args: Dict[str, Any]) -> str:
         verdict = (f"{a['categorie']} {a['score']}/10" if a["categorie"]
                    else (a["error"] or "pas de site web" if not a["website"] else a["error"] or "non analysé"))
         flag = "" if a["preuve_ok"] in (None, 1) else " ⚠ preuve non retrouvée dans le site"
-        lines.append(f"{i}. {a['name']} — {verdict}{flag}\n   {a['address']} · {a['distance_m']} m · {a['website'] or '—'}"
+        mails = a.get("emails") or []
+        mail_txt = f"\n   ✉ {' / '.join(mails[:3])}" if mails else ""
+        lines.append(f"{i}. {a['name']} — {verdict}{flag}\n   {a['address']} · {a['distance_m']} m · {a['website'] or '—'}{mail_txt}"
                      + (f"\n   {a['resume']}" if a["resume"] else ""))
     return "\n".join(head + [f"", f"{len(rows)} structures (affichées : {min(limit, len(rows))})", ""] + lines)
 

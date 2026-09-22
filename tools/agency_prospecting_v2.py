@@ -104,6 +104,7 @@ from official_site import (  # noqa: E402
     find_official_site,
 )
 from google_places import discover_paris_20  # noqa: E402
+from utils.email_protection import decode_protected_emails  # noqa: E402
 
 EXCLUSION_LABELS = {EXCLUSION_DIRECTORY, EXCLUSION_PROFILE, EXCLUSION_INFRA}
 from company_analysis.duplicate import normalize_name  # noqa: E402
@@ -1335,12 +1336,13 @@ def classify_registry_sites(rows: list[dict], zone_key: str,
             continue
         if row.get('site_match') in (None, '', SITE_MATCH_NONE):
             continue
-        text, links, fetched, pages, description = crawl_site(row['website'])
+        text, links, fetched, pages, description, html_emails = crawl_site(row['website'])
         stats['lus'] += 1
         if not text:
             continue
         scored = score_candidate(row['name'], row['website'], text, links,
-                                 zone_key, description, excluded_hosts)
+                                 zone_key, description, excluded_hosts,
+                                 html_emails=html_emails)
         row.update({
             'score': scored['score'],
             'raw_score': scored['raw_score'],
@@ -1612,7 +1614,7 @@ def self_description_of(page: str) -> list[str]:
 
 
 def crawl_site(base: str, paths: list[str] | None = None,
-               max_pages: int = 4) -> tuple[str, list[tuple[str,str]], list[str], list[dict], list[str]]:
+               max_pages: int = 4) -> tuple[str, list[tuple[str,str]], list[str], list[dict], list[str], list[str]]:
     """Crawl borné d'un site. `paths`/`max_pages` permettent la passe légère d'abord.
 
     Le mode ville s'en sert pour ne payer le crawl approfondi que sur les
@@ -1620,6 +1622,7 @@ def crawl_site(base: str, paths: list[str] | None = None,
     passe téléchargeait quatre pages de 75 domaines pour en écarter la moitié.
     """
     texts=[]; all_links=[]; fetched=[]; pages=[]; description: list[str] = []
+    html_emails: set[str] = set()
     for path in (CRAWL_PATHS if paths is None else paths):
         url = urljoin(base, path.lstrip('/')) if path != '/' else base
         try:
@@ -1628,6 +1631,9 @@ def crawl_site(base: str, paths: list[str] | None = None,
             continue
         if not description:
             description = self_description_of(page)
+        # Emails masqués (Cloudflare cfemail, mailto) : décodés depuis le HTML
+        # brut, avant que strip_text ne les efface.
+        html_emails.update(decode_protected_emails(page))
         text=strip_text(page)
         if text:
             texts.append(text[:25000]); fetched.append(url)
@@ -1636,7 +1642,7 @@ def crawl_site(base: str, paths: list[str] | None = None,
         if len(fetched) >= max_pages:
             break
         time.sleep(0.15)
-    return ' '.join(texts), all_links, fetched, pages, description
+    return ' '.join(texts), all_links, fetched, pages, description, sorted(html_emails)
 
 
 def merge_crawls(first: tuple, second: tuple) -> tuple:
@@ -1648,6 +1654,7 @@ def merge_crawls(first: tuple, second: tuple) -> tuple:
         list(first[2]) + [u for u in second[2] if u not in first[2]],
         list(first[3]) + list(second[3]),
         list(first[4]) or list(second[4]),
+        sorted(set(first[5]) | set(second[5])),
     )
 
 
@@ -1738,6 +1745,7 @@ def score_candidate(
     zone_key: str = '',
     self_description: list[str] | None = None,
     excluded_hosts: dict[str, str] | None = None,
+    html_emails: list[str] | None = None,
 ) -> dict:
     """Présélection déterministe, puis verdict d'activité rendu par le Vérificateur.
 
@@ -1769,7 +1777,7 @@ def score_candidate(
             score += pts
             negative.append(f'{pts} {term}')
 
-    emails = sorted(set(re.findall(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', text)))[:5]
+    emails = sorted(set(html_emails or []) | set(re.findall(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', text)))[:5]
     contact_urls = []
     for href, label in links:
         low = (href + ' ' + label).lower()
@@ -2272,18 +2280,19 @@ def run():
     for h,c,already in crawl_plan:
         if already is None:
             scanned += 1
-            text,links,fetched,pages,description=crawl_site(c['base'])
+            text,links,fetched,pages,description,html_emails=crawl_site(c['base'])
         else:
             # L'accueil a déjà été téléchargé par la présélection : on ne le
             # redemande pas, on complète avec les pages profondes.
-            text,links,fetched,pages,description=merge_crawls(
+            text,links,fetched,pages,description,html_emails=merge_crawls(
                 already, crawl_site(c['base'], paths=CRAWL_PATHS[1:], max_pages=3)
             )
         if not text:
             # still keep known if it has name signal? no, avoid empty except previous wordpress-paris 403
             if c['base'] != 'https://www.wordpress-paris.com/':
                 continue
-        scored=score_candidate(c['name'], c['base'], text, links, zone_key, description, excluded_hosts)
+        scored=score_candidate(c['name'], c['base'], text, links, zone_key, description, excluded_hosts,
+                               html_emails=html_emails)
         if scored['category'] == 'ecarte':
             # Un écarté reste nommé avec son motif : une cible qui disparaît sans
             # trace se fait redécouvrir au run suivant, puis réévaluer, puis

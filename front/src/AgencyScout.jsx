@@ -253,6 +253,13 @@ export default function AgencyScout() {
                       {a.domain} <ExternalLink size={12} />
                     </a>
                   )}
+                  {a.emails && a.emails.length > 0 && (
+                    <div className="scout-emails">
+                      {a.emails.slice(0, 3).map((e) => (
+                        <a key={e} href={`mailto:${e}`}>✉ {e}</a>
+                      ))}
+                    </div>
+                  )}
                 </td>
                 <td>{a.categorie ? <span className={`badge badge-${a.categorie}`}>{a.categorie}</span> : '—'}</td>
                 <td className="scout-score">{a.score ?? '—'}{a.score != null && <small>/10</small>}</td>

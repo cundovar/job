@@ -39,8 +39,11 @@ DB_PATH = Path(os.getenv("AGENCY_SCOUT_DB", ROOT / "data" / "agency_scout.db"))
 _TOOLS_DIR = ROOT / "tools"
 if str(_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_TOOLS_DIR))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from google_places import places_text_search, postal_code_of  # noqa: E402
+from utils.email_protection import decode_protected_emails  # noqa: E402
 
 # Centre par défaut : l'adresse de référence déjà utilisée par la V2 (Paris 20e).
 DEFAULT_CENTER = tuple(float(x) for x in os.getenv("AGENCY_SCOUT_CENTER", "48.85536,2.39845").split(","))
@@ -67,7 +70,8 @@ CREATE TABLE IF NOT EXISTS agencies (
 );
 CREATE TABLE IF NOT EXISTS analyses (
   domain TEXT PRIMARY KEY, categorie TEXT, score INTEGER, resume TEXT, preuve TEXT,
-  preuve_ok INTEGER, text_hash TEXT, model TEXT, error TEXT, analyzed_at TEXT
+  preuve_ok INTEGER, text_hash TEXT, model TEXT, error TEXT, analyzed_at TEXT,
+  emails TEXT
 );
 CREATE TABLE IF NOT EXISTS usage (month TEXT PRIMARY KEY, calls INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -84,6 +88,11 @@ def connect(path: Path = DB_PATH) -> sqlite3.Connection:
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA journal_mode=WAL")
     db.executescript(SCHEMA)
+    # Migration des bases créées avant la colonne emails (décodage Cloudflare).
+    cols = {row[1] for row in db.execute("PRAGMA table_info(analyses)")}
+    if "emails" not in cols:
+        db.execute("ALTER TABLE analyses ADD COLUMN emails TEXT")
+        db.commit()
     return db
 
 
@@ -193,14 +202,16 @@ def _clean(html: bytes) -> tuple[str, BeautifulSoup]:
     return re.sub(r"\s+", " ", soup.get_text(" ")).strip(), soup
 
 
-def fetch_site_text(url: str) -> tuple[str, list[str]]:
-    """Texte de l'accueil + d'une page secondaire, et les URLs lues."""
+def fetch_site_text(url: str) -> tuple[str, list[str], list[str]]:
+    """Texte de l'accueil + d'une page secondaire, les URLs lues, et les emails
+    masqués décodés depuis le HTML brut (Cloudflare cfemail, mailto)."""
     with requests.Session() as client:
         client.headers["User-Agent"] = UA
         home = client.get(url, timeout=8)
         home.raise_for_status()
         home_text, soup = _clean(home.content)
         pages = [str(home.url)]
+        html_pages = [home.text]
         second_text = ""
         base_host = urlparse(str(home.url)).netloc
         for a in soup.find_all("a", href=True):
@@ -211,12 +222,14 @@ def fetch_site_text(url: str) -> tuple[str, list[str]]:
                     r = client.get(href, timeout=8)
                     if r.status_code == 200:
                         second_text = _clean(r.content)[0]
+                        html_pages.append(r.text)
                         pages.append(str(r.url))
                 except requests.RequestException:
                     pass
                 break
     text = home_text[:1800] + ("\n---\n" + second_text[:1200] if second_text else "")
-    return text[:TEXT_BUDGET], pages
+    emails = sorted({e for html in html_pages for e in decode_protected_emails(html)})
+    return text[:TEXT_BUDGET], pages, emails
 
 
 # ── 3. Analyse LLM ───────────────────────────────────────────────────────────
@@ -295,7 +308,7 @@ def analyze(domain: str, website: str, cached: sqlite3.Row | None, system: str) 
     """Fetch + LLM pour un domaine. Ne lève jamais : l'erreur est stockée."""
     base = {"domain": domain, "analyzed_at": now()}
     try:
-        text, pages = fetch_site_text(website)
+        text, pages, emails = fetch_site_text(website)
     except Exception as exc:  # noqa: BLE001
         return {**base, "error": f"site illisible : {str(exc)[:150]}"}
     if len(text) < 80:
@@ -307,17 +320,19 @@ def analyze(domain: str, website: str, cached: sqlite3.Row | None, system: str) 
         raw, model = llm_complete(system, f"Pages lues : {', '.join(pages)}\n\nTexte :\n{text}")
         v = Verdict.model_validate(raw)
     except (ValidationError, Exception) as exc:  # noqa: BLE001
-        return {**base, "text_hash": text_hash, "error": f"analyse IA invalide : {str(exc)[:150]}"}
+        return {**base, "text_hash": text_hash, "emails": emails,
+                "error": f"analyse IA invalide : {str(exc)[:150]}"}
     # Garde-fou anti-invention : la preuve doit exister dans le texte lu.
     preuve_ok = _norm(v.preuve)[:60] in _norm(text)
     return {**base, **v.model_dump(), "preuve_ok": int(preuve_ok), "text_hash": text_hash,
-            "model": model, "error": None}
+            "emails": emails, "model": model, "error": None}
 
 
 def save_analysis(db, a: dict) -> None:
-    cols = ["domain", "categorie", "score", "resume", "preuve", "preuve_ok", "text_hash", "model", "error", "analyzed_at"]
-    db.execute(f"INSERT OR REPLACE INTO analyses ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
-               [a.get(c) for c in cols])
+    cols = ["domain", "categorie", "score", "resume", "preuve", "preuve_ok", "text_hash", "model", "error", "analyzed_at", "emails"]
+    row = [json.dumps(a.get("emails"), ensure_ascii=False) if c == "emails" and a.get("emails") is not None else a.get(c)
+           for c in cols]
+    db.execute(f"INSERT OR REPLACE INTO analyses ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})", row)
     db.commit()
 
 
@@ -368,7 +383,8 @@ def scan(queries: list[str] | None = None, center=DEFAULT_CENTER, radius_m: int 
 def list_agencies(categorie: str | None = None, min_score: int = 0) -> dict:
     db = connect()
     sql = """SELECT a.place_id, a.name, a.address, a.distance_m, a.website, a.domain, a.lat, a.lng,
-                    a.last_seen, n.categorie, n.score, n.resume, n.preuve, n.preuve_ok, n.error, n.analyzed_at
+                    a.last_seen, n.categorie, n.score, n.resume, n.preuve, n.preuve_ok, n.error, n.analyzed_at,
+                    n.emails
              FROM agencies a LEFT JOIN analyses n ON n.domain = a.domain
              WHERE COALESCE(n.score, 0) >= ?"""
     params: list = [min_score]
@@ -377,6 +393,11 @@ def list_agencies(categorie: str | None = None, min_score: int = 0) -> dict:
         params.append(categorie)
     sql += " ORDER BY COALESCE(n.score, -1) DESC, a.distance_m ASC"
     rows = [dict(r) for r in db.execute(sql, params)]
+    for r in rows:
+        try:
+            r["emails"] = json.loads(r["emails"]) if r["emails"] else []
+        except (TypeError, ValueError):
+            r["emails"] = []
     month = datetime.now(timezone.utc).strftime("%Y-%m")
     usage = db.execute("SELECT calls FROM usage WHERE month = ?", (month,)).fetchone()
     out = {"agencies": rows, "running": get_meta(db, "running"), "last_scan": get_meta(db, "last_scan"),

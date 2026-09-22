@@ -21,6 +21,8 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from utils.email_protection import decode_protected_emails
+
 USER_AGENT = "job-search-automation/1.0 (prospection; +https://varascundo.com)"
 REQUEST_TIMEOUT_SECONDS = 15
 MAX_RESPONSE_BYTES = 2_000_000
@@ -354,6 +356,13 @@ def extract_public_contact(url: str) -> Dict[str, Any]:
     for source_url, html in candidates:
         for raw_email in EMAIL_PATTERN.findall(html):
             email = raw_email.lower().strip(".")
+            if email in seen or email.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg")):
+                continue
+            seen.add(email)
+            emails.append({"email": email, "source": source_url})
+        # Emails masqués par la protection anti-spam Cloudflare (data-cfemail,
+        # liens email-protection) : décodage hors ligne, sans navigateur.
+        for email in decode_protected_emails(html):
             if email in seen or email.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg")):
                 continue
             seen.add(email)

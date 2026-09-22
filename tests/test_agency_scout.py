@@ -63,14 +63,25 @@ def test_monthly_cap_is_a_hard_stop(db, monkeypatch):
 
 
 def test_invalid_llm_output_is_stored_as_error(monkeypatch):
-    monkeypatch.setattr(core, "fetch_site_text", lambda url: ("Nous créons des sites web pour nos clients. " * 5, [url]))
+    monkeypatch.setattr(core, "fetch_site_text",
+                        lambda url: ("Nous créons des sites web pour nos clients. " * 5, [url], []))
     monkeypatch.setattr(core, "llm_complete", lambda s, u: ({"categorie": "boulangerie", "score": 42}, "fake"))
     result = core.analyze("x.fr", "https://x.fr", None, "sys")
     assert result["error"].startswith("analyse IA invalide")
 
 
 def test_invented_proof_is_flagged(monkeypatch):
-    monkeypatch.setattr(core, "fetch_site_text", lambda url: ("Nous créons des sites web pour nos clients. " * 5, [url]))
+    monkeypatch.setattr(core, "fetch_site_text",
+                        lambda url: ("Nous créons des sites web pour nos clients. " * 5, [url], []))
     monkeypatch.setattr(core, "llm_complete", lambda s, u: (
         {"categorie": "agence", "score": 7, "resume": "ok", "preuve": "Leader européen du WordPress headless"}, "fake"))
     assert core.analyze("x.fr", "https://x.fr", None, "sys")["preuve_ok"] == 0
+
+
+def test_emails_from_site_fetch_are_stored(monkeypatch):
+    monkeypatch.setattr(core, "fetch_site_text",
+                        lambda url: ("Nous créons des sites web pour nos clients. " * 5, [url], ["contact@agence.fr"]))
+    monkeypatch.setattr(core, "llm_complete", lambda s, u: (
+        {"categorie": "agence", "score": 6, "resume": "ok", "preuve": "Nous créons des sites web pour nos clients"}, "fake"))
+    result = core.analyze("y.fr", "https://y.fr", None, "sys")
+    assert result["emails"] == ["contact@agence.fr"]
