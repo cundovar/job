@@ -33,9 +33,11 @@ import sys
 import tempfile
 import time
 import urllib.parse
+from contextlib import contextmanager
 from datetime import datetime
 from html.parser import HTMLParser
 from pathlib import Path
+from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote_plus, unquote, urljoin, urlparse
 from urllib.request import Request, urlopen
@@ -74,6 +76,22 @@ from agency_registry import (  # noqa: E402  (dépend du sys.path ci-dessus)
     postal_codes_of,
     search_zone_candidates,
 )
+from city_resolver import (  # noqa: E402
+    FAMILY_AGENCY,
+    FAMILY_FORMATION,
+    PERIMETER_MENTION,
+    PERIMETER_NONE,
+    PERIMETER_RANK,
+    PERIMETER_VERIFIED,
+    AmbiguousCityError,
+    CityResolutionError,
+    city_queries,
+    city_zone,
+    city_zone_key,
+    locate_in_city,
+    query_families,
+    resolve_city,
+)
 from company_analysis.duplicate import normalize_name  # noqa: E402
 from company_analysis.verifier import classify_self_description  # noqa: E402
 
@@ -86,8 +104,13 @@ ORIGIN_BAN_QUERY = '21 rue Monte Cristo, 75020 Paris'
 ORIGIN_FALLBACK = (48.85536, 2.39845, 'Rue Monte Cristo 75020 Paris (point BAN enregistré)')
 UA_NOMINATIM = {'User-Agent': 'prospection-agences-cundo/1.0 (recherche emploi)'}
 CONTACT_PATHS_EXTRA = ['/contact', '/mentions-legales', '/agence', '/a-propos']
-ADDR1 = re.compile(r'\d{1,4}(?:\s?(?:bis|ter))?\s*[, ]\s*(?:rue|avenue|av\.|bd|boulevard|place|villa|passage|impasse|cours)\s[^0-9\n]{3,70}?(75\d{3}|92\d{3}|93\d{3}|94\d{3})', re.I)
-ADDR2 = re.compile(r'(?:rue|avenue|av\.|bd|boulevard|place|villa|passage|impasse)\s[^0-9\n]{3,60}?\b(\d{1,4}\w?)\s*,?\s*(750\d{2}|92\d{3}|93\d{3}|94\d{3})', re.I)
+# Code postal français : 01000–98999. Le motif était restreint au 75/92/93/94,
+# ce qui rendait une adresse lilloise *invisible* — l'agence existait, son adresse
+# était publiée, et le pipeline la déclarait « sans adresse ». Un mode ville
+# générique ne peut pas hériter d'un lecteur d'adresses régional.
+FRENCH_POSTAL = r'(?:0[1-9]|[1-8]\d|9[0-8])\d{3}'
+ADDR1 = re.compile(r'\d{1,4}(?:\s?(?:bis|ter))?\s*[, ]\s*(?:rue|avenue|av\.|bd|boulevard|place|villa|passage|impasse|cours)\s[^0-9\n]{3,70}?(' + FRENCH_POSTAL + ')', re.I)
+ADDR2 = re.compile(r'(?:rue|avenue|av\.|bd|boulevard|place|villa|passage|impasse)\s[^0-9\n]{3,60}?\b(\d{1,4}\w?)\s*,?\s*(' + FRENCH_POSTAL + ')', re.I)
 TOWNS = {  # centres approximatifs (distance flaggée ~approximative)
     'paris 20': (48.8640, 2.3995), '75020': (48.8640, 2.3995),
     'paris 19': (48.8819, 2.3866), '75019': (48.8819, 2.3866),
@@ -167,6 +190,11 @@ CITY_TERMS = [
     'champigny', 'ivry', 'noisy', 'fontenay', 'val-de-marne', 'seine-saint-denis',
 ]
 
+# `ZONES` n'est PAS la liste des villes supportées : ce sont quatre préréglages
+# historiques, écrits à la main avant que la résolution de commune existe. Une
+# ville se demande avec `--ville`, qui construit son périmètre depuis l'API
+# Découpage administratif. Ajouter une entrée ici pour « supporter » une ville de
+# plus serait revenir au catalogue que la phase 4 a supprimé.
 ZONES = {
     'ile-de-france': {
         'label': 'Île-de-France',
@@ -278,9 +306,27 @@ def has_term(blob: str, term: str) -> bool:
     return term_pattern(term).search(blob) is not None
 
 
+# Périmètres résolus pendant la passe en cours (`--ville`). Ils vivent ici, en
+# mémoire, et non dans `ZONES` : une ville n'est pas une constante du code, et
+# son périmètre appartient au run qui l'a demandée.
+DYNAMIC_ZONES: dict[str, dict] = {}
+
+
+def zone_config(zone_key: str) -> dict | None:
+    """Périmètre actif : d'abord ce que la passe a résolu, sinon un préréglage."""
+    return DYNAMIC_ZONES.get(zone_key) or ZONES.get(zone_key)
+
+
+def register_city_zone(commune: dict) -> str:
+    """Enregistre le périmètre d'une commune résolue et renvoie sa clé de zone."""
+    key = city_zone_key(commune)
+    DYNAMIC_ZONES[key] = city_zone(commune)
+    return key
+
+
 def zone_of(blob: str, zone_key: str) -> tuple[str, str]:
     """Renvoie (tier1|tier2|none, terme trouvé) pour le blob texte donné."""
-    zone = ZONES.get(zone_key)
+    zone = zone_config(zone_key)
     if not zone:
         return 'none', ''
     for term in zone['tier1']:
@@ -513,7 +559,7 @@ def postal_code_from_address(address: str | None) -> str | None:
     """Extrait un code postal uniquement d'une adresse effectivement relevée."""
     if not address:
         return None
-    match = re.search(r'\b(75\d{3}|92\d{3}|93\d{3}|94\d{3})\b', address)
+    match = re.search(r'\b(' + FRENCH_POSTAL + r')\b', address)
     return match.group(1) if match else None
 
 
@@ -936,21 +982,39 @@ def registry_candidates(zone_key: str, client: RegistryClient | None = None) -> 
       et l'avertissement remonte jusqu'au payload, parce qu'une liste courte
       sans explication se relit comme « il n'y a rien ici ».
     """
-    zone = ZONES.get(zone_key) or {}
+    zone = zone_config(zone_key) or {}
+    insee = str(zone.get('insee') or '')
     codes = postal_codes_of(list(zone.get('tier1', [])))
-    if not codes:
+    if not insee and not codes:
         return [], [
             f"registre non interrogé : la zone « {zone_key} » ne porte aucun code postal explicite"
         ]
+    registry = client or RegistryClient()
     try:
-        raw = search_zone_candidates(
-            postal_codes=codes,
-            naf_codes=NAF_AGENCE + NAF_FORMATION,
-            client=client or RegistryClient(),
-        )
+        if insee:
+            # Une commune résolue a un code INSEE : il désigne la commune entière,
+            # là où un code postal peut en couvrir plusieurs (59000 déborde de
+            # Lille) ou en découper une seule.
+            raw = registry.search(
+                commune=insee,
+                naf_codes=NAF_AGENCE + NAF_FORMATION,
+            )
+        else:
+            raw = search_zone_candidates(
+                postal_codes=codes,
+                naf_codes=NAF_AGENCE + NAF_FORMATION,
+                client=registry,
+            )
     except RegistryError as exc:
         return [], [f"registre indisponible ({exc}) — le crawl web continue seul"]
-    return [registry_record(candidate, zone_key) for candidate in raw], []
+    rows = [registry_record(candidate, zone_key) for candidate in raw]
+    if insee:
+        # Le code commune vient de la requête, pas d'une déduction sur l'adresse :
+        # c'est ce qui permettra à `locate_in_city` de dire « registre » sans
+        # inventer une adresse que le registre n'a pas publiée.
+        for row in rows:
+            row['commune_code'] = insee
+    return rows, []
 
 
 def parse_links(page: str, base: str) -> list[tuple[str, str]]:
@@ -1104,9 +1168,16 @@ def self_description_of(page: str) -> list[str]:
     return [part for part in parts if part]
 
 
-def crawl_site(base: str) -> tuple[str, list[tuple[str,str]], list[str], list[dict], list[str]]:
+def crawl_site(base: str, paths: list[str] | None = None,
+               max_pages: int = 4) -> tuple[str, list[tuple[str,str]], list[str], list[dict], list[str]]:
+    """Crawl borné d'un site. `paths`/`max_pages` permettent la passe légère d'abord.
+
+    Le mode ville s'en sert pour ne payer le crawl approfondi que sur les
+    candidats qui ont déjà montré un lien avec la commune : sans cela, chaque
+    passe téléchargeait quatre pages de 75 domaines pour en écarter la moitié.
+    """
     texts=[]; all_links=[]; fetched=[]; pages=[]; description: list[str] = []
-    for path in CRAWL_PATHS:
+    for path in (CRAWL_PATHS if paths is None else paths):
         url = urljoin(base, path.lstrip('/')) if path != '/' else base
         try:
             page=fetch(url, timeout=8, max_bytes=500_000)
@@ -1119,10 +1190,66 @@ def crawl_site(base: str) -> tuple[str, list[tuple[str,str]], list[str], list[di
             texts.append(text[:25000]); fetched.append(url)
             pages.append({'url': url, 'text': text[:2500]})
         all_links.extend(parse_links(page,url))
-        if len(fetched) >= 4:
+        if len(fetched) >= max_pages:
             break
         time.sleep(0.15)
     return ' '.join(texts), all_links, fetched, pages, description
+
+
+def merge_crawls(first: tuple, second: tuple) -> tuple:
+    """Concatène une passe légère et son approfondissement, sans refetcher l'accueil."""
+    text = ' '.join(part for part in (first[0], second[0]) if part)
+    return (
+        text,
+        list(first[1]) + list(second[1]),
+        list(first[2]) + [u for u in second[2] if u not in first[2]],
+        list(first[3]) + list(second[3]),
+        list(first[4]) or list(second[4]),
+    )
+
+
+def local_signal(blob: str, zone_cfg: dict) -> str:
+    """Terme de la commune trouvé dans un texte de page — un indice, pas une preuve.
+
+    Sert uniquement à décider si un candidat mérite le crawl approfondi. Une
+    mention de « Montreuil » dans une page ne met personne dans le périmètre :
+    c'est `locate_in_city` qui tranche, sur une adresse lue ou le registre.
+    """
+    for term in list(zone_cfg.get('tier1') or []) + list(zone_cfg.get('tier2') or []):
+        if term and has_term(blob, str(term)):
+            return str(term)
+    return ''
+
+
+def select_for_deep_crawl(candidates: list[dict], zone_cfg: dict,
+                          excluded_hosts: dict[str, str] | None = None) -> tuple[list[dict], list[dict]]:
+    """Partage les candidats entre « à approfondir » et « écartés », avec motif.
+
+    Trois raisons d'arrêter avant le crawl profond, toutes nommées : un hôte
+    écarté à la main dans le CSV, un site injoignable, une page d'accueil sans
+    aucun lien avec la commune. Un candidat issu du registre de la commune n'a
+    rien à prouver : son code commune vient de la requête elle-même.
+    """
+    excluded_hosts = excluded_hosts or {}
+    keep: list[dict] = []
+    dropped: list[dict] = []
+    for candidate in candidates:
+        host = host_of(candidate.get('base') or '')
+        if host in excluded_hosts:
+            dropped.append({**candidate, 'motif': f'écartée à la main dans le CSV ({excluded_hosts[host]})'})
+            continue
+        if not (candidate.get('text') or '').strip():
+            dropped.append({**candidate, 'motif': 'page d’accueil illisible ou injoignable'})
+            continue
+        if candidate.get('commune_code') and candidate['commune_code'] == zone_cfg.get('insee'):
+            keep.append({**candidate, 'local_term': f"code commune {zone_cfg['insee']}"})
+            continue
+        term = local_signal(candidate.get('text') or '', zone_cfg)
+        if not term:
+            dropped.append({**candidate, 'motif': f"aucun lien avec {zone_cfg.get('label') or 'la zone'} en page d’accueil"})
+            continue
+        keep.append({**candidate, 'local_term': term})
+    return keep, dropped
 
 
 def _family_score(blob: str, points: dict[str, int], cap: int, label: str) -> tuple[int, list[str]]:
@@ -1269,6 +1396,68 @@ def keeps_candidate(scored: dict) -> bool:
     if scored['category'] == 'incertain':
         return scored['score'] >= UNCERTAIN_KEEP_SCORE
     return True
+
+
+# ── Étapes mesurées d'une passe (phase 4) ────────────────────────────────────
+
+STEP_NAMES = (
+    'resolution', 'registre', 'decouverte_web', 'crawl', 'geocodage', 'ia', 'publication',
+)
+
+
+class StepLog:
+    """Étapes d'une passe : nom, durée, volumes — jamais de contenu.
+
+    Une prospection dure plusieurs minutes derrière un seul « en cours ». Sans
+    étapes, un run lent et un run bloqué se ressemblent, et on relance.
+
+    Ce qui est mesuré est volontairement pauvre : des compteurs et des durées.
+    Aucun nom d'entreprise, aucune adresse, aucun email ne transite ici — ces
+    étapes sont recopiées dans le payload public et dans le statut HTTP.
+    """
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+        self._clock = clock
+        self.steps: list[dict] = []
+        self._started: dict[int, float] = {}
+
+    def start(self, name: str) -> int:
+        """Ouvre une étape et renvoie son index. `duration_ms` reste `None` tant
+        qu'elle n'est pas close : une étape en cours se distingue ainsi d'une
+        étape instantanée."""
+        index = len(self.steps)
+        self.steps.append({
+            'step': name,
+            'started_at': datetime.now().isoformat(timespec='seconds'),
+            'duration_ms': None,
+            'volumes': {},
+        })
+        self._started[index] = self._clock()
+        return index
+
+    def stop(self, index: int, **volumes: Any) -> dict:
+        entry = self.steps[index]
+        entry['duration_ms'] = round((self._clock() - self._started.get(index, self._clock())) * 1000)
+        # Filtrage explicite : seul un nombre devient une mesure publiée. Une
+        # chaîne glissée ici serait le premier pas vers une donnée personnelle
+        # dans un journal qui n'est pas censé en porter.
+        entry['volumes'] = {
+            key: value for key, value in volumes.items()
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
+        }
+        return entry
+
+    @contextmanager
+    def step(self, name: str):
+        volumes: dict[str, Any] = {}
+        index = self.start(name)
+        try:
+            yield volumes
+        finally:
+            self.stop(index, **volumes)
+
+    def as_list(self) -> list[dict]:
+        return list(self.steps)
 
 
 # ── Historique par recherche (phase 3) ───────────────────────────────────────
@@ -1428,42 +1617,129 @@ def publish_search(payload: dict, front_dir: Path,
     }
 
 
-def run():
-    # Zone géographique : --zone ile-de-france (défaut) | paris-20 | paris-19 | ouest-paris
-    args = sys.argv[1:]
-    out_dir = Path(args[args.index('--out') + 1]).expanduser().resolve() if '--out' in args else DEFAULT_OUT_DIR
-    out_dir.mkdir(parents=True, exist_ok=True); DATA_DIR.mkdir(parents=True, exist_ok=True); FRONT_DIR.mkdir(parents=True, exist_ok=True)
-    zone_key = args[args.index('--zone') + 1] if '--zone' in args else 'ile-de-france'
-    if zone_key not in ZONES:
+def parse_cli(args: list[str]) -> dict:
+    """Options de la passe, avec des refus explicites plutôt que des replis.
+
+    `--ville` et `--zone` sont exclusifs : accepter les deux obligerait à en
+    ignorer un en silence, et la passe publierait un périmètre que personne n'a
+    demandé.
+    """
+    def value_of(flag: str) -> str | None:
+        if flag not in args:
+            return None
+        index = args.index(flag) + 1
+        if index >= len(args) or args[index].startswith('--'):
+            print(f"{flag} attend une valeur, ex. {flag} \"Montreuil\".", file=sys.stderr)
+            raise SystemExit(2)
+        return args[index]
+
+    city = value_of('--ville')
+    zone_arg = value_of('--zone')
+    if city and zone_arg:
+        print(
+            "--ville et --zone sont exclusifs : --zone rejoue un préréglage historique, "
+            "--ville résout une commune réelle. Choisis l'un des deux.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    if not city and zone_arg and zone_arg not in ZONES:
         # Pas de repli silencieux : chercher une autre zone que celle demandée
         # sans le dire ferait croire à une passe ciblée qui n'a pas eu lieu.
         known = ', '.join(sorted(ZONES))
-        print(f"Zone inconnue : « {zone_key} ». Zones disponibles : {known}.", file=sys.stderr)
+        print(
+            f"Zone inconnue : « {zone_arg} ». Préréglages disponibles : {known}. "
+            "Pour une autre ville, utilise --ville \"Nom\" (aucune modification du code nécessaire).",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
+
     radius_m = None
-    if '--radius' in args:
-        raw = args[args.index('--radius') + 1]
-        if not raw.isdigit() or int(raw) <= 0:
-            print(f"Rayon invalide : « {raw} ». Attendu un nombre de mètres, ex. 2000.", file=sys.stderr)
+    raw_radius = value_of('--radius')
+    if raw_radius is not None:
+        if not raw_radius.isdigit() or int(raw_radius) <= 0:
+            print(f"Rayon invalide : « {raw_radius} ». Attendu un nombre de mètres, ex. 2000.", file=sys.stderr)
             raise SystemExit(2)
-        radius_m = int(raw)
+        radius_m = int(raw_radius)
         if '--no-distance' in args:
             # Un rayon sans mesure de distance ne filtrerait rien tout en
             # annonçant un périmètre : contradiction, pas une valeur par défaut.
             print("--radius exige les distances : retire --no-distance.", file=sys.stderr)
             raise SystemExit(2)
-    zone = ZONES[zone_key]
-    queries = SEARCH_QUERIES + FORMATION_QUERIES + ZONE_QUERIES.get(zone_key, [])
+
+    out = value_of('--out')
+    return {
+        'out_dir': Path(out).expanduser().resolve() if out else DEFAULT_OUT_DIR,
+        'city': (city or '').strip(),
+        'departement': (value_of('--departement') or '').strip(),
+        'zone': zone_arg if (zone_arg and not city) else ('' if city else 'ile-de-france'),
+        'radius_m': radius_m,
+        'no_distance': '--no-distance' in args,
+        'no_ai': '--no-ai' in args,
+        'no_registry': '--no-registry' in args,
+    }
+
+
+def resolve_perimeter(options: dict, **resolver_kwargs) -> tuple[str, dict, dict | None]:
+    """Périmètre de la passe : commune résolue (`--ville`) ou préréglage (`--zone`).
+
+    En mode ville, l'échec de résolution est fatal et nommé. Retomber sur
+    l'Île-de-France parce que « Montreuil » n'a pas été compris produirait une
+    passe qui a l'air d'avoir cherché là où on le demandait.
+    """
+    if options.get('city'):
+        commune = resolve_city(
+            options['city'], options.get('departement') or None, **resolver_kwargs
+        )
+        zone_key = register_city_zone(commune)
+        return zone_key, DYNAMIC_ZONES[zone_key], commune
+    zone_key = options.get('zone') or 'ile-de-france'
+    return zone_key, ZONES[zone_key], None
+
+
+def run():
+    # Périmètre : --ville "Montreuil" [--departement 93] (recommandé) ou
+    # --zone ile-de-france | paris-20 | paris-19 | ouest-paris (préréglages).
+    args = sys.argv[1:]
+    options = parse_cli(args)
+    out_dir = options['out_dir']
+    out_dir.mkdir(parents=True, exist_ok=True); DATA_DIR.mkdir(parents=True, exist_ok=True); FRONT_DIR.mkdir(parents=True, exist_ok=True)
+    radius_m = options['radius_m']
+    steps = StepLog()
+
+    with steps.step('resolution') as measures:
+        try:
+            zone_key, zone, commune = resolve_perimeter(options)
+        except AmbiguousCityError as exc:
+            print(str(exc), file=sys.stderr)
+            raise SystemExit(2) from exc
+        except CityResolutionError as exc:
+            print(str(exc), file=sys.stderr)
+            raise SystemExit(2) from exc
+        measures['postal_codes'] = len(zone.get('postal_codes') or [])
+
+    if commune:
+        families = query_families(commune)
+        queries = city_queries(commune)
+    else:
+        families = {
+            FAMILY_AGENCY: SEARCH_QUERIES + ZONE_QUERIES.get(zone_key, []),
+            FAMILY_FORMATION: FORMATION_QUERIES,
+        }
+        queries = SEARCH_QUERIES + FORMATION_QUERIES + ZONE_QUERIES.get(zone_key, [])
+
     seeds: list[tuple[str,str,str]]=[]
-    # 1 search engines
-    for q in queries:
-        seeds.extend(search_ddg(q, max_results=8))
-        seeds.extend(search_bing(q, max_results=8))
-        time.sleep(0.5)
-    # 2 directories as link sources
-    for url in DIRECTORY_SEEDS:
-        seeds.extend(extract_agency_links_from_directory(url))
-        time.sleep(0.7)
+    with steps.step('decouverte_web') as measures:
+        # 1 search engines
+        for q in queries:
+            seeds.extend(search_ddg(q, max_results=8))
+            seeds.extend(search_bing(q, max_results=8))
+            time.sleep(0.5)
+        # 2 directories as link sources
+        for url in DIRECTORY_SEEDS:
+            seeds.extend(extract_agency_links_from_directory(url))
+            time.sleep(0.7)
+        measures['queries'] = len(queries)
+        measures['seeds'] = len(seeds)
     # 3 add known previous good roots to avoid regressions
     for url,label in [
         ('https://opus.paris/', 'Opus agence WordPress'),
@@ -1488,9 +1764,45 @@ def run():
 
     excluded_hosts = excluded_hosts_from_csv()
     results=[]; scanned=0; ecartes=[]
-    for h,c in list(by_host.items())[:75]:
-        scanned += 1
-        text,links,fetched,pages,description=crawl_site(c['base'])
+    shortlist = list(by_host.items())[:75]
+
+    if commune:
+        # Mode ville : une passe légère (accueil seul) présélectionne, le crawl
+        # approfondi ne paie que pour les candidats qui ont un lien avec la
+        # commune. Les écartés restent nommés avec leur motif.
+        with steps.step('preselection') as measures:
+            light = []
+            for h, c in shortlist:
+                scanned += 1
+                first = crawl_site(c['base'], paths=CRAWL_PATHS[:1], max_pages=1)
+                light.append({'host': h, 'base': c['base'], 'name': c['name'],
+                              'sources': c['sources'], 'text': first[0], 'crawl': first})
+            keep, dropped = select_for_deep_crawl(light, zone, excluded_hosts)
+            for candidate in dropped:
+                ecartes.append({'name': candidate['name'][:160], 'website': candidate['base'],
+                                'motif': candidate['motif']})
+            measures['examines'] = len(light)
+            measures['retenus'] = len(keep)
+            measures['ecartes'] = len(dropped)
+        crawl_plan = [
+            (item['host'], {'base': item['base'], 'name': item['name'], 'sources': item['sources']},
+             item['crawl'])
+            for item in keep
+        ]
+    else:
+        crawl_plan = [(h, c, None) for h, c in shortlist]
+
+    crawl_step = steps.start('crawl')
+    for h,c,already in crawl_plan:
+        if already is None:
+            scanned += 1
+            text,links,fetched,pages,description=crawl_site(c['base'])
+        else:
+            # L'accueil a déjà été téléchargé par la présélection : on ne le
+            # redemande pas, on complète avec les pages profondes.
+            text,links,fetched,pages,description=merge_crawls(
+                already, crawl_site(c['base'], paths=CRAWL_PATHS[1:], max_pages=3)
+            )
         if not text:
             # still keep known if it has name signal? no, avoid empty except previous wordpress-paris 403
             if c['base'] != 'https://www.wordpress-paris.com/':
@@ -1527,12 +1839,16 @@ def run():
             'page_texts': pages[:4],
         })
         time.sleep(0.2)
+    steps.stop(crawl_step, crawles=len(crawl_plan), retenus=len(results), ecartes=len(ecartes))
 
     # Le registre apporte des candidats locaux que les moteurs ne montrent pas.
     # Il n'apporte ni verdict d'activité ni site : ces deux-là restent au crawl.
     registry_rows, registry_warnings = ([], ['registre désactivé (--no-registry)'])
-    if '--no-registry' not in args:
-        registry_rows, registry_warnings = registry_candidates(zone_key)
+    with steps.step('registre') as measures:
+        if not options['no_registry']:
+            registry_rows, registry_warnings = registry_candidates(zone_key)
+        measures['candidats'] = len(registry_rows)
+        measures['avertissements'] = len(registry_warnings)
     for warning in registry_warnings:
         print(f'WARN: {warning}', file=sys.stderr)
 
@@ -1558,22 +1874,55 @@ def run():
         zone_dropped = n_none
     results=sorted(results, key=lambda r: (-zone_rank.get(r['zone_match'], 2), r['score'], len(r['stack']), bool(r['emails'] or r['contact_urls'])), reverse=True)
     # Distance depuis l'adresse de référence de Cundo (--no-distance pour sauter).
-    if '--no-distance' in args:
-        origin_coords = ''
+    with steps.step('geocodage') as measures:
+        if options['no_distance']:
+            origin_coords = ''
+            for agency in results:
+                agency.setdefault('address', None)
+                agency.setdefault('postal_code', None)
+                agency.setdefault('address_source', None)
+                agency.setdefault('distance_m', None)
+                agency['how'] = address_how(agency)
+        else:
+            # Le cache est chargé une fois, partagé par toute la passe, puis réécrit :
+            # deux runs sur les mêmes adresses ne redemandent rien au géocodeur.
+            geocode_cache = load_geocode_cache()
+            origin_coords = enrich_with_distances(results, geocode_cache)
+            save_geocode_cache(geocode_cache)
+            for agency in results:
+                agency['how'] = address_how(agency)
+        measures['adresses_lues'] = sum(1 for a in results if a.get('how') in ADDRESS_HOW_READ)
+        measures['positions_inconnues'] = sum(1 for a in results if not a.get('how'))
+
+    # Appartenance à la commune : sur adresse lue ou code commune du registre.
+    # Elle est calculée APRÈS le géocodage, parce qu'avant l'adresse n'existe pas
+    # et qu'une mention en page ne fait entrer personne dans le périmètre.
+    perimeter_stats = None
+    if commune:
         for agency in results:
-            agency.setdefault('address', None)
-            agency.setdefault('postal_code', None)
-            agency.setdefault('address_source', None)
-            agency.setdefault('distance_m', None)
-            agency['how'] = address_how(agency)
-    else:
-        # Le cache est chargé une fois, partagé par toute la passe, puis réécrit :
-        # deux runs sur les mêmes adresses ne redemandent rien au géocodeur.
-        geocode_cache = load_geocode_cache()
-        origin_coords = enrich_with_distances(results, geocode_cache)
-        save_geocode_cache(geocode_cache)
-        for agency in results:
-            agency['how'] = address_how(agency)
+            level, evidence = locate_in_city(agency, commune)
+            agency['city'] = commune['name']
+            agency['city_insee'] = commune['insee']
+            agency['city_match'] = level
+            agency['city_match_evidence'] = evidence
+        perimeter_stats = {
+            'city': commune['name'],
+            'insee': commune['insee'],
+            'verifie': sum(1 for a in results if a.get('city_match') in PERIMETER_VERIFIED),
+            'mention_seule': sum(1 for a in results if a.get('city_match') == PERIMETER_MENTION),
+            'sans_lien': sum(1 for a in results if a.get('city_match') == PERIMETER_NONE),
+            # Nommés, jamais supprimés en silence : « rien à Montreuil » doit
+            # pouvoir se relire comme « ces N-là n'ont pas d'adresse lue ».
+            'sans_lien_details': [
+                {'name': a['name'], 'website': a['website'], 'how': a.get('how') or 'aucune position'}
+                for a in results if a.get('city_match') == PERIMETER_NONE
+            ],
+        }
+        # Une adresse vérifiée passe devant une mention, quel que soit le score :
+        # le score dit la pertinence, pas la localisation.
+        results.sort(key=lambda a: (
+            PERIMETER_RANK.get(a.get('city_match') or PERIMETER_NONE, 3), -(a.get('score') or 0)
+        ))
     radius_report = None
     if radius_m is not None:
         buckets = partition_by_radius(results, radius_m)
@@ -1607,7 +1956,8 @@ def run():
     # plausibles, jamais les 40+ domaines bruts. `--no-ai` la désactive ; une
     # panne IA laisse l'agence sans analyse (jamais un texte inventé).
     fit_stats=None
-    if '--no-ai' not in args:
+    ia_step = steps.start('ia')
+    if not options['no_ai']:
         try:
             from agency_analysis import fit_analyzer as _fit
             _fit.load_env_file(ROOT / '.env')  # clés IA, setdefault, jamais imprimées
@@ -1634,6 +1984,12 @@ def run():
             save_cache_atomic(_cache_path, _cache)
         except Exception as _fit_exc:  # noqa: BLE001 - l'analyse ne casse jamais un run
             fit_stats={'error': f'{type(_fit_exc).__name__}: {_fit_exc}'}
+    steps.stop(
+        ia_step,
+        analysees=(fit_stats or {}).get('analyzed') or 0,
+        cache=(fit_stats or {}).get('cache_hits') or 0,
+        appels=(fit_stats or {}).get('calls') or 0,
+    )
 
     search_id = make_search_id(zone_key, ts)
     payload={
@@ -1647,8 +2003,31 @@ def run():
         'scanned_domains': scanned,
         'seed_count': len(seeds),
         'queries': queries,
+        # Les deux familles restent distinctes jusqu'au résultat : une formation
+        # trouvée par la seconde ne doit pas se relire comme une agence ratée
+        # trouvée par la première.
+        'query_families': families,
         'zone': zone_key,
         'zone_label': zone['label'],
+        # La ville résolue, telle qu'une source publique l'a donnée. `null` en
+        # mode préréglage : un périmètre historique n'est pas une commune.
+        'city': {
+            'name': commune['name'],
+            'insee': commune['insee'],
+            'departement': commune['departement'],
+            'departement_name': commune.get('departement_name') or None,
+            'postal_codes': commune['postal_codes'],
+            'latitude': commune['latitude'],
+            'longitude': commune['longitude'],
+            'source': commune['source'],
+        } if commune else None,
+        'perimeter': perimeter_stats,
+        # Ce que la passe a fait, dans l'ordre, avec ses durées et ses volumes.
+        # Aucun nom ni adresse : ces étapes sont recopiées telles quelles dans le
+        # statut HTTP consulté pendant le run. Liste vivante : l'étape de
+        # publication s'y ajoute pendant qu'elle écrit, et sa durée n'est connue
+        # qu'après — elle vaut donc `null` dans le fichier qu'elle écrit.
+        'steps': steps.steps,
         'distance_origin': ORIGIN_ADDRESS if origin_coords else None,
         'zone_stats': {
             'tier1': sum(1 for r in results if r['zone_match'] == 'tier1'),
@@ -1675,12 +2054,16 @@ def run():
     }
     json_path=out_dir/f'agences-web-v2-{ts}.json'
     md_path=out_dir/f'agences-web-v2-{ts}.md'
-    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
     # La recherche est publiée sous son identifiant, puis l'index, puis — seulement
     # si la passe a trouvé quelque chose — l'alias `latest.json`. Le verdict IA
     # voyage avec (chaque agence porte son bloc `analysis`) : le snapshot est donc
     # relisible tel quel, sans dépendre du cache runtime.
+    publication_step = steps.start('publication')
     publication = publish_search(payload, FRONT_DIR)
+    steps.stop(publication_step, recherches_conservees=publication['kept'],
+               supprimees=len(publication['pruned']))
+    # Écrit après la clôture de l'étape : l'archive locale porte les durées complètes.
+    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
     if results:
         (DATA_DIR/'agencies_cache.json').write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding='utf-8')
     lines=[
@@ -1689,6 +2072,21 @@ def run():
         f'- Seeds collectés : {len(seeds)}', f'- Domaines scannés : {scanned}', f'- Agences/studios retenus : {len(results)}',
         f'- Zone : {zone["label"]}',
         f'- Candidats du registre : {len(registry_rows)}',
+        '',
+    ]
+    if commune:
+        lines += [
+            f'- Ville résolue : {commune["name"]} — INSEE {commune["insee"]},'
+            f' codes postaux {", ".join(commune["postal_codes"])} ({commune["source"]})',
+            f'- Dans le périmètre (adresse lue ou registre) : {perimeter_stats["verifie"]}'
+            f' · mention seule : {perimeter_stats["mention_seule"]}'
+            f' · sans lien vérifiable : {perimeter_stats["sans_lien"]}',
+            '',
+        ]
+    lines += [
+        '- Étapes : ' + ' · '.join(
+            f'{s["step"]} {s["duration_ms"]} ms' for s in steps.steps if s['duration_ms'] is not None
+        ),
         '',
     ]
     if registry_warnings:
@@ -1718,6 +2116,11 @@ def run():
             f'- Raisons : {"; ".join(r["reasons"][:9]) if r["reasons"] else "à qualifier"}',
             f'- Zone : {r["zone_match"]} ({r["zone_term"]})' if r['zone_match'] != 'none' else '- Zone : hors zone (réserve)',
         ]
+        if commune:
+            lines.append(
+                f'- Périmètre {commune["name"]} : {r.get("city_match")}'
+                f' — {r.get("city_match_evidence") or "aucune preuve de localisation"}'
+            )
     if ecartes:
         lines += ['', '## Écartés à la qualification', '']
         for r in ecartes:
@@ -1751,7 +2154,7 @@ def run():
             f"Détail dans {json_path}.",
             file=sys.stderr,
         )
-    print(json.dumps({'ok': True, 'version':'v2', 'search_id': search_id, 'zone': zone_key, 'zone_label': zone['label'], 'radius': radius_report and {k: v for k, v in radius_report.items() if not isinstance(v, list)}, 'total': len(results), 'scanned_domains': scanned, 'seed_count': len(seeds), 'md': str(md_path), 'json': str(json_path), 'front': str(FRONT_DIR/'latest.json'), 'search': publication, 'fit': fit_stats and {k: fit_stats.get(k) for k in ('eligible', 'analyzed', 'cache_hits', 'review', 'calls', 'archive') if k in fit_stats}, 'top': results[:10]}, ensure_ascii=False, indent=2))
+    print(json.dumps({'ok': True, 'version':'v2', 'search_id': search_id, 'zone': zone_key, 'zone_label': zone['label'], 'city': payload['city'], 'perimeter': perimeter_stats and {k: v for k, v in perimeter_stats.items() if not isinstance(v, list)}, 'steps': steps.steps, 'radius': radius_report and {k: v for k, v in radius_report.items() if not isinstance(v, list)}, 'total': len(results), 'scanned_domains': scanned, 'seed_count': len(seeds), 'md': str(md_path), 'json': str(json_path), 'front': str(FRONT_DIR/'latest.json'), 'search': publication, 'fit': fit_stats and {k: fit_stats.get(k) for k in ('eligible', 'analyzed', 'cache_hits', 'review', 'calls', 'archive') if k in fit_stats}, 'top': results[:10]}, ensure_ascii=False, indent=2))
 
 if __name__ == '__main__':
     run()

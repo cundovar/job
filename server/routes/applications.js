@@ -544,10 +544,19 @@ export default function createApplicationsRouter(repo) {
     return {
       task_id: task.task_id,
       zone: task.zone,
+      // Ville demandée et ville résolue restent distinctes : « Montreuil »
+      // demandé, « Montreuil (93) » résolu. Les confondre masquerait une
+      // résolution qui aurait choisi un autre département que celui voulu.
+      city: task.city,
+      departement: task.departement,
+      resolved_city: task.result?.city || null,
       radius_m: task.radius_m,
       // Identifiant de la recherche produite : le front sait quoi sélectionner
       // au retour, sans deviner « la plus récente ».
       search_id: task.result?.search_id || null,
+      // Étapes mesurées par le script : de quoi distinguer un run lent d'un run
+      // bloqué pendant les minutes où il n'y a rien d'autre à afficher.
+      steps: task.result?.steps || [],
       state: task.state,
       queued_at: task.queued_at,
       started_at: task.started_at,
@@ -557,12 +566,14 @@ export default function createApplicationsRouter(repo) {
     };
   }
 
-  function enqueueSearchTask({ zone, radiusM }) {
+  function enqueueSearchTask({ zone = null, city = null, departement = null, radiusM }) {
     // Une seule prospection à la fois : deux crawls concurrents se disputeraient
     // le quota de géocodage Nominatim et écriraient tous deux latest.json.
+    // Deux villes différentes restent deux tâches : elles s'exécutent l'une
+    // après l'autre, sans jamais partager un task_id ni un résultat.
     const duplicate = [...searchTasks.values()].find(task =>
       ['queued', 'running'].includes(task.state)
-      && sameProspectingRequest(task, { zone, radiusM })
+      && sameProspectingRequest(task, { zone, city, departement, radiusM })
     );
     if (duplicate) {
       return duplicate;
@@ -572,6 +583,8 @@ export default function createApplicationsRouter(repo) {
     const task = {
       task_id: `agency_search_${Date.now().toString(36)}_${searchSequence}`,
       zone,
+      city,
+      departement,
       radius_m: radiusM,
       state: 'queued',
       queued_at: new Date().toISOString(),
@@ -587,7 +600,7 @@ export default function createApplicationsRouter(repo) {
       task.state = 'running';
       task.started_at = new Date().toISOString();
       try {
-        task.result = await runProspecting({ zone, radiusM });
+        task.result = await runProspecting({ zone, city, departement, radiusM });
         task.state = 'completed';
       } catch (err) {
         task.state = 'failed';
@@ -794,15 +807,32 @@ export default function createApplicationsRouter(repo) {
   // POST /api/agencies/search — Lance une passe de prospection (découverte)
   // Répond 202 : le crawl et les géocodages durent plusieurs minutes.
   router.post('/agencies/search', (req, res) => {
-    const zone = String(req.body?.zone || 'ile-de-france').trim();
+    const city = String(req.body?.city || '').trim();
+    const departement = String(req.body?.departement || '').trim();
+    const rawZone = String(req.body?.zone || '').trim();
     const radiusM = req.body?.radius_m ?? null;
+
+    if (city && rawZone) {
+      return res.status(400).json({
+        error: 'city et zone sont exclusifs : zone rejoue un préréglage historique, '
+          + 'city résout une commune réelle. Envoie l’un des deux.',
+      });
+    }
+    // Sans ville ni zone, on reste sur le préréglage historique : les clients
+    // déjà déployés continuent de fonctionner sans changement.
+    const zone = city ? null : (rawZone || 'ile-de-france');
 
     if (radiusM != null && (!Number.isInteger(Number(radiusM)) || Number(radiusM) <= 0)) {
       return res.status(400).json({ error: 'radius_m doit être un nombre de mètres positif' });
     }
 
     try {
-      const task = enqueueSearchTask({ zone, radiusM: radiusM == null ? null : Number(radiusM) });
+      const task = enqueueSearchTask({
+        zone,
+        city: city || null,
+        departement: departement || null,
+        radiusM: radiusM == null ? null : Number(radiusM),
+      });
       res.status(202).json({
         accepted: true,
         task_id: task.task_id,

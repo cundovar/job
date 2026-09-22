@@ -222,9 +222,27 @@ def _api(method: str, path: str, payload: Dict[str, Any] | None = None) -> Dict[
 
 
 def agency_search(args: Dict[str, Any]) -> str:
-    zone = str(args.get("zone") or "ile-de-france")
+    city = str(args.get("city") or "").strip()
+    departement = str(args.get("departement") or "").strip()
+    zone = str(args.get("zone") or "").strip()
     radius_m = args.get("radius_m")
-    payload: Dict[str, Any] = {"zone": zone}
+
+    if city and zone:
+        raise ValueError(
+            "city et zone sont exclusifs : zone rejoue un preréglage historique "
+            "(ile-de-france, paris-20, paris-19, ouest-paris), city resout une "
+            "commune reelle. Choisis l'un des deux."
+        )
+
+    payload: Dict[str, Any] = {}
+    if city:
+        payload["city"] = city
+        if departement:
+            payload["departement"] = departement
+        perimetre = f"Ville : {city}" + (f" (departement {departement})" if departement else "")
+    else:
+        payload["zone"] = zone or "ile-de-france"
+        perimetre = f"Zone (prereglage) : {payload['zone']}"
     if radius_m is not None:
         payload["radius_m"] = int(radius_m)
 
@@ -234,7 +252,7 @@ def agency_search(args: Dict[str, Any]) -> str:
         [
             "Prospection lancee (traitement long, plusieurs minutes).",
             "",
-            f"Zone : {zone}",
+            perimetre,
             f"Rayon : {radius_m} m" if radius_m is not None else "Rayon : aucun filtre de distance",
             f"task_id : {task_id}",
             "",
@@ -251,19 +269,52 @@ def agency_status(args: Dict[str, Any]) -> str:
         raise ValueError("task_id manquant : il est renvoye par agency_search.")
 
     task = _api("GET", f"/api/agencies/search/status/{task_id}")
+    resolved = task.get("resolved_city") or {}
     lines = [
         f"Prospection {task_id}",
         "",
         f"Etat : {task.get('state')}",
-        f"Zone : {task.get('zone')}",
+    ]
+    if task.get("city"):
+        # La ville resolue est celle qui a servi : si elle differe de la demande,
+        # c'est la resolution qui l'a tranchee, et ca doit se voir.
+        lines.append(f"Ville demandee : {task.get('city')}")
+        if resolved:
+            lines.append(
+                f"Ville resolue : {resolved.get('name')} (INSEE {resolved.get('insee')}, "
+                f"{', '.join(resolved.get('postal_codes') or []) or 'codes postaux inconnus'})"
+            )
+    else:
+        lines.append(f"Zone : {task.get('zone')}")
+    lines += [
         f"Rayon : {task.get('radius_m') or 'aucun'}",
         f"En file depuis : {task.get('queued_at')}",
     ]
+    steps = task.get("steps") or []
+    if steps:
+        # Les etapes disent ou en est la passe : sans elles, un run lent et un run
+        # bloque se ressemblent, et on relance une prospection deja en cours.
+        lines += ["", "Etapes :"]
+        for step in steps:
+            duree = step.get("duration_ms")
+            volumes = " · ".join(f"{k} {v}" for k, v in (step.get("volumes") or {}).items())
+            lines.append(
+                f"  - {step.get('step')} : "
+                + (f"{duree} ms" if duree is not None else "en cours")
+                + (f" ({volumes})" if volumes else "")
+            )
     if task.get("error"):
         lines += ["", f"Erreur : {task['error']}"]
     result = task.get("result") or {}
     if result:
         lines += ["", f"Agences retenues : {result.get('total')}", f"Domaines scannes : {result.get('scanned_domains')}"]
+        perimeter = result.get("perimeter") or {}
+        if perimeter:
+            lines.append(
+                f"Dans {perimeter.get('city')} (adresse lue ou registre) : {perimeter.get('verifie')} · "
+                f"mention seule : {perimeter.get('mention_seule')} · "
+                f"sans lien verifiable : {perimeter.get('sans_lien')}"
+            )
         radius = result.get("radius")
         if radius:
             lines.append(
@@ -271,8 +322,15 @@ def agency_status(args: Dict[str, Any]) -> str:
                 f"{radius.get('approximate')} · hors rayon : {radius.get('outside')} · "
                 f"position inconnue : {radius.get('unknown')}"
             )
+        search_id = task.get("search_id")
         lines.append("")
-        lines.append("Lire la liste avec agency_list.")
+        # Le search_id est la seule facon de relire CETTE passe : sans lui,
+        # agency_list ouvrirait « la plus recente », qui peut etre une autre ville.
+        lines.append(f"search_id : {search_id or 'aucun (passe sans resultat)'}")
+        if search_id:
+            lines.append(f"Lire la liste avec agency_list(search_id=\"{search_id}\").")
+        else:
+            lines.append("Aucune recherche a relire : relance agency_search.")
     return "\n".join(lines)
 
 
@@ -280,14 +338,28 @@ def agency_list(args: Dict[str, Any]) -> str:
     limit = args.get("limit")
     limit = int(limit) if limit is not None else None
     postal_code = str(args.get("postal_code") or "").strip()
+    search_id = str(args.get("search_id") or "").strip()
 
-    if not AGENCIES_PATH.exists():
-        raise ValueError(
-            f"Aucune prospection enregistree ({AGENCIES_PATH} absent). "
-            "Lance agency_search d'abord. Ne pas citer d'agences de memoire."
-        )
-    payload = json.loads(AGENCIES_PATH.read_text(encoding="utf-8"))
+    if search_id:
+        # Relire la passe nommee, jamais « la plus recente » : entre deux
+        # prospections, latest.json peut appartenir a une autre ville, et la
+        # liste se relirait comme celle qu'on vient de lancer.
+        payload = _api("GET", f"/api/agencies/searches/{search_id}")
+    else:
+        if not AGENCIES_PATH.exists():
+            raise ValueError(
+                f"Aucune prospection enregistree ({AGENCIES_PATH} absent). "
+                "Lance agency_search d'abord. Ne pas citer d'agences de memoire."
+            )
+        payload = json.loads(AGENCIES_PATH.read_text(encoding="utf-8"))
     agencies = payload.get("agencies") or []
+
+    # Nommer la passe lue, pas « la derniere » : quand deux villes s'enchainent,
+    # « la derniere prospection » ne dit pas laquelle on a sous les yeux.
+    read_id = payload.get("search_id") or search_id
+    city = payload.get("city") or {}
+    origin = f"recherche {read_id}" if read_id else f"fichier {AGENCIES_PATH.name}"
+    perimetre = city.get("label") or payload.get("zone_label") or payload.get("zone") or "perimetre inconnu"
 
     if postal_code:
         matching = [
@@ -300,8 +372,9 @@ def agency_list(args: Dict[str, Any]) -> str:
             # vide, pris pour « il n'y a rien », qui a fait inventer des agences.
             known = sorted({str(a.get("postal_code") or "?") for a in agencies})
             raise ValueError(
-                f"Aucune agence en {postal_code} dans la derniere prospection "
-                f"({payload.get('generated_at')}). Codes postaux presents : {', '.join(known)}. "
+                f"Aucune agence en {postal_code} dans la {origin} "
+                f"({perimetre}, {payload.get('generated_at')}). "
+                f"Codes postaux presents : {', '.join(known)}. "
                 "Relance agency_search pour couvrir cette zone."
             )
         agencies = matching
@@ -311,7 +384,7 @@ def agency_list(args: Dict[str, Any]) -> str:
 
     lines = [
         f"Agences prospectees — {len(agencies)} resultat(s)",
-        f"Passe du {payload.get('generated_at')} · zone {payload.get('zone_label') or payload.get('zone')}",
+        f"Passe du {payload.get('generated_at')} · {perimetre} · {origin}",
         "",
     ]
     for index, agency in enumerate(agencies, start=1):
@@ -330,6 +403,13 @@ def agency_list(args: Dict[str, Any]) -> str:
         lines.append(
             f"   Distance : {distance} m" if distance is not None else "   Distance : non mesurable"
         )
+        # Le lien a la ville se dit avec sa preuve : « mention » veut dire que le
+        # nom apparait dans une page, ce qui n'etablit aucune implantation.
+        if agency.get("city_match"):
+            lines.append(
+                f"   Perimetre {agency.get('city') or ''} : {agency['city_match']}"
+                f" — {agency.get('city_match_evidence') or 'sans preuve'}"
+            )
         lines.append("")
     return "\n".join(lines).rstrip()
 
@@ -466,17 +546,36 @@ TOOLS: Dict[str, Dict[str, Any]] = {
             "ENTREPRISES/AGENCES — Lance une prospection qui DECOUVRE de nouvelles agences "
             "web (moteurs de recherche, annuaires), releve leur adresse sur leur site et "
             "calcule leur distance. C'est l'outil a utiliser pour « trouve-moi des agences "
-            "dans le 20e ». Traitement long : repond immediatement avec un task_id, suivre "
-            "avec agency_status, lire les resultats avec agency_list."
+            "a Montreuil » ou « dans le 20e ». Donner 'city' pour n'importe quelle commune "
+            "francaise ; 'zone' ne sert qu'aux quatre prereglages historiques. Traitement "
+            "long : repond immediatement avec un task_id, suivre avec agency_status, lire "
+            "les resultats avec agency_list(search_id=...)."
         ),
         "handler": agency_search,
         "inputSchema": {
             "type": "object",
             "properties": {
+                "city": {
+                    "type": "string",
+                    "description": (
+                        "Nom de la commune a prospecter, ex. Montreuil, Lille, Quimper. "
+                        "Toute commune francaise est acceptee : la liste des zones n'est "
+                        "pas la liste des villes supportees. Exclusif avec 'zone'."
+                    ),
+                },
+                "departement": {
+                    "type": "string",
+                    "description": (
+                        "Code du departement, ex. 93, 59, 2A. Obligatoire quand plusieurs "
+                        "communes portent le meme nom (Montreuil existe en 93, 85 et 28)."
+                    ),
+                },
                 "zone": {
                     "type": "string",
-                    "default": "ile-de-france",
-                    "description": "Zone de recherche : ile-de-france, paris-20, paris-19, ouest-paris.",
+                    "description": (
+                        "Prereglage historique : ile-de-france, paris-20, paris-19, "
+                        "ouest-paris. Exclusif avec 'city' ; preferer 'city'."
+                    ),
                 },
                 "radius_m": {
                     "type": "integer",
@@ -493,8 +592,10 @@ TOOLS: Dict[str, Dict[str, Any]] = {
     "agency_status": {
         "description": (
             "ENTREPRISES/AGENCES — Donne l'avancement d'une prospection lancee par "
-            "agency_search. Instantane. Tant que l'etat n'est pas 'completed', aucun "
-            "resultat n'existe encore."
+            "agency_search. Instantane. Detaille les etapes (resolution de la ville, "
+            "registre, decouverte web, crawl, geocodage, IA, publication) et rend le "
+            "search_id a passer a agency_list. Tant que l'etat n'est pas 'completed', "
+            "aucun resultat n'existe encore."
         ),
         "handler": agency_status,
         "inputSchema": {
@@ -506,15 +607,24 @@ TOOLS: Dict[str, Dict[str, Any]] = {
     },
     "agency_list": {
         "description": (
-            "ENTREPRISES/AGENCES — Lit la derniere prospection enregistree et affiche chaque "
+            "ENTREPRISES/AGENCES — Lit une prospection enregistree et affiche chaque "
             "agence avec son adresse, son code postal, sa distance et la SOURCE de l'adresse. "
-            "Lecture de fichier, instantane. Si aucune agence ne correspond a la zone "
-            "demandee, leve une erreur explicite plutot que de renvoyer une liste vide."
+            "Lecture de fichier, instantane. Donner le 'search_id' rendu par agency_status : "
+            "sans lui, l'outil ouvre la derniere passe publiee, qui peut porter sur une autre "
+            "ville. Si aucune agence ne correspond a la zone demandee, leve une erreur "
+            "explicite plutot que de renvoyer une liste vide."
         ),
         "handler": agency_list,
         "inputSchema": {
             "type": "object",
             "properties": {
+                "search_id": {
+                    "type": "string",
+                    "description": (
+                        "Identifiant de la passe a relire, rendu par agency_status. "
+                        "Omis, l'outil lit la derniere passe publiee."
+                    ),
+                },
                 "limit": {"type": "integer"},
                 "postal_code": {
                     "type": "string",

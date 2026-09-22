@@ -75,6 +75,20 @@ front/ server/   interface de validation (Vite/React + Express)
   vient la position (`adresse`, `contact/legales`, `siège (registre)`,
   `ville/arr (~centre)`, vide). Seul un `how` valant adresse compte « dans le
   rayon ». Ne jamais déduire un code postal d'une adresse absente.
+- **`ZONES` n'est pas la liste des villes prospectables** : ce sont quatre
+  préréglages historiques avec leurs requêtes écrites à la main. Toute commune
+  française passe par `--ville` (`--departement` quand il y a homonymie),
+  résolue chez `geo.api.gouv.fr` par `tools/city_resolver.py` ; son périmètre est
+  construit à l'exécution dans `DYNAMIC_ZONES`, si bien qu'ajouter une ville ne
+  modifie aucune constante. `--ville` et `--zone` sont exclusifs : on refuse, on
+  n'arbitre pas. Le mode ville génère toujours **deux familles de requêtes**
+  (`agence` et `formation`), conservées jusqu'au résultat pour que la piste
+  formateur ne se perde pas en route.
+- **`city_match` est à la commune ce que `how` est à l'adresse.** Seuls
+  `adresse` (code postal lu dans une adresse) et `registre` (code commune du
+  siège) valent implantation ; `mention` dit seulement que le nom de la ville
+  figure dans une page, ce qui n'établit rien. Un `mention` est classé en
+  dernier, jamais supprimé ni promu.
 - **Une zone sans résultat lève une erreur nommant les zones connues**, jamais
   une liste vide : un vide se relit comme « il n'y a rien », et c'est ce qui a
   conduit un agent à inventer deux agences.

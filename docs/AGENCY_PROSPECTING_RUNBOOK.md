@@ -34,13 +34,56 @@ Elles existent parce qu'un agent, faute de trouver des agences, en a inventé de
    toujours son extrait.
 4. **Une zone sans résultat lève une erreur nommant les zones connues.** Idem
    pour une recherche inconnue côté API : la réponse nomme les recherches
-   disponibles. Un vide se relit comme « il n'y a rien » — c'est exactement la
+   disponibles, et pour une commune introuvable : la réponse nomme les communes
+   approchantes. Un vide se relit comme « il n'y a rien » — c'est exactement la
    lecture qui a produit les fausses agences.
 5. **Une donnée manquante donne `incertain`, jamais `ecarte`.** Et un formateur
    n'est jamais écarté pour n'être pas une agence : `agence` et `formation` sont
    deux catégories de premier rang, toutes deux visibles par défaut dans le front.
 
-## 3. Les catégories
+## 3. Désigner un périmètre : `--ville`, et pourquoi `ZONES` n'est pas la liste des villes
+
+`ZONES`, dans `tools/agency_prospecting_v2.py`, contient **quatre préréglages
+historiques** — `ile-de-france`, `ouest-paris`, `paris-19`, `paris-20` — chacun
+portant ses propres requêtes écrites à la main. Ce n'est pas la liste des villes
+supportées. Lue comme telle, elle donnait deux lectures fausses : « Lille n'est
+pas prospectable » et « pour ajouter une ville, il faut modifier le code ».
+
+Le mode ville ne touche pas à `ZONES` :
+
+```bash
+python3 tools/agency_prospecting_v2.py --ville Montreuil --departement 93
+python3 tools/agency_prospecting_v2.py --ville Lille
+python3 tools/agency_prospecting_v2.py --ville Quimper --radius 3000
+```
+
+- `--ville` et `--zone` sont **exclusifs**. Donner les deux est refusé, pas
+  arbitré.
+- La commune est résolue chez
+  [`geo.api.gouv.fr`](https://geo.api.gouv.fr/communes) (API Découpage
+  administratif, ouverte, sans jeton) : nom officiel, **code INSEE**, codes
+  postaux, département, centre. Rien n'est déduit d'un nom.
+- **Un homonyme n'est jamais tranché à la place de l'utilisateur.** `Montreuil`
+  existe en 93 (93048), en 85 et en 28 : sans `--departement`, l'erreur nomme les
+  trois candidates. Le périmètre est ensuite construit à l'exécution
+  (`DYNAMIC_ZONES`), pas ajouté à `ZONES`.
+- Les requêtes sont générées en **deux familles**, conservées jusqu'au résultat
+  (`query_families` dans le payload) : `agence` (agence web, WordPress,
+  développement) et `formation` (formation numérique, RGAA, accessibilité). La
+  seconde existe pour que la piste formateur ne se perde pas en route.
+- Le lien d'une agence à la ville se lit dans `city_match`, avec sa preuve :
+
+| `city_match` | Ce que ça dit | Compte comme implantation |
+|---|---|---|
+| `adresse` | une adresse lue sur le site tombe sur un code postal de la commune | oui |
+| `registre` | le registre public donne cette commune comme siège (`code_commune`) | oui |
+| `mention` | le nom de la ville apparaît dans une page | **non** |
+| `aucun` | rien ne relie la structure à la commune | non |
+
+  Un `mention` n'est pas filtré mais il est classé en dernier et dit pourquoi :
+  un nom de ville dans un texte de page n'établit aucune implantation.
+
+## 4. Les catégories
 
 | Catégorie | Sens | Angle de candidature |
 |---|---|---|
@@ -49,7 +92,7 @@ Elles existent parce qu'un agent, faute de trouver des agences, en a inventé de
 | `incertain` | Auto-description absente ou illisible — reste qualifiable | — |
 | `ecarte` | Plateforme, annuaire, ou activité sans rapport | — |
 
-## 4. Plafonds de coût par run
+## 5. Plafonds de coût par run
 
 | Poste | Limite | Où |
 |---|---|---|
@@ -62,7 +105,7 @@ Elles existent parce qu'un agent, faute de trouver des agences, en a inventé de
 Les compteurs réellement consommés sont publiés dans `fit_analysis` du payload et
 repris dans le récapitulatif JSON imprimé sur stdout.
 
-## 5. Fichiers : runtime, snapshot, cache
+## 6. Fichiers : runtime, snapshot, cache
 
 | Chemin | Nature | Versionné |
 |---|---|---|
@@ -92,32 +135,38 @@ récentes. Ne sont **jamais** supprimées :
 Les identifiants supprimés sont listés dans `search.pruned` du récapitulatif :
 une suppression est annoncée, jamais silencieuse.
 
-## 6. Commandes
+## 7. Commandes
 
 ```bash
-# Passe de prospection sur une zone, avec rayon, sans analyse IA
+# N'importe quelle commune française, sans toucher au code
+python3 tools/agency_prospecting_v2.py --ville Lille
+python3 tools/agency_prospecting_v2.py --ville Montreuil --departement 93
+
+# Passe sur un préréglage historique, avec rayon, sans analyse IA
 python3 tools/agency_prospecting_v2.py --zone paris-20 --radius 2000 --no-ai
 
 # Même passe, analyse IA comprise (15 appels max)
 python3 tools/agency_prospecting_v2.py --zone paris-20 --radius 2000
 
-# Zones connues : le script les nomme lui-même si on se trompe
+# Préréglages connus : le script les nomme lui-même si on se trompe,
+# et rappelle que --ville accepte toute commune
 python3 tools/agency_prospecting_v2.py --zone inconnue
 
-# Tests hors ligne de la chaîne
+# Tests hors ligne de la chaîne (le mode ville rejoue geo.api.gouv.fr depuis
+# tests/fixtures/geo_communes.json : aucun appel réseau)
 python3 -m pytest tests/test_agency_prospecting.py tests/test_agency_fit_analyzer.py \
-                  tests/test_deployment_contract.py -q
+                  tests/test_deployment_contract.py tests/test_city_search.py -q
 ```
 
 > Les tests Node embarqués exigent Node ≥ 14 (optional chaining). Le `node` du
 > système peut être plus ancien : `export PATH="$HOME/.nvm/versions/node/v20.19.6/bin:$PATH"`.
 
-## 7. API
+## 8. API
 
 | Route | Rôle |
 |---|---|
-| `POST /api/agencies/search` | Lance une passe (202, file asynchrone). Le `search_id` produit apparaît dans le statut |
-| `GET /api/agencies/search/status/:taskId` | Suit la passe |
+| `POST /api/agencies/search` | Lance une passe (202, file asynchrone). Corps : `city` (+ `departement`) **ou** `zone`, jamais les deux — les donner ensemble rend `400` ; `radius_m` en option |
+| `GET /api/agencies/search/status/:taskId` | Suit la passe : ville demandée, ville résolue (nom, INSEE, codes postaux), étapes mesurées, et le `search_id` à relire |
 | `GET /api/agencies/searches` | Index des recherches, le plus récent d'abord |
 | `GET /api/agencies/searches/:searchId` | Résultats d'une recherche. `latest` est accepté comme alias |
 | `GET /api/agencies/analyses` | Analyses persistées, **lecture seule**, aplaties par domaine |
@@ -127,7 +176,7 @@ Un `search_id` inconnu rend `404` avec la liste des recherches disponibles.
 `data/agency_analyses.json` n'est jamais servi brut ni rendu modifiable depuis le
 navigateur.
 
-## 8. Reprise après incident
+## 9. Reprise après incident
 
 | Symptôme | Cause probable | Reprise |
 |---|---|---|
@@ -137,11 +186,14 @@ navigateur.
 | `index.json` corrompu | écriture interrompue | il est relu de façon tolérante et reconstruit au run suivant ; les snapshots déjà écrits ne sont pas perdus |
 | Analyses toutes en `review` | clés IA absentes du `.env`, ou fournisseurs tombés | vérifier `DEEPSEEK_API_KEY` / `GLM_API_KEY` ; `review` est le comportement voulu — aucun texte n'est inventé |
 | Le cache d'analyses a disparu en prod | `data/` hors volume persistant | remonter le volume ; une analyse perdue se recalcule, elle n'est jamais inventée |
+| `Commune introuvable : « … »` | faute de frappe, ou commune fusionnée | l'erreur liste les communes approchantes rendues par l'API — reprendre un de ces noms ; **aucune recherche de repli n'est lancée** |
+| `Plusieurs communes portent ce nom` | homonymes (Montreuil : 93, 85, 28) | rejouer avec `--departement <code>` ; le message donne les codes |
+| Toutes les agences en `city_match: mention` | la ville n'apparaît que dans des textes de page | c'est un résultat, pas une panne : aucune implantation n'a été établie. Élargir avec `--radius` ou vérifier à la main |
 
-## 9. Ce que cette chaîne ne fait pas (encore)
+## 10. Ce que cette chaîne ne fait pas (encore)
 
-Les phases 4 à 8 du plan (`aidd_docs/tasks/2026_09/2026_09_21_targeted_agency_search/`)
-couvrent le mode ville générique, la mesure du juge, la préparation automatique,
-l'approbation par agent et l'envoi sous quotas. Aucune n'est active : **les
-sorties externes restent désactivées par défaut** (`--send-outputs`), et rien
-n'est envoyé sans demande explicite.
+Les phases 5 à 8 du plan (`aidd_docs/tasks/2026_09/2026_09_21_targeted_agency_search/`)
+couvrent la mesure du juge, la préparation automatique, l'approbation par agent et
+l'envoi sous quotas. Aucune n'est active : **les sorties externes restent
+désactivées par défaut** (`--send-outputs`), et rien n'est envoyé sans demande
+explicite.

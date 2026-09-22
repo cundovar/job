@@ -52,8 +52,36 @@ elle-même, lu par `classify_self_description`, qui cite toujours son extrait.
   "version": "v2",
   "generated_at": "2026-09-21T13:09:00",
   "total": 7,
-  "zone": "paris-20",              // clé de ZONES dans le v2
+  // Préréglage historique (clé de ZONES) OU périmètre construit à l'exécution
+  // pour --ville : "ville-montreuil-93". ZONES n'est pas la liste des villes
+  // supportées, voir le runbook § 3.
+  "zone": "paris-20",
   "zone_label": "Paris 20e / Nation",
+  // Présent seulement en mode --ville. La commune vient de l'API Découpage
+  // administratif : rien n'y est déduit d'un nom.
+  "city": {
+    "name": "Montreuil", "slug": "montreuil", "insee": "93048",
+    "departement": "93", "departement_name": "Seine-Saint-Denis",
+    "postal_codes": ["93100"], "latitude": 48.86, "longitude": 2.44,
+    "label": "Montreuil (93 · Seine-Saint-Denis)",
+    "source": "geo.api.gouv.fr (API Découpage administratif)"
+  },
+  // Combien d'agences sont réellement reliées à la commune, et par quoi.
+  // null hors mode ville.
+  "perimeter": {
+    "city": "Montreuil", "insee": "93048",
+    "verifie": 6,          // city_match = adresse ou registre
+    "mention_seule": 4,    // le nom de la ville n'apparaît que dans une page
+    "sans_lien": 2,
+    "sans_lien_details": ["exemple.fr — aucune adresse lue"]
+  },
+  // Les deux familles de requêtes, conservées jusqu'au résultat : la piste
+  // formateur ne doit pas se perdre entre la génération et l'affichage.
+  "query_families": { "agence": ["agence web Montreuil", "..."],
+                      "formation": ["formation numérique Montreuil", "..."] },
+  // Étapes mesurées, dans l'ordre d'exécution. duration_ms null = en cours.
+  "steps": [{ "name": "resolution", "duration_ms": 412, "volumes": {} },
+            { "name": "decouverte_web", "duration_ms": 61230, "volumes": { "hotes": 75 } }],
   "distance_origin": "21 Rue Monte-Cristo, 75020 Paris",  // null si --no-distance
   "radius": null,                  // voir plus bas, null si --radius absent
   "registry": {
@@ -83,6 +111,9 @@ elle-même, lu par `classify_self_description`, qui cite toujours son extrait.
 | `how` | string | Forme courte de `address_source`, voir le tableau |
 | `distance_m` | number \| null | Distance à `distance_origin`. `null` = non mesurable |
 | `zone_match` | `tier1` \| `tier2` \| `none` | Correspondance aux termes de zone |
+| `city` | string \| null | Commune du périmètre demandé. Absent hors mode `--ville` |
+| `city_match` | `adresse` \| `registre` \| `mention` \| `aucun` | Ce qui relie l'agence à cette commune |
+| `city_match_evidence` | string | La preuve citée : code postal lu, code commune du registre, ou extrait de page |
 | `score` | number | Score de pertinence (0-100). **Classe, n'élimine pas** |
 | `raw_score` | number | Score avant bornage à 0-100 |
 | `family_scores` | object | Détail `stack` / `agence` / `formation`, chacun plafonné |
@@ -203,6 +234,23 @@ Règles qui en découlent, et qui sont testées :
   structures non diffusibles au lieu de les omettre : le nom devient un gabarit
   et l'adresse disparaît. La compléter à partir de la commune produirait une
   adresse fabriquée et parfaitement crédible.
+
+## `city_match` : la même garantie appliquée à la commune
+
+`how` dit d'où vient une position ; `city_match` dit ce qui relie l'agence à la
+commune demandée. Les deux répondent à la même tentation : conclure d'un nom.
+
+| `city_match` | Établi par | Dans le périmètre ? |
+| --- | --- | --- |
+| `adresse` | un code postal de la commune, lu dans une adresse (`how` valant `adresse` ou `contact/legales`) | oui |
+| `registre` | le `code_commune` du siège déclaré, égal au code INSEE | oui |
+| `mention` | le nom de la commune apparaît dans une page du site | **non** |
+| `aucun` | rien | non |
+
+Le filtre porte donc sur **l'adresse vérifiée et le code commune**, jamais sur un
+nom lu dans une page : « nous intervenons à Lille » ne fait pas une implantation
+lilloise. Les `mention` ne sont pas supprimés — ils sont classés en dernier et
+disent pourquoi, parce qu'un résultat effacé se redécouvre au run suivant.
 
 ## Cache de géocodage
 

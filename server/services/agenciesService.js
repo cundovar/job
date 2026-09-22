@@ -128,13 +128,15 @@ function escapeCSVField(field) {
   return str;
 }
 
-// Colonnes de config/companies.csv, dans l'ordre. `adresse` et `code_postal`
-// restent vides : une agence ajoutée depuis un domaine n'a aucune adresse relevée,
-// et la déduire du nom de domaine serait l'inventer.
-const CSV_HEADER = 'nom,site,ville,type,statut,poste_vise,adresse,code_postal';
+// Colonnes de config/companies.csv, dans l'ordre — 9 depuis que `siren` existe.
+// `adresse`, `code_postal` et `siren` restent vides : une agence ajoutée depuis
+// un domaine n'a ni adresse relevée ni immatriculation confirmée, et les déduire
+// du nom de domaine serait les inventer. Écrire moins de champs que l'en-tête
+// décalerait toutes les colonnes à la relecture.
+const CSV_HEADER = 'nom,site,ville,type,statut,poste_vise,adresse,code_postal,siren';
 
 function appendToCSV(csvPath, agencyName, domain) {
-  const line = `${escapeCSVField(agencyName)},https://${domain},,agence_com_engagee,a_qualifier,,,\n`;
+  const line = `${escapeCSVField(agencyName)},https://${domain},,agence_com_engagee,a_qualifier,,,,\n`;
 
   // Ajoute en-tête si le fichier n'existe pas
   if (!fs.existsSync(csvPath)) {
@@ -388,18 +390,48 @@ const PROSPECTING_TIMEOUT = Number.parseInt(
 );
 
 const ZONE_PATTERN = /^[a-z0-9-]{1,40}$/;
+// Un nom de commune, pas une expression libre : lettres accentuées, espaces,
+// apostrophes et traits d'union. Ce qui n'entre pas ici n'a pas à devenir un
+// argument de ligne de commande.
+const CITY_PATTERN = /^[\p{L}][\p{L}\s'’.-]{1,59}$/u;
+const DEPARTEMENT_PATTERN = /^(2[AB]|\d{2,3})$/i;
 
-function sameProspectingRequest(task, { zone, radiusM }) {
+function sameProspectingRequest(task, { zone, city, departement, radiusM }) {
   const requestedRadius = radiusM == null ? null : Number(radiusM);
   const taskRadius = task?.radius_m == null ? null : Number(task.radius_m);
-  return task?.zone === zone && taskRadius === requestedRadius;
+  // La ville fait partie de l'identité de la demande : sans elle, une recherche
+  // « Lille » relancée pendant un run « Montreuil » recevrait le task_id de
+  // Montreuil et lirait ses résultats en croyant lire les siens.
+  return (
+    (task?.zone || null) === (zone || null)
+    && (task?.city || null) === (city || null)
+    && (task?.departement || null) === (departement || null)
+    && taskRadius === requestedRadius
+  );
 }
 
-async function runProspecting({ zone = 'ile-de-france', radiusM = null } = {}) {
-  if (!ZONE_PATTERN.test(zone)) {
-    throw new Error(`Zone invalide : ${zone}`);
+async function runProspecting({ zone = null, city = null, departement = null, radiusM = null } = {}) {
+  const args = ['tools/agency_prospecting_v2.py'];
+  if (city) {
+    if (!CITY_PATTERN.test(city)) {
+      throw new Error(`Ville invalide : ${city}`);
+    }
+    args.push('--ville', city);
+    if (departement) {
+      if (!DEPARTEMENT_PATTERN.test(departement)) {
+        throw new Error(`Département invalide : ${departement}`);
+      }
+      args.push('--departement', String(departement).toUpperCase());
+    }
+  } else {
+    // `zone` reste accepté pour les préréglages historiques, mais ce n'est plus
+    // la voie recommandée : une ville se demande par son nom.
+    const zoneKey = zone || 'ile-de-france';
+    if (!ZONE_PATTERN.test(zoneKey)) {
+      throw new Error(`Zone invalide : ${zoneKey}`);
+    }
+    args.push('--zone', zoneKey);
   }
-  const args = ['tools/agency_prospecting_v2.py', '--zone', zone];
   if (radiusM != null) {
     const radius = Number.parseInt(radiusM, 10);
     if (!Number.isInteger(radius) || radius <= 0) {

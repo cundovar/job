@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 ---
 
 # Instruction: Mode ville générique de bout en bout
@@ -97,7 +97,27 @@ journey
 
 | Task | Acceptance criteria |
 | ---- | ------------------- |
-| 1 | `--ville Montreuil` résout 93100/93066 et `--ville Lille` résout son propre périmètre, sans entrée ajoutée dans `ZONES` et sans perdre les résultats `formation`. |
+| 1 | `--ville Montreuil` résout 93100/93048 et `--ville Lille` résout son propre périmètre, sans entrée ajoutée dans `ZONES` et sans perdre les résultats `formation`. |
 | 2 | Hermes lance, suit et relit une recherche par ville sans confondre deux tâches de villes différentes. |
 | 3 | Le statut expose les étapes et le crawl profond ne traite que les candidats appartenant au périmètre vérifié. |
 | 4 | Une fixture de ville absente du code produit des requêtes et un résultat historisé sans modification d'une constante de communes. |
+
+## Écarts assumés à la livraison
+
+1. **Le critère 1 annonçait `93066` : ce n'est pas le code INSEE de Montreuil.**
+   La commune résolue est `93048` (code postal `93100`), vérifié en direct sur
+   l'API Découpage administratif. Le critère a été corrigé plutôt que le test
+   ajusté à la valeur attendue — figer `93066` aurait fabriqué un périmètre
+   plausible et faux, exactement ce que la chaîne interdit ailleurs. Au passage,
+   la supposition « Montreuil est sans ambiguïté » ne tient pas non plus : trois
+   communes portent ce nom (93, 85, 28), d'où l'exigence de `--departement`.
+2. **Les tests vivent dans `tests/test_city_search.py`**, un fichier dédié, au
+   lieu d'être dispersés dans les trois suites listées par la projection
+   d'architecture. Le mode ville est un parcours complet — résolution, requêtes,
+   périmètre, étapes, Node, MCP — et le lire d'un seul tenant vaut mieux que le
+   reconstituer dans trois fichiers. Les fixtures sont dans
+   `tests/fixtures/geo_communes.json`, la suite tourne hors ligne.
+3. **`tools/` et `agency_analysis/` ne sont pas copiés dans l'image Docker.**
+   Écart antérieur à cette phase — il touche aussi `--zone` — et donc non
+   corrigé ici, mais il rend la prospection inopérante dans le conteneur. À
+   traiter séparément.
