@@ -32,6 +32,51 @@ def load_v2():
     return module
 
 
+def test_bing_redirects_are_decoded_before_filtering():
+    """Bing masque les vrais résultats derrière /ck/a?...&u=a1<base64url>."""
+    import base64
+
+    v2 = load_v2()
+    target = "https://www.konexio.eu/"
+    payload = base64.urlsafe_b64encode(target.encode()).decode().rstrip("=")
+    redirect = f"https://www.bing.com/ck/a?x=1&u=a1{payload}&ntb=1"
+
+    assert v2.decode_redirect(redirect) == target
+    assert v2._harvest(
+        f'<a href="{redirect}">KONEXIO Paris site officiel</a>',
+        "https://www.bing.com/",
+        "bing",
+        "KONEXIO Paris site officiel",
+        5,
+    ) == [(target, "KONEXIO Paris site officiel", "bing:KONEXIO Paris site officiel")]
+
+
+def test_site_lookup_ignores_bing_noise_without_query_identity(monkeypatch):
+    """Une SERP Bing avec des liens valides mais hors sujet n'est pas une piste."""
+    v2 = load_v2()
+
+    monkeypatch.setattr(v2, "search_ddg", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(v2, "search_bing", lambda *_args, **_kwargs: [
+        ("https://forums.commentcamarche.net/forum/affich-1", "forum le bon coin", "bing:q"),
+        ("https://www.espagne-visite.com/fr/", "Voyage Espagne", "bing:q"),
+        ("https://www.konexio.eu/", "KONEXIO - Accueil", "bing:q"),
+    ])
+
+    assert v2._site_lookup_search("KONEXIO Paris site officiel") == [
+        ("https://www.konexio.eu/", "bing")
+    ]
+
+
+def test_microsoft_help_pages_are_never_engine_candidates():
+    v2 = load_v2()
+
+    for host in (
+        "go.microsoft.com", "support.microsoft.com", "help.bing.microsoft.com",
+        "bing.com", "www.deepl.com", "forums.commentcamarche.net",
+    ):
+        assert v2.is_bad_host(host)
+
+
 def test_prospecting_writes_only_inside_the_repository():
     """Régression : les chemins absolus visaient ~/apps/job-search-automation-package.
 

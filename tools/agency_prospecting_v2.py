@@ -431,6 +431,14 @@ BAD_HOST_PARTS = [
     'google.', 'bing.', 'duckduckgo.', 'facebook.', 'instagram.', 'linkedin.', 'youtube.',
     'pinterest.', 'twitter.', 'x.com', 'github.', 'npmjs.', 'wikipedia.', 'societe.com',
     'verif.com', 'pagesjaunes.fr', 'indeed.', 'hellowork.', 'welcometothejungle.',
+    # Bruit renvoyé par Bing quand il sert ses propres pages d'aide/consentement
+    # au lieu d'une vraie SERP. Ces hôtes ne sont jamais le site officiel d'une
+    # agence ni une source utile de liens à crawler.
+    'microsoft.com', 'microsoftonline.com',
+    # SERP Bing dégradée déjà observée : pages de traduction/forums étrangers
+    # sans rapport avec la requête métier.
+    'deepl.com', 'pons.com', 'bab.la', 'reverso.net', 'commentcamarche.net',
+    'dobreprogramy.pl', 'jofogas.hu', 'stackoverflow.com',
 ]
 DIRECTORY_HOSTS = {
     'sortlist.fr', 'sortlist.com', 'clutch.co', 'lafabriquedunet.fr', 'impli.fr',
@@ -1102,9 +1110,43 @@ def _site_lookup_search(query: str, max_results: int = 6) -> list[tuple[str, str
         except Exception:
             continue  # un moteur muet ne fabrique pas de site
         for href, _title, _source in hits:
+            if not _site_lookup_hit_matches_query(query, href, _title):
+                continue
             if (href, label) not in found:
                 found.append((href, label))
     return found[:max_results * 2]
+
+
+SITE_LOOKUP_GENERIC_TOKENS = {
+    'site', 'officiel', 'officielle', 'agence', 'web', 'digital', 'digitale',
+    'studio', 'formation', 'formations', 'paris', 'france', 'ile', 'de',
+    'montreuil', 'lille', 'lyon', 'marseille', 'sarl', 'sas', 'eurl',
+    'association', 'entreprise', 'societe', 'société', 'services',
+}
+
+
+def _query_identity_tokens(query: str) -> list[str]:
+    """Tokens qui identifient vraiment la structure cherchée.
+
+    Les SERP Bing dégradées peuvent contenir beaucoup de liens valides mais
+    totalement hors sujet. Pour la recherche d'un site officiel, un candidat qui
+    ne cite aucun token distinctif de la requête dans son titre ou son URL n'est
+    pas une piste : il serait ensuite crawlé pour rien et compterait comme
+    résultat moteur.
+    """
+    tokens = re.findall(r'[a-z0-9]+', str(query or '').casefold())
+    return [
+        token for token in tokens
+        if (len(token) >= 4 or token.isdigit()) and token not in SITE_LOOKUP_GENERIC_TOKENS
+    ][:4]
+
+
+def _site_lookup_hit_matches_query(query: str, href: str, title: str) -> bool:
+    tokens = _query_identity_tokens(query)
+    if not tokens:
+        return True
+    blob = f'{href} {title}'.casefold()
+    return any(token in blob for token in tokens)
 
 
 def _site_lookup_crawl(url: str) -> tuple[list[tuple[str, str]], str]:
@@ -1265,7 +1307,9 @@ def root_url(url: str) -> str:
 
 
 def is_bad_host(host: str) -> bool:
-    if not host or any(b in host for b in BAD_HOST_PARTS):
+    if not host:
+        return True
+    if host in {'bing.com', 'duckduckgo.com', 'google.com'} or any(b in host for b in BAD_HOST_PARTS):
         return True
     # Les CDN, polices et assets entrent dans les graines parce qu'ils sont liés
     # depuis les pages crawlées, puis ressortent en « page d'accueil illisible ».
@@ -1368,8 +1412,13 @@ def search_bing(query: str, max_results=12) -> list[tuple[str, str, str]]:
             f' {getattr(exc, "code", "")}'.rstrip()))
         return []
     out = _harvest(page, 'https://www.bing.com/', 'bing', query, max_results)
+    if 'site officiel' in query.casefold():
+        out = [
+            hit for hit in out
+            if _site_lookup_hit_matches_query(query, hit[0], hit[1])
+        ]
     note_engine('bing', 'ok' if out else 'vide',
-                '' if out else 'page reçue sans lien exploitable')
+                '' if out else 'page reçue sans lien exploitable ou hors sujet')
     return out
 
 
