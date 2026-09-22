@@ -5,14 +5,6 @@ import pytest
 from agency_scout import core
 
 
-class FakeResp:
-    def __init__(self, payload, status=200):
-        self._p, self.status_code, self.text = payload, status, str(payload)
-
-    def json(self):
-        return self._p
-
-
 PLACES = {"places": [
     {"id": "near", "displayName": {"text": "Agence Proche"}, "formattedAddress": "10 rue X, 75020 Paris",
      "location": {"latitude": 48.8560, "longitude": 2.3990}, "websiteUri": "https://www.proche.fr/"},
@@ -25,7 +17,17 @@ PLACES = {"places": [
 
 @pytest.fixture
 def db(tmp_path, monkeypatch):
-    monkeypatch.setattr(core.requests.Session, "post", lambda self, *a, **k: FakeResp(PLACES))
+    # Le client Places est partagé avec la V2 (tools/google_places.py) :
+    # on simule la primitive brute au niveau du module scout.
+    def fake_places_search(query, api_key, *, opener=None, timeout=15,
+                           location_bias=None, page_size=None, max_pages=1,
+                           on_request=None):
+        assert location_bias is not None, "discover doit passer le biais de localisation"
+        if on_request:
+            on_request()
+        return PLACES["places"]
+
+    monkeypatch.setattr(core, "places_text_search", fake_places_search)
     conn = core.connect(tmp_path / "t.db")
     yield conn
     conn.close()

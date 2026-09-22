@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urljoin, urlparse
+from urllib.error import HTTPError
 
 import requests
 from bs4 import BeautifulSoup
@@ -32,6 +33,14 @@ from pydantic import BaseModel, Field, ValidationError
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.getenv("AGENCY_SCOUT_DB", ROOT / "data" / "agency_scout.db"))
+
+# Client Places partagé avec la V2 (tools/google_places.py) : un seul point
+# d'accès HTTP, un seul masque de champs, une seule gestion de la pagination.
+_TOOLS_DIR = ROOT / "tools"
+if str(_TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TOOLS_DIR))
+
+from google_places import places_text_search  # noqa: E402
 
 # Centre par défaut : l'adresse de référence déjà utilisée par la V2 (Paris 20e).
 DEFAULT_CENTER = tuple(float(x) for x in os.getenv("AGENCY_SCOUT_CENTER", "48.85536,2.39845").split(","))
@@ -42,11 +51,6 @@ DEFAULT_QUERIES = ["agence web", "agence digitale", "création site internet", "
 # gratuits/mois chez Google. Le plafond dur reste en dessous.
 MONTHLY_CAP = int(os.getenv("AGENCY_SCOUT_MONTHLY_CAP", "900"))
 MAX_PAGES_PER_QUERY = 3  # 20 résultats par page → 60 max par requête
-PLACES_URL = "https://places.googleapis.com/v1/places:searchText"
-FIELD_MASK = ",".join([
-    "places.id", "places.displayName", "places.formattedAddress", "places.location",
-    "places.websiteUri", "places.types", "nextPageToken",
-])
 
 TEXT_BUDGET = 3000
 UA = "Mozilla/5.0 (compatible; AgencyScout/1.0; +https://varascundo.com)"
@@ -117,29 +121,23 @@ def haversine_m(a: tuple[float, float], b: tuple[float, float]) -> int:
 
 
 def search_places(db, query: str, center: tuple[float, float], radius_m: int, api_key: str) -> list[dict]:
-    body = {
-        "textQuery": query,
-        "languageCode": "fr",
-        "regionCode": "FR",
-        "pageSize": 20,
-        "locationBias": {"circle": {"center": {"latitude": center[0], "longitude": center[1]},
-                                    "radius": float(min(radius_m, 50_000))}},
-    }
-    headers = {"X-Goog-Api-Key": api_key, "X-Goog-FieldMask": FIELD_MASK}
-    places: list[dict] = []
-    with requests.Session() as client:
-        for _ in range(MAX_PAGES_PER_QUERY):
-            _count_call(db)
-            resp = client.post(PLACES_URL, json=body, headers=headers, timeout=15)
-            if resp.status_code != 200:
-                raise RuntimeError(f"Google Places {resp.status_code} : {resp.text[:300]}")
-            data = resp.json()
-            places.extend(data.get("places", []))
-            token = data.get("nextPageToken")
-            if not token:
-                break
-            body["pageToken"] = token
-    return places
+    """Lieux bruts Places pour une requête ; chaque appel facturé passe dans le plafond."""
+    try:
+        return places_text_search(
+            query,
+            api_key,
+            location_bias=(center[0], center[1], radius_m),
+            page_size=20,
+            max_pages=MAX_PAGES_PER_QUERY,
+            on_request=lambda: _count_call(db),
+        )
+    except HTTPError as exc:
+        detail = ""
+        try:
+            detail = exc.read().decode("utf-8", "replace")[:300]
+        except Exception:
+            pass
+        raise RuntimeError(f"Google Places {exc.code} : {detail}") from exc
 
 
 def domain_of(url: str | None) -> str | None:
