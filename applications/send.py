@@ -188,11 +188,24 @@ def send_dossier(
     subject, body = _mail_parts(dossier_path / "mail_candidature.md")
     result["would_send"] = {"to": address, "contact_source": source, "subject": subject}
 
+    # Pièces jointes du dossier : CV validé + lettre en PDF. Absents = envoi
+    # texte seul ; le contrôle CV amont reste maître du refus.
+    attachments = [
+        path
+        for path in (
+            dossier_path / "cv" / "cv_final.pdf",
+            dossier_path / "lettre_motivation.pdf",
+        )
+        if path.exists()
+    ]
+
     if not commit:
         # Défaut sec : on s'arrête ici, le fournisseur n'est jamais touché.
         return result
 
-    send_result: SendResult = sender.send(to=address, subject=subject, body=body)
+    send_result: SendResult = sender.send(
+        to=address, subject=subject, body=body, attachments=attachments
+    )
     if send_result.ok:
         tracker.mark_sent(
             job,
@@ -207,6 +220,28 @@ def send_dossier(
         )
         result["sent"] = True
         result["message_id"] = send_result.message_id
+        result["attachments"] = [Path(a).name for a in attachments]
+        # Accusé de réception vers l'expéditeur : récap de ce qui vient de partir.
+        confirm_to = (os.getenv("BREVO_CONFIRM_TO") or os.getenv("EMAIL_SENDER") or "").strip()
+        if confirm_to and confirm_to.lower() != address.lower():
+            recap = (
+                f"Candidature envoyée.\n\n"
+                f"Entreprise : {job.get('company', '')}\n"
+                f"Poste : {job.get('title', '')}\n"
+                f"Destinataire : {address}\n"
+                f"Objet : {subject}\n"
+                f"Pièces jointes : {', '.join(result['attachments']) or 'aucune'}\n"
+                f"Message : {result.get('message_id') or 'n/a'}\n"
+                f"Dossier : {dossier_path}\n"
+            )
+            try:
+                sender.send(
+                    to=confirm_to,
+                    subject=f"✓ Candidature envoyée à {job.get('company', '')}",
+                    body=recap,
+                )
+            except Exception:
+                pass  # l'accusé ne doit jamais casser la confirmation d'envoi
     else:
         tracker.mark_send_failed(job, send_result.error)
         result["send_error"] = send_result.error
@@ -247,6 +282,9 @@ def main(argv: List[str] | None = None) -> int:
     )
     parser.add_argument("--tracker", default="data/applications_tracker.json")
     parser.add_argument("--companies", default="config/companies.csv")
+    parser.add_argument(
+        "--json", action="store_true", help="Sortie machine (JSON) au lieu du rapport lisible."
+    )
     args = parser.parse_args(argv)
 
     sender = None
@@ -275,6 +313,9 @@ def main(argv: List[str] | None = None) -> int:
         companies_csv=args.companies,
         commit=args.send,
     )
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False))
+        return 0 if not result["refused"] else 1
     print()
     _print_report(result)
     return 0 if not result["refused"] else 1

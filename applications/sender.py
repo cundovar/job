@@ -8,13 +8,17 @@ utilisent leur propre fake ou monkeypatchent smtplib.
 """
 from __future__ import annotations
 
+import base64
+import json
 import os
 import smtplib
+import urllib.error
+import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 
 @dataclass(frozen=True)
@@ -31,7 +35,14 @@ class EmailSender(ABC):
     provider = "abstract"
 
     @abstractmethod
-    def send(self, to: str, subject: str, body: str, attachment: Path | None = None) -> SendResult:
+    def send(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        attachment: Path | None = None,
+        attachments: Sequence[Path] = (),
+    ) -> SendResult:
         raise NotImplementedError
 
 
@@ -56,18 +67,19 @@ class SMTPEmailSender(EmailSender):
                 "être définis dans l'environnement."
             )
 
-    def send(self, to: str, subject: str, body: str, attachment: Path | None = None) -> SendResult:
+    def send(self, to: str, subject: str, body: str, attachment: Path | None = None,
+             attachments: Sequence[Path] = ()) -> SendResult:
         message = EmailMessage()
         message["From"] = self.sender
         message["To"] = to
         message["Subject"] = subject
         message.set_content(body)
-        if attachment is not None:
+        for path in ([attachment] if attachment else []) + list(attachments):
             message.add_attachment(
-                attachment.read_bytes(),
+                path.read_bytes(),
                 maintype="application",
                 subtype="pdf",
-                filename=attachment.name,
+                filename=path.name,
             )
         try:
             with smtplib.SMTP(self.server, self.port) as connection:
@@ -79,6 +91,78 @@ class SMTPEmailSender(EmailSender):
         return SendResult(ok=True, provider=self.provider, message_id=message["Message-ID"] or "")
 
 
+class BrevoEmailSender(EmailSender):
+    """Envoi via l'API HTTPS Brevo (https://api.brevo.com/v3/smtp/email).
+
+    Le SMTP sortant (25/465/587) est bloqué sur le VPS : l'API passe par 443.
+    Clé et expéditeur validé viennent de l'environnement, jamais en dur.
+    """
+
+    provider = "brevo"
+    API_URL = "https://api.brevo.com/v3/smtp/email"
+
+    def __init__(self) -> None:
+        self.api_key = os.getenv("BREVO_API_KEY", "").strip()
+        self.sender = os.getenv("BREVO_SENDER_EMAIL") or os.getenv("EMAIL_SENDER")
+        self.sender_name = os.getenv("BREVO_SENDER_NAME", "Facundo Varas")
+        self.reply_to = os.getenv("BREVO_REPLY_TO") or os.getenv("EMAIL_SENDER")
+        if not self.api_key or not self.sender:
+            raise RuntimeError(
+                "Envoi Brevo impossible : BREVO_API_KEY et un expéditeur validé "
+                "(BREVO_SENDER_EMAIL ou EMAIL_SENDER) doivent être définis."
+            )
+
+    def send(self, to: str, subject: str, body: str, attachment: Path | None = None,
+             attachments: Sequence[Path] = ()) -> SendResult:
+        files = []
+        for path in ([attachment] if attachment else []) + list(attachments):
+            files.append({
+                "name": Path(path).name,
+                "content": base64.b64encode(Path(path).read_bytes()).decode("ascii"),
+            })
+        payload: dict[str, Any] = {
+            "sender": {"name": self.sender_name, "email": self.sender},
+            "to": [{"email": to}],
+            "subject": subject,
+            "textContent": body,
+        }
+        if self.reply_to:
+            payload["replyTo"] = {"email": self.reply_to}
+        if files:
+            payload["attachment"] = files
+        request = urllib.request.Request(
+            self.API_URL,
+            data=json.dumps(payload).encode("utf-8"),
+            method="POST",
+            headers={
+                "api-key": self.api_key,
+                "content-type": "application/json",
+                "accept": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                data = json.loads(response.read().decode("utf-8") or "{}")
+        except urllib.error.HTTPError as exc:
+            detail = ""
+            try:
+                detail = exc.read().decode("utf-8", "replace")[:200]
+            except Exception:
+                pass
+            return SendResult(ok=False, provider=self.provider, error=f"HTTP {exc.code} : {detail}")
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            return SendResult(ok=False, provider=self.provider, error=str(exc))
+        return SendResult(ok=True, provider=self.provider, message_id=str(data.get("messageId") or ""))
+
+
 def build_sender() -> EmailSender:
-    """Point d'assemblage de la CLI : la vraie implémentation, configurée par l'env."""
-    return SMTPEmailSender()
+    """Brevo d'abord (API HTTPS 443 — le SMTP sortant est bloqué sur le VPS),
+    repli SMTP classique pour les environnements qui l'autorisent."""
+    if os.getenv("BREVO_API_KEY", "").strip():
+        return BrevoEmailSender()
+    if os.getenv("EMAIL_SMTP_SERVER") or os.getenv("EMAIL_PASSWORD"):
+        return SMTPEmailSender()
+    raise RuntimeError(
+        "Aucun fournisseur d'envoi configuré : définir BREVO_API_KEY (API Brevo, "
+        "recommandé sur ce VPS) ou les variables EMAIL_SMTP_* (relais SMTP sortant)."
+    )

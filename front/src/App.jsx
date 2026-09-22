@@ -334,6 +334,7 @@ function CandidaturesView({ mission = 'annonce' }) {
   const [cvFeedback, setCvFeedback] = useState(null) // { id, type, text }
   const [approvals, setApprovals] = useState({})    // { [id]: { status, approved } }
   const [approvalPendingId, setApprovalPendingId] = useState(null)
+  const [sendBrevo, setSendBrevo] = useState({})    // { [id]: { pending, ok, to, error } }
   const cvPollControllerRef = useRef(null)
 
   // Charge les candidatures depuis le fichier JSON statique. Le bloc `preuves`
@@ -594,6 +595,22 @@ function CandidaturesView({ mission = 'annonce' }) {
     }
   }
 
+  // Envoi réel via Brevo : le clic est le verrou humain ; la chaîne Python
+  // re-vérifie adresse, CV et tracker avant de partir. Un seul envoi/dossier.
+  const handleSendBrevo = async (id, to) => {
+    if (!window.confirm(`Envoyer la candidature à ${to} ? CV + lettre en pièces jointes — un seul envoi possible.`)) return
+    setSendBrevo(prev => ({ ...prev, [id]: { pending: true } }))
+    setApiError(null)
+    try {
+      const res = await fetch(`/api/applications/${id}/send`, { method: 'POST' })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload.refusal || payload.error || `HTTP ${res.status}`)
+      setSendBrevo(prev => ({ ...prev, [id]: { pending: false, ok: true, to: payload.would_send?.to } }))
+    } catch (err) {
+      setSendBrevo(prev => ({ ...prev, [id]: { pending: false, error: err.message || 'Envoi impossible.' } }))
+    }
+  }
+
   // Marque une candidature comme postulée
   const handleApplied = async (e, id) => {
     e.stopPropagation()
@@ -678,9 +695,28 @@ function CandidaturesView({ mission = 'annonce' }) {
                 {approvalPending ? 'Enregistrement…' : <><ShieldCheck /> Approuver l'envoi</>}
               </button>
             )}
+            {preuvesSuffisantes && backendOk && (
+              <div className="send-brevo-zone">
+                {sendBrevo[selected]?.ok ? (
+                  <span className="badge-approved"><CircleCheck /> Envoyé à {sendBrevo[selected].to}</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="approve-btn"
+                    onClick={() => handleSendBrevo(selected, c?.preuves?.adresse)}
+                    disabled={sendBrevo[selected]?.pending}
+                  >
+                    {sendBrevo[selected]?.pending ? 'Envoi…' : <><Mail /> Envoyer par email</>}
+                  </button>
+                )}
+                {sendBrevo[selected]?.error && (
+                  <p className="approval-note" style={{ color: '#fb7185' }}>{sendBrevo[selected].error}</p>
+                )}
+              </div>
+            )}
             <p className="approval-note">
               {preuvesSuffisantes
-                ? <>Approuver n'envoie rien. L'envoi reste lancé à la main : <code>python -m applications.send --dossier output/applications/{selected} --send</code></>
+                ? <>L'approbation n'envoie rien : l'envoi réel part du bouton « Envoyer par email » (Brevo, un seul envoi par dossier).</>
                 : "Sans adresse relevée en clair, ce dossier ne peut pas être approuvé pour un envoi email."}
             </p>
           </div>

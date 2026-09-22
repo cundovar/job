@@ -727,6 +727,55 @@ export default function createApplicationsRouter(repo) {
     }
   });
 
+  // POST /api/applications/:id/send — Envoi réel du dossier via applications.send
+  // (Brevo si BREVO_API_KEY, sinon relais SMTP). Le clic front est le verrou
+  // humain ; la chaîne Python refuse tout dossier sans constat vérifié.
+  // ?dry=1 : mêmes contrôles, aucun fournisseur construit, rien ne part.
+  router.post('/applications/:id/send', async (req, res) => {
+    const dry = req.query.dry === '1';
+    try {
+      const dir = applicationDir(req.params.id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      const args = ['-m', 'applications.send', '--dossier', dir, '--json'];
+      if (!dry) args.push('--send');
+      const stdout = await new Promise((resolve, reject) => {
+        execFile(
+          CV_PYTHON_BIN,
+          args,
+          { cwd: PROJECT_ROOT, timeout: 120000, maxBuffer: 20 * 1024 * 1024 },
+          (err, out) => (out ? resolve(out) : reject(err || new Error('sortie vide')))
+        );
+      });
+      let result;
+      try {
+        result = JSON.parse(stdout.slice(stdout.indexOf('{')));
+      } catch {
+        // send.py sort « ENVOI IMPOSSIBLE » quand aucun fournisseur n'est configuré.
+        if (stdout.includes('ENVOI IMPOSSIBLE')) {
+          return res.status(503).json({ error: 'Fournisseur d\u2019envoi non configuré : définir BREVO_API_KEY (ou SMTP sortant).' });
+        }
+        return res.status(500).json({ error: stdout.slice(-300) || 'Erreur inconnue du sendeur' });
+      }
+      if (result.refused) {
+        return res.status(409).json({ ok: false, refused: true, refusal: result.refusal, verdicts: result.verdicts });
+      }
+      if (result.send_error) {
+        return res.status(502).json({ ok: false, error: result.send_error });
+      }
+      res.json({
+        ok: true,
+        sent: result.sent === true,
+        dry: dry,
+        would_send: result.would_send,
+        attachments: result.attachments || [],
+        message_id: result.message_id || null,
+      });
+    } catch (err) {
+      console.error('[POST /applications/:id/send]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // GET /api/applications/:id/lettre/download — Lettre de motivation en PDF
   router.get('/applications/:id/lettre/download', async (req, res) => {
     try {

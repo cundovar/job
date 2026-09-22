@@ -1,5 +1,6 @@
 """La brique envoi : chaque contrôle refusant son motif, zéro réseau sans --send."""
 import json
+from pathlib import Path
 from datetime import date
 
 import pytest
@@ -16,8 +17,13 @@ class FakeSender(EmailSender):
         self.calls = []
         self.ok = ok
 
-    def send(self, to, subject, body, attachment=None):
-        self.calls.append({"to": to, "subject": subject, "body": body})
+    def send(self, to, subject, body, attachment=None, attachments=None):
+        self.calls.append({
+            "to": to,
+            "subject": subject,
+            "body": body,
+            "attachments": [Path(a).name for a in (attachments or [])],
+        })
         if self.ok:
             return SendResult(ok=True, provider=self.provider, message_id="<fake-1@localhost>")
         return SendResult(ok=False, provider=self.provider, error="relais injoignable")
@@ -202,7 +208,10 @@ def test_real_send_journals_the_full_feedback_loop(tmp_path):
     )
 
     assert result["sent"]
-    assert len(sender.calls) == 1
+    # Envoi réel + accusé de réception vers l'expéditeur (même fournisseur).
+    assert len(sender.calls) == 2
+    assert sender.calls[1]["to"] == "varas.cundo@gmail.com"
+    assert sender.calls[1]["subject"].startswith("✓ Candidature envoyée à Econovia")
     record = tracker.list_records()[0]
     # Contrat règle 5 : les champs minimaux d'un record applied restent là.
     for field in ("status", "applied_at", "follow_up_at", "job_title", "company", "key", "created_at", "updated_at"):
