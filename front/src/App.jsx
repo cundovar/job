@@ -339,6 +339,7 @@ function CandidaturesView({ mission = 'annonce' }) {
   const [lettreRegen, setLettreRegen] = useState({})    // { [id]: { pending, ok, error } }
   const [editLettre, setEditLettre] = useState({})      // { [id]: { editing, value, pending, saved, error } }
   const [editMail, setEditMail] = useState({})          // { [id]: { editing, value, pending, saved, error } }
+  const [cvReco, setCvReco] = useState({})              // { [id]: recommandations agent (préremplies) }
   const cvPollControllerRef = useRef(null)
 
   // Charge les candidatures depuis le fichier JSON statique. Le bloc `preuves`
@@ -512,6 +513,8 @@ function CandidaturesView({ mission = 'annonce' }) {
     try {
       const res = await fetch(`/api/applications/${id}/cv/prepare`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recommandations: cvReco[id] ?? '' }),
         signal: controller.signal,
       })
       const payload = await res.json().catch(() => ({}))
@@ -668,6 +671,22 @@ function CandidaturesView({ mission = 'annonce' }) {
       setter(prev => ({ ...prev, [id]: { ...prev[id], pending: false, error: err.message || 'Enregistrement impossible.' } }))
     }
   }
+
+  // Préremplit les recommandations agent depuis le dossier sélectionné
+  // (sans écraser une édition locale en cours).
+  useEffect(() => {
+    if (!selected || !backendOk) return
+    let cancelled = false
+    fetch(`/api/applications/${selected}/recommandations`)
+      .then(r => r.json())
+      .then(d => {
+        if (!cancelled && typeof d?.recommandations === 'string') {
+          setCvReco(prev => (prev[selected] !== undefined ? prev : { ...prev, [selected]: d.recommandations }))
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [selected, backendOk])
 
   // Marque une candidature comme postulée
   const handleApplied = async (e, id) => {
@@ -951,6 +970,13 @@ function CandidaturesView({ mission = 'annonce' }) {
           <p className="cv-generator-help">
             La lettre est déjà prête. Générez un CV adapté uniquement si vous souhaitez en joindre un à cette candidature.
           </p>
+          <textarea
+            placeholder="Recommandations pour l'agent IA — ex. : « valoriser WordPress, WooCommerce et l'accessibilité RGAA », « rester sur une page », « expérience freelance 2023 → aujourd'hui »…"
+            value={cvReco[selected] ?? ''}
+            onChange={e => setCvReco(prev => ({ ...prev, [selected]: e.target.value }))}
+            rows={3}
+            style={{ width: '100%', marginBottom: '0.5rem', fontFamily: 'inherit', fontSize: '0.85rem', padding: '0.6rem', border: '1px solid var(--border-strong)', borderRadius: 6, background: 'var(--surface)' }}
+          />
           <div className="cv-actions">
             <button
               type="button"

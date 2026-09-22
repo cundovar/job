@@ -713,6 +713,19 @@ export default function createApplicationsRouter(repo) {
     try {
       const dir = applicationDir(req.params.id);
       if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      // Recommandations candidat → job.json : la chaîne CV les passe aux
+      // agents (création + révision) comme « consignes_candidat ». Champ
+      // vide = on les retire (régénération sans consignes).
+      if (typeof req.body?.recommandations === 'string') {
+        const jobPath = path.join(dir, 'job.json');
+        if (fs.existsSync(jobPath)) {
+          const job = JSON.parse(fs.readFileSync(jobPath, 'utf-8'));
+          const reco = req.body.recommandations.trim().slice(0, 2000);
+          if (reco) job.candidate_instructions = reco;
+          else delete job.candidate_instructions;
+          fs.writeFileSync(jobPath, JSON.stringify(job, null, 2), 'utf-8');
+        }
+      }
       const currentTask = cvTasks.get(req.params.id);
       if (!currentTask || !['queued', 'running'].includes(currentTask.state)) {
         enqueueCvTask(req.params.id, dir);
@@ -813,6 +826,18 @@ export default function createApplicationsRouter(repo) {
       res.json({ ok: true, adresse: email });
     } catch (err) {
       console.error('[POST /applications/:id/contact]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/applications/:id/recommandations — consignes candidat actuelles
+  router.get('/applications/:id/recommandations', async (req, res) => {
+    try {
+      const jobPath = path.join(applicationDir(req.params.id), 'job.json');
+      if (!fs.existsSync(jobPath)) return res.json({ recommandations: '' });
+      const job = JSON.parse(fs.readFileSync(jobPath, 'utf-8'));
+      res.json({ recommandations: String(job.candidate_instructions || '') });
+    } catch (err) {
       res.status(500).json({ error: err.message });
     }
   });
