@@ -817,6 +817,39 @@ export default function createApplicationsRouter(repo) {
     }
   });
 
+  // PUT /api/applications/:id/doc/:kind — Enregistre le texte édité dans
+  // l'interface (lettre ou mail). La lettre regénère son PDF : ce qui part
+  // en pièce jointe est toujours la version enregistrée.
+  router.put('/applications/:id/doc/:kind', async (req, res) => {
+    try {
+      const files = { lettre: 'lettre_motivation.md', mail: 'mail_candidature.md' };
+      const fileName = files[req.params.kind];
+      if (!fileName) return res.status(400).json({ error: 'Type inconnu : lettre ou mail.' });
+      const contenu = String(req.body?.contenu ?? '');
+      if (!contenu.trim()) return res.status(400).json({ error: 'Contenu vide.' });
+      if (contenu.length > 100_000) return res.status(413).json({ error: 'Contenu trop long.' });
+      const dir = applicationDir(req.params.id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      fs.writeFileSync(path.join(dir, fileName), contenu, 'utf-8');
+      let pdf = null;
+      if (req.params.kind === 'lettre') {
+        await new Promise((resolve, reject) => {
+          execFile(
+            CV_PYTHON_BIN,
+            ['-c', "import sys; from cv_generator.exporters import lettre_to_pdf; lettre_to_pdf(sys.argv[1], sys.argv[2])", path.join(dir, fileName), path.join(dir, 'lettre_motivation.pdf')],
+            { cwd: PROJECT_ROOT, timeout: 60000 },
+            (err, out) => (err ? reject(err) : resolve(out))
+          );
+        });
+        pdf = 'lettre_motivation.pdf';
+      }
+      res.json({ ok: true, file: fileName, bytes: Buffer.byteLength(contenu, 'utf-8'), pdf });
+    } catch (err) {
+      console.error('[PUT /applications/:id/doc/:kind]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // POST /api/applications/:id/lettre/regenerate — Régénère le PDF de la
   // lettre depuis le markdown (après édition manuelle de lettre_motivation.md).
   router.post('/applications/:id/lettre/regenerate', async (req, res) => {

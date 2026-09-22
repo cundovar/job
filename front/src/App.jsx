@@ -337,6 +337,8 @@ function CandidaturesView({ mission = 'annonce' }) {
   const [sendBrevo, setSendBrevo] = useState({})    // { [id]: { pending, ok, to, error } }
   const [manualContact, setManualContact] = useState({}) // { [id]: { value, pending, ok, error } }
   const [lettreRegen, setLettreRegen] = useState({})    // { [id]: { pending, ok, error } }
+  const [editLettre, setEditLettre] = useState({})      // { [id]: { editing, value, pending, saved, error } }
+  const [editMail, setEditMail] = useState({})          // { [id]: { editing, value, pending, saved, error } }
   const cvPollControllerRef = useRef(null)
 
   // Charge les candidatures depuis le fichier JSON statique. Le bloc `preuves`
@@ -647,6 +649,26 @@ function CandidaturesView({ mission = 'annonce' }) {
     }
   }
 
+  // Enregistre depuis l'éditeur de la page : le fichier du dossier est mis à
+  // jour (la lettre regénère son PDF) — c'est cette version qui part à l'envoi.
+  const saveDoc = async (id, kind) => {
+    const setter = kind === 'lettre' ? setEditLettre : setEditMail
+    const current = (kind === 'lettre' ? editLettre : editMail)[id] || {}
+    setter(prev => ({ ...prev, [id]: { ...prev[id], pending: true, error: null } }))
+    try {
+      const res = await fetch(`/api/applications/${id}/doc/${kind}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contenu: current.value ?? '' }),
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
+      setter(prev => ({ ...prev, [id]: { ...prev[id], editing: false, pending: false, saved: true } }))
+    } catch (err) {
+      setter(prev => ({ ...prev, [id]: { ...prev[id], pending: false, error: err.message || 'Enregistrement impossible.' } }))
+    }
+  }
+
   // Marque une candidature comme postulée
   const handleApplied = async (e, id) => {
     e.stopPropagation()
@@ -809,38 +831,113 @@ function CandidaturesView({ mission = 'annonce' }) {
           {apiError && <span className="postule-error">{apiError}</span>}
         </div>
 
-        <button className="copy-btn" onClick={() => copyLettre(c?.lettre || '')}>
-          {copied ? <><Check /> Copié !</> : <><Clipboard /> Copier la lettre</>}
-        </button>
-        {c?.metadata?.files?.motivation_letter_pdf && (
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button className="copy-btn" onClick={() => copyLettre(c?.lettre || '')}>
+            {copied ? <><Check /> Copié !</> : <><Clipboard /> Copier la lettre</>}
+          </button>
+          <button
+            className="copy-btn"
+            onClick={() => {
+              const st = editLettre[selected] || {}
+              setEditLettre(prev => ({ ...prev, [selected]: { ...st, editing: !st.editing, value: st.value ?? c?.lettre ?? '' } }))
+            }}
+          >
+            <PenLine /> {editLettre[selected]?.editing ? "Fermer l'éditeur" : 'Modifier la lettre'}
+          </button>
+          {c?.metadata?.files?.motivation_letter_pdf && (
+            <>
+              <a className="download-btn" href={`/api/applications/${selected}/lettre/download`} download>
+                <FileDown /> Lettre PDF
+              </a>
+              <button
+                type="button"
+                className="copy-btn"
+                onClick={() => handleRegenLettre(selected)}
+                disabled={lettreRegen[selected]?.pending}
+                title="Régénère le PDF depuis lettre_motivation.md (édition hors interface)"
+              >
+                {lettreRegen[selected]?.pending ? '…' : lettreRegen[selected]?.ok
+                  ? <><CircleCheck /> PDF à jour</>
+                  : <><RotateCw /> Régénérer le PDF</>}
+              </button>
+            </>
+          )}
+        </div>
+        {editLettre[selected]?.editing && (
           <>
-            <a className="download-btn" href={`/api/applications/${selected}/lettre/download`} download>
-              <FileDown /> Lettre PDF
-            </a>
-            <button
-              type="button"
-              className="copy-btn"
-              onClick={() => handleRegenLettre(selected)}
-              disabled={lettreRegen[selected]?.pending}
-              title="Après avoir édité lettre_motivation.md : régénère le PDF qui sera envoyé"
-            >
-              {lettreRegen[selected]?.pending ? '…' : lettreRegen[selected]?.ok
-                ? <><CircleCheck /> PDF à jour</>
-                : <><RotateCw /> Régénérer le PDF</>}
-            </button>
-            {lettreRegen[selected]?.error && (
-              <p className="approval-note" style={{ color: '#fb7185' }}>{lettreRegen[selected].error}</p>
-            )}
+            <textarea
+              value={editLettre[selected]?.value || ''}
+              onChange={e => setEditLettre(prev => ({ ...prev, [selected]: { ...prev[selected], value: e.target.value } }))}
+              rows={16}
+              style={{ width: '100%', marginTop: '0.5rem', fontFamily: 'inherit', fontSize: '0.9rem', lineHeight: 1.5, padding: '0.6rem', border: '1px solid var(--border-strong)', borderRadius: 6, background: 'var(--surface)' }}
+            />
+            <div style={{ display: 'flex', gap: '0.5rem', margin: '0.5rem 0' }}>
+              <button
+                className="prepare-btn"
+                onClick={() => saveDoc(selected, 'lettre')}
+                disabled={editLettre[selected]?.pending || !(editLettre[selected]?.value || '').trim()}
+              >
+                {editLettre[selected]?.pending ? 'Enregistrement…' : 'Enregistrer & régénérer le PDF'}
+              </button>
+              <button className="annuler-btn" onClick={() => setEditLettre(prev => ({ ...prev, [selected]: { ...prev[selected], editing: false } }))}>
+                Annuler
+              </button>
+            </div>
           </>
         )}
-        <pre className="lettre-content">{c?.lettre}</pre>
+        {editLettre[selected]?.saved && !editLettre[selected]?.editing && (
+          <p className="approval-note" style={{ color: '#0F6E66' }}><CircleCheck /> Lettre enregistrée — PDF régénéré depuis ta version.</p>
+        )}
+        {editLettre[selected]?.error && (
+          <p className="approval-note" style={{ color: '#fb7185' }}>{editLettre[selected].error}</p>
+        )}
+        <pre className="lettre-content">{editLettre[selected]?.value ?? c?.lettre}</pre>
         {c?.mail && (
           <>
             <h2><Mail /> Email de candidature</h2>
-            <button className="copy-btn" onClick={() => copyLettre(c?.mail || '')}>
-              {copied ? <><Check /> Copié !</> : <><Clipboard /> Copier l'email</>}
-            </button>
-            <pre className="lettre-content">{c?.mail}</pre>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button className="copy-btn" onClick={() => copyLettre(c?.mail || '')}>
+                {copied ? <><Check /> Copié !</> : <><Clipboard /> Copier l'email</>}
+              </button>
+              <button
+                className="copy-btn"
+                onClick={() => {
+                  const st = editMail[selected] || {}
+                  setEditMail(prev => ({ ...prev, [selected]: { ...st, editing: !st.editing, value: st.value ?? c?.mail ?? '' } }))
+                }}
+              >
+                <PenLine /> {editMail[selected]?.editing ? "Fermer l'éditeur" : "Modifier l'email"}
+              </button>
+            </div>
+            {editMail[selected]?.editing && (
+              <>
+                <textarea
+                  value={editMail[selected]?.value || ''}
+                  onChange={e => setEditMail(prev => ({ ...prev, [selected]: { ...prev[selected], value: e.target.value } }))}
+                  rows={12}
+                  style={{ width: '100%', marginTop: '0.5rem', fontFamily: 'inherit', fontSize: '0.9rem', lineHeight: 1.5, padding: '0.6rem', border: '1px solid var(--border-strong)', borderRadius: 6, background: 'var(--surface)' }}
+                />
+                <div style={{ display: 'flex', gap: '0.5rem', margin: '0.5rem 0' }}>
+                  <button
+                    className="prepare-btn"
+                    onClick={() => saveDoc(selected, 'mail')}
+                    disabled={editMail[selected]?.pending || !(editMail[selected]?.value || '').trim()}
+                  >
+                    {editMail[selected]?.pending ? 'Enregistrement…' : 'Enregistrer le texte du mail'}
+                  </button>
+                  <button className="annuler-btn" onClick={() => setEditMail(prev => ({ ...prev, [selected]: { ...prev[selected], editing: false } }))}>
+                    Annuler
+                  </button>
+                </div>
+              </>
+            )}
+            {editMail[selected]?.saved && !editMail[selected]?.editing && (
+              <p className="approval-note" style={{ color: '#0F6E66' }}><CircleCheck /> Email enregistré — c'est ce texte qui partira.</p>
+            )}
+            {editMail[selected]?.error && (
+              <p className="approval-note" style={{ color: '#fb7185' }}>{editMail[selected].error}</p>
+            )}
+            <pre className="lettre-content">{editMail[selected]?.value ?? c?.mail}</pre>
           </>
         )}
 
