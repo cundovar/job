@@ -218,6 +218,26 @@ def test_published_agencies_never_carry_a_postal_code_without_an_address():
             )
 
 
+def test_publishable_results_exclude_registry_only_uncertain_candidates():
+    """Le registre nourrit le diagnostic, pas les cartes à démarcher.
+
+    Une fiche registre seule n'a ni site officiel vérifié ni auto-description :
+    l'afficher comme opportunité produit des "Agences 0/100" sans rapport.
+    """
+    v2 = load_v2()
+
+    assert not v2.is_publishable_result({
+        "name": "KONEXIO",
+        "category": "incertain",
+        "origin": "registre",
+        "origins": ["registre"],
+        "website": None,
+        "score": 0,
+    })
+    assert v2.is_publishable_result({"name": "Agence vérifiée", "category": "agence"})
+    assert v2.is_publishable_result({"name": "Formation vérifiée", "category": "formation"})
+
+
 def test_the_hand_written_csv_obeys_the_same_rule():
     """Même règle à la source qu'à la publication, sinon elle se perd en route.
 
@@ -821,13 +841,14 @@ def test_an_empty_search_is_recorded_without_destroying_the_previous_one(tmp_pat
     result = v2.publish_search(empty, tmp_path)
 
     assert result["state"] == "vide"
-    assert result["latest_updated"] is False
-    # latest.json reste sur la passe qui a trouvé quelque chose.
-    assert result["latest_search_id"] == "montreuil-20260922-010000"
+    assert result["latest_updated"] is True
+    # latest.json reflète aussi une passe vide : sinon l'UI ressuscite les faux positifs précédents.
+    assert result["latest_search_id"] == "lille-20260922-020000"
     latest = json.loads((tmp_path / v2.LATEST_NAME).read_text(encoding="utf-8"))
-    assert latest["agencies"][0]["name"] == "Studio M"
+    assert latest["search_id"] == "lille-20260922-020000"
+    assert latest["agencies"] == []
 
-    # Mais la passe vide est consultable : son absence se relirait « pas de run ».
+    # La passe vide est consultable : son absence se relirait « pas de run ».
     assert (tmp_path / v2.SEARCHES_DIRNAME / "lille-20260922-020000.json").exists()
     index = json.loads((tmp_path / v2.SEARCH_INDEX_NAME).read_text(encoding="utf-8"))
     states = {s["search_id"]: s["state"] for s in index["searches"]}

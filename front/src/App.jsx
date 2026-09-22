@@ -1277,7 +1277,7 @@ function AgenciesView() {
   const [payload, setPayload] = useState(null)
   const [persisted, setPersisted] = useState({})
   const [fetchError, setFetchError] = useState(null)
-  const [categoryFilter, setCategoryFilter] = useState('toutes') // toutes | agence | formation
+  const [categoryFilter, setCategoryFilter] = useState('agence') // toutes | agence | formation | incertain | ecarte
   const [targetingState, setTargetingState] = useState({}) // { [domain]: { pending, done, error } }
 
   // 1) L'index d'abord : c'est lui qui dit quelles recherches existent.
@@ -1391,9 +1391,31 @@ function AgenciesView() {
   const counts = {
     agence: allAgencies.filter(a => (a.category || 'agence') === 'agence').length,
     formation: allAgencies.filter(a => a.category === 'formation').length,
+    incertain: allAgencies.filter(a => a.category === 'incertain').length,
+    ecarte: allAgencies.filter(a => a.category === 'ecarte').length,
   }
   const addressKnown = allAgencies.filter(a => ['adresse', 'contact/legales'].includes(a.how)).length
   const fit = payload?.fit_analysis || null
+  const agencyCategoryLabel = (agency) => {
+    if (agency.category === 'formation') return 'Organisme de formation'
+    if (agency.category === 'incertain') return agency.origins?.includes('registre') ? 'Incertain — registre' : 'Incertain'
+    if (agency.category === 'ecarte') return 'Écarté'
+    return 'Agence'
+  }
+  const agencyCategoryClass = (agency) => {
+    if (agency.category === 'formation') return 'badge-formation'
+    if (agency.category === 'incertain') return 'badge-peut-etre'
+    if (agency.category === 'ecarte') return 'badge-passer'
+    return 'badge-agency'
+  }
+  const agencyScoreLabel = (agency) => {
+    const score = agency.score
+    const isUnscoredRegistry = score === 0 && agency.origins?.includes('registre') && !agency.website
+    const isUnscoredManual = score === 0 && agency.sources?.includes('config/companies.csv')
+    if (isUnscoredRegistry) return 'Non scoré'
+    if (isUnscoredManual) return 'Cible manuelle'
+    return `${score ?? '?'}/100`
+  }
   // L'entrée d'index fait foi sur la géographie ; le payload sert de repli pour
   // une installation où seul `latest.json` existe.
   const geoPlace = selected?.zone_label || payload?.zone_label || payload?.zone || null
@@ -1598,15 +1620,16 @@ function AgenciesView() {
           <div className="agency-search-stats">
             <span>{allAgencies.length} retenues</span>
             <span>{addressKnown} avec adresse lue</span>
-            <span>{counts.agence} agences · {counts.formation} formations</span>
+            <span>{counts.agence} agences · {counts.formation} formations · {counts.incertain} incertains</span>
             {fit && (
               <span>{fit.analyzed ?? 0} analyses · {fit.cache_hits ?? 0} cache · {fit.review ?? 0} à revoir</span>
             )}
           </div>
           <div className="agency-category-filter">
-            {[['toutes', `Toutes (${allAgencies.length})`],
-              ['agence', `Agences (${counts.agence})`],
-              ['formation', `Formations (${counts.formation})`]].map(([value, label]) => (
+            {[['agence', `Agences (${counts.agence})`],
+              ['formation', `Formations (${counts.formation})`],
+              ['incertain', `Incertains registre (${counts.incertain})`],
+              ['toutes', `Toutes (${allAgencies.length})`]].map(([value, label]) => (
               <button
                 key={value}
                 type="button"
@@ -1660,9 +1683,9 @@ function AgenciesView() {
             <article key={agency.website || i} className="job-card agency-card">
               <div className="card-top">
                 <div className="card-badges">
-                  <span className={agency.category === 'formation' ? 'badge-formation' : 'badge-agency'}>{agency.category === 'formation' ? 'Organisme de formation' : 'Agence'}</span>
+                  <span className={agencyCategoryClass(agency)}>{agencyCategoryLabel(agency)}</span>
                 </div>
-                <span className="job-score"><strong>{agency.score ?? '?'}</strong>/100</span>
+                <span className="job-score">{agencyScoreLabel(agency)}</span>
               </div>
               <div className="job-header">
                 <h3>{agency.name}</h3>

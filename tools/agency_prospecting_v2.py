@@ -1398,6 +1398,20 @@ def keeps_candidate(scored: dict) -> bool:
     return True
 
 
+PUBLISHABLE_CATEGORIES = {'agence', 'formation'}
+
+
+def is_publishable_result(agency: dict) -> bool:
+    """Dit si une fiche mérite une carte utilisateur.
+
+    Le registre donne des pistes administratives utiles au diagnostic, mais une
+    fiche `incertain` sans site vérifié n'est ni une agence ni une formation à
+    démarcher. La publier produit exactement l'effet inverse du garde-fou : des
+    boîtes sans rapport apparaissent comme des opportunités à 0/100.
+    """
+    return agency.get('category') in PUBLISHABLE_CATEGORIES
+
+
 # ── Étapes mesurées d'une passe (phase 4) ────────────────────────────────────
 
 STEP_NAMES = (
@@ -1555,8 +1569,8 @@ def publish_search(payload: dict, front_dir: Path,
 
     - le fichier de la recherche est écrit **toujours**, même vide : une passe
       sans résultat est un fait, et son absence se relirait comme « pas de run » ;
-    - `latest.json` n'est mis à jour qu'en cas de succès (au moins une agence),
-      pour ne pas remplacer un historique utile par un vide ;
+    - `latest.json` reflète la dernière passe publiée, même vide : sinon une
+      correction qui filtre des faux positifs laisse l'UI afficher l'ancien bruit ;
     - la rétention ne supprime jamais une recherche épinglée (`pinned: true`,
       posé à la main dans l'index) ni celle que `latest.json` recopie.
     """
@@ -1581,11 +1595,9 @@ def publish_search(payload: dict, front_dir: Path,
     searches = [s for s in index['searches'] if s['search_id'] != search_id] + [entry]
     searches.sort(key=lambda s: str(s.get('generated_at') or ''), reverse=True)
 
-    latest_updated = False
-    if results:
-        write_json_atomic(front_dir / LATEST_NAME, payload)
-        index['latest_search_id'] = search_id
-        latest_updated = True
+    write_json_atomic(front_dir / LATEST_NAME, payload)
+    index['latest_search_id'] = search_id
+    latest_updated = True
 
     protected = {index.get('latest_search_id'), search_id}
     kept: list[dict] = []
@@ -1856,6 +1868,9 @@ def run():
     # relevée à la main prévaut sur une extraction automatique du même domaine.
     results = merge_curated_agencies(results + registry_rows, zone_key)
 
+    unpublished_results = [r for r in results if not is_publishable_result(r)]
+    results = [r for r in results if is_publishable_result(r)]
+
     # Zone : tier1 d'abord, puis tier2 ; les hors-zone sont écartés si la zone
     # a déjà produit assez de résultats (>= 10), sinon gardés en réserve.
     zone_rank = {'tier1': 0, 'tier2': 1, 'none': 2}
@@ -2043,6 +2058,18 @@ def run():
         'registry': {
             'candidates': len(registry_rows),
             'warnings': registry_warnings,
+            'unpublished_uncertain': sum(
+                1 for r in unpublished_results
+                if r.get('category') == 'incertain' and ORIGIN_REGISTRY in r.get('origins', [])
+            ),
+        },
+        'publication_filter': {
+            'published_categories': sorted(PUBLISHABLE_CATEGORIES),
+            'unpublished': len(unpublished_results),
+            'unpublished_by_category': {
+                category: sum(1 for r in unpublished_results if r.get('category') == category)
+                for category in sorted({str(r.get('category') or 'inconnue') for r in unpublished_results})
+            },
         },
         'origin_stats': {
             origin: sum(1 for r in results if origin in r.get('origins', []))
@@ -2072,6 +2099,7 @@ def run():
         f'- Seeds collectés : {len(seeds)}', f'- Domaines scannés : {scanned}', f'- Agences/studios retenus : {len(results)}',
         f'- Zone : {zone["label"]}',
         f'- Candidats du registre : {len(registry_rows)}',
+        f'- Candidats non publiés faute de preuve agence/formation : {len(unpublished_results)}',
         '',
     ]
     if commune:

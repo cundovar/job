@@ -141,8 +141,12 @@ def test_agencies_view_carries_the_search_context():
     assert "JSON.stringify({ domain, search_id: selectedId })" in app
     # Repli de compatibilité : une installation sans index reste utilisable.
     assert "/agencies/latest.json" in app
-    # Les deux catégories restent visibles par défaut.
-    assert "categoryFilter, setCategoryFilter] = useState('toutes')" in app
+    # Les agences vérifiées restent l'affichage par défaut ; les candidats registre
+    # incertains sont accessibles mais ne polluent plus la vue principale.
+    assert "categoryFilter, setCategoryFilter] = useState('agence')" in app
+    assert "Incertains registre" in app
+    assert "agencyCategoryLabel" in app
+    assert "agencyScoreLabel" in app
     assert ".agency-search-picker" in css
     assert ".agency-category-filter" in css
 
