@@ -1138,6 +1138,39 @@ function distanceLabel(agency) {
   return `${d} de la Monte-Cristo${approx}${agency.address ? ` — ${agency.address}` : ''}`
 }
 
+const AGENCY_TARGET_STORAGE_KEY = 'job-search:active-agency-target'
+
+// Le ciblage « Retenir & préparer » est asynchrone : son task_id est persisté
+// pour que quitter l'onglet (voire fermer la fenêtre) ne rende pas le suivi
+// muet. Le serveur, lui, continue toujours le travail.
+function readAgencyTargetTask() {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(AGENCY_TARGET_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function writeAgencyTargetTask(entry) {
+  if (typeof window === 'undefined' || !entry?.taskId) return
+  try {
+    window.localStorage.setItem(AGENCY_TARGET_STORAGE_KEY, JSON.stringify(entry))
+  } catch {
+    /* mode privé : le suivi marche quand même pendant la session */
+  }
+}
+
+function clearAgencyTargetTask() {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.removeItem(AGENCY_TARGET_STORAGE_KEY)
+  } catch {
+    /* rien à faire */
+  }
+}
+
 const AGENCY_SEARCH_STORAGE_KEY = 'job-search:selected-agency-search'
 
 // Le sélecteur mémorise la recherche consultée : revenir sur l'onglet ne doit
@@ -1387,6 +1420,15 @@ function AgenciesView() {
         throw new Error(payload.error || payload.reason || `HTTP ${res.status}`)
       }
 
+      if (payload.task_id) {
+        writeAgencyTargetTask({
+          taskId: payload.task_id,
+          domain,
+          searchId: selectedId || null,
+          startedAt: new Date().toISOString(),
+        })
+      }
+
       const data = payload.ok
         ? payload
         : await waitForAgencyTarget(payload.task_id, payload.status, status => {
@@ -1403,6 +1445,7 @@ function AgenciesView() {
 
       if (!data.ok) throw new Error(data.error || data.reason || 'Erreur inconnue')
 
+      clearAgencyTargetTask()
       setTargetingState(prev => ({
         ...prev,
         [domain]: { pending: false, done: true, error: null }
@@ -1420,6 +1463,106 @@ function AgenciesView() {
       }))
     }
   }
+
+  // Reprise du ciblage au (re)montage de la vue : quitter l'onglet ne doit
+  // pas rendre la préparation muette. Le serveur continue toujours le travail ;
+  // ici on ne fait que réafficher sa progression — ou son résultat.
+  useEffect(() => {
+    const active = readAgencyTargetTask()
+    if (!active?.taskId) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(
+          `/api/agencies/target/status/${encodeURIComponent(active.taskId)}`,
+          { cache: 'no-store' }
+        )
+        const payload = await res.json().catch(() => ({}))
+        if (cancelled) return
+        if (!res.ok) {
+          // Tâche inconnue (serveur redémarré) : nettoyage honnête, le résultat
+          // éventuel reste vérifiable dans l'onglet Candidatures.
+          clearAgencyTargetTask()
+          setTargetingState(prev => ({
+            ...prev,
+            [active.domain]: {
+              pending: false,
+              done: false,
+              error: 'Suivi perdu (serveur redémarré). Vérifie le résultat dans l’onglet Candidatures.',
+            },
+          }))
+          return
+        }
+        if (payload.state === 'completed') {
+          clearAgencyTargetTask()
+          if (payload.result?.ok) {
+            setTargetingState(prev => ({
+              ...prev,
+              [active.domain]: { pending: false, done: true, error: null },
+            }))
+          } else {
+            setTargetingState(prev => ({
+              ...prev,
+              [active.domain]: { pending: false, done: false, error: 'La préparation agence est incomplète.' },
+            }))
+          }
+          return
+        }
+        if (payload.state === 'failed') {
+          clearAgencyTargetTask()
+          setTargetingState(prev => ({
+            ...prev,
+            [active.domain]: {
+              pending: false,
+              done: false,
+              error: payload.error || 'La préparation de l’agence a échoué.',
+            },
+          }))
+          return
+        }
+        // queued / running : réarmer le suivi et remontrer la progression
+        setTargetingState(prev => ({
+          ...prev,
+          [active.domain]: {
+            pending: true,
+            done: false,
+            error: null,
+            stage: payload.stage || payload.state,
+          },
+        }))
+        await waitForAgencyTarget(active.taskId, payload, s => {
+          setTargetingState(prev => ({
+            ...prev,
+            [active.domain]: {
+              pending: true,
+              done: false,
+              error: null,
+              stage: s?.stage || s?.state,
+            },
+          }))
+        })
+        if (cancelled) return
+        clearAgencyTargetTask()
+        setTargetingState(prev => ({
+          ...prev,
+          [active.domain]: { pending: false, done: true, error: null },
+        }))
+      } catch (err) {
+        if (cancelled) return
+        // Échec du suivi : on garde la persistance si la tâche peut encore
+        // aboutir (panne réseau), on nettoie si elle est terminée en erreur.
+        const failed = /échoué|incomplète/i.test(err.message || '')
+        if (failed) clearAgencyTargetTask()
+        setTargetingState(prev => ({
+          ...prev,
+          [active.domain]: { pending: false, done: false, error: err.message || 'Suivi perdu.' },
+        }))
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
     <div className="agencies-list">
