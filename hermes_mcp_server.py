@@ -424,7 +424,89 @@ def agency_list(args: Dict[str, Any]) -> str:
 # « Affiche les entreprises ciblees » — ne disaient a aucun agent laquelle sert a
 # trouver des agences ; d'ou des recherches d'annonces lancees en boucle, puis des
 # agences inventees pour combler le vide.
+
+# ── Agency Scout (V3 : Google Places + 1 appel IA par site) ──────────────────
+# Appel direct du module Python : pas de dépendance au backend Node.
+
+
+def scout_scan(args: Dict[str, Any]) -> str:
+    from agency_scout.core import start_background
+    cli = ["scan"]
+    if args.get("lat") is not None and args.get("lng") is not None:
+        cli += ["--lat", str(float(args["lat"])), "--lng", str(float(args["lng"]))]
+    if args.get("radius_m"):
+        cli += ["--rayon", str(int(args["radius_m"]))]
+    for q in args.get("queries") or []:
+        cli += ["--requete", str(q)]
+    if args.get("reanalyse"):
+        cli.append("--reanalyse")
+    info = start_background(cli)
+    return (f"Scan agences lancé en arrière-plan (pid {info['pid']}). Compter 1 à 3 minutes, "
+            "puis appeler scout_list. Si scout_list montre encore 'running', attendre.")
+
+
+def scout_list(args: Dict[str, Any]) -> str:
+    from agency_scout.core import list_agencies
+    data = list_agencies(args.get("categorie"), int(args.get("min_score", 0)))
+    limit = int(args.get("limit", 15))
+    head = []
+    if data["running"]:
+        head.append(f"⏳ Scan en cours depuis {data['running']['since']} — résultats partiels.")
+    last = data["last_scan"]
+    head.append(f"Dernier scan : {last['finished_at']} ({last['places']} lieux, rayon {last['radius_m']} m)"
+                if last else "Aucun scan terminé pour l'instant.")
+    head.append(f"Quota Google Places : {data['places_calls_this_month']}/{data['places_monthly_cap']} appels ce mois.")
+    rows = data["agencies"]
+    if not rows:
+        return "\n".join(head + ["", "Aucune agence en base pour ces filtres."])
+    lines = []
+    for i, a in enumerate(rows[:limit], 1):
+        verdict = (f"{a['categorie']} {a['score']}/10" if a["categorie"]
+                   else (a["error"] or "pas de site web" if not a["website"] else a["error"] or "non analysé"))
+        flag = "" if a["preuve_ok"] in (None, 1) else " ⚠ preuve non retrouvée dans le site"
+        lines.append(f"{i}. {a['name']} — {verdict}{flag}\n   {a['address']} · {a['distance_m']} m · {a['website'] or '—'}"
+                     + (f"\n   {a['resume']}" if a["resume"] else ""))
+    return "\n".join(head + [f"", f"{len(rows)} structures (affichées : {min(limit, len(rows))})", ""] + lines)
+
 TOOLS: Dict[str, Dict[str, Any]] = {
+    "scout_scan": {
+        "description": (
+            "ENTREPRISES/AGENCES — Lance un scan d'agences web et d'organismes de formation "
+            "(Google Places + analyse IA de chaque site). Rend la main tout de suite ; "
+            "les résultats se lisent ensuite avec scout_list. Par défaut : rayon 3000 m "
+            "autour de Paris 20e. Pour une autre ville, passer lat/lng de son centre."
+        ),
+        "handler": scout_scan,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "lat": {"type": "number"},
+                "lng": {"type": "number"},
+                "radius_m": {"type": "integer", "description": "Rayon en mètres (défaut 3000, max 50000)."},
+                "queries": {"type": "array", "items": {"type": "string"},
+                            "description": "Requêtes Google Places ; défaut : agence web, agence digitale, création site internet, organisme de formation numérique."},
+                "reanalyse": {"type": "boolean", "description": "Refaire l'IA même si le site n'a pas changé."},
+            },
+            "additionalProperties": False,
+        },
+    },
+    "scout_list": {
+        "description": (
+            "ENTREPRISES/AGENCES — Liste les agences trouvées par scout_scan, triées par score "
+            "d'adéquation IA puis distance. Lecture de base, instantané. Chaque ligne donne "
+            "catégorie, score /10, adresse et site tels que fournis par Google."
+        ),
+        "handler": scout_list,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "categorie": {"type": "string", "enum": ["agence", "formation", "autre"]},
+                "min_score": {"type": "integer"},
+                "limit": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        },
+    },
     "job_status": {
         "description": (
             "ANNONCES — Compte les offres d'emploi deja en cache par recommandation "

@@ -21,6 +21,7 @@ import JsonApplicationsRepository from './repositories/jsonApplicationsRepositor
 import createApplicationsRouter from './routes/applications.js';
 import createSearchRouter from './routes/search.js';
 import createHermesRouter from './routes/hermes.js';
+import { createScoutRouter } from './routes/scout.js';
 
 const app = express();
 
@@ -52,6 +53,7 @@ app.use('/data', express.static(frontDataPath));
 app.use(express.static(frontDistPath));
 
 // Routes API
+app.use('/api/scout', createScoutRouter());
 app.use('/api', createApplicationsRouter(repo));
 app.use('/api/search', createSearchRouter());
 app.use('/api/hermes', createHermesRouter());

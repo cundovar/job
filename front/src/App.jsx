@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import './App.css'
 import ManualCvView from './ManualCvView'
+import AgencyScout from './AgencyScout'
 import CvAssessment from './CvAssessment'
 import HermesChat from './HermesChat'
 
@@ -2097,6 +2098,7 @@ const NAV_ITEMS = [
   { id: 'spontanees', Icon: ShieldCheck, label: 'Spontanées', hint: 'Sans annonce, à approuver' },
   { id: 'cvs', Icon: FileText, label: 'Mes CV', hint: 'CV générés', primary: false },
   { id: 'postulees', Icon: CircleCheck, label: 'Postulées', hint: 'Suivi des envois', primary: true },
+  { id: 'scout', Icon: MapPin, label: 'Agences v3', hint: 'Google Places + IA' },
   { id: 'agencies', Icon: Building2, label: 'Agences', hint: 'Prospection hors annonces' },
   { id: 'weather', Icon: CloudSun, label: 'Météo', hint: 'Direct sans backend' },
 ]
@@ -2298,6 +2300,8 @@ function App() {
           <PostuleesView />
         ) : activeMode === 'weather' ? (
           <WeatherView />
+        ) : activeMode === 'scout' ? (
+          <AgencyScout />
         ) : activeMode === 'agencies' ? (
           <AgenciesView />
         ) : currentSearch ? (

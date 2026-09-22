@@ -26,6 +26,7 @@ RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
 COPY main.py pipeline.py pipeline_spontaneous.py opportunity.py front_export.py ./
 COPY assets/ ./assets/
+COPY agency_scout/ ./agency_scout/
 COPY agents/ ./agents/
 COPY analyzers/ ./analyzers/
 COPY applications/ ./applications/
