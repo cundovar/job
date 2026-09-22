@@ -114,6 +114,9 @@ elle-même, lu par `classify_self_description`, qui cite toujours son extrait.
 | `city` | string \| null | Commune du périmètre demandé. Absent hors mode `--ville` |
 | `city_match` | `adresse` \| `registre` \| `mention` \| `aucun` | Ce qui relie l'agence à cette commune |
 | `city_match_evidence` | string | La preuve citée : code postal lu, code commune du registre, ou extrait de page |
+| `site_match` | `siret affiché` \| `siren affiché` \| `adresse concordante` \| `raison sociale` \| `sources convergentes` \| `aucun` | Ce qui rattache le site à cette structure |
+| `site_match_evidence` | string | La preuve citée : le SIREN lu et sur quelle page, l'adresse concordante, le domaine |
+| `site_candidates` | object[] | Domaines examinés et **refusés**, avec leur motif. Un refus nommé, pas un vide |
 | `score` | number | Score de pertinence (0-100). **Classe, n'élimine pas** |
 | `raw_score` | number | Score avant bornage à 0-100 |
 | `family_scores` | object | Détail `stack` / `agence` / `formation`, chacun plafonné |
@@ -252,6 +255,32 @@ nom lu dans une page : « nous intervenons à Lille » ne fait pas une implantat
 lilloise. Les `mention` ne sont pas supprimés — ils sont classés en dernier et
 disent pourquoi, parce qu'un résultat effacé se redécouvre au run suivant.
 
+## `site_match` : la même garantie appliquée au site
+
+Troisième membre de la famille. `how` dit d'où vient une position, `city_match`
+ce qui relie l'agence à la commune, `site_match` **ce qui rattache un site à une
+structure du registre**. Les trois répondent à la même tentation : conclure d'un
+nom.
+
+| `site_match` | Établi par | Force |
+| --- | --- | --- |
+| `siret affiché` | les 14 chiffres lus sur le site (séparateurs décoratifs recollés) | 5 |
+| `siren affiché` | les 9 chiffres, avec bornes non chiffrées — sinon un numéro de commande suffirait | 4 |
+| `adresse concordante` | code postal **et** nom de voie du siège, dans la même page | 3 |
+| `raison sociale` | le nom **porte** le domaine (égalité) ou figure dans le titre | 2 |
+| `sources convergentes` | plusieurs **moteurs** désignent le même domaine | 1 |
+| `aucun` | rien — le site n'est pas retenu | 0 |
+
+Le registre ne publie pas de site. Sans site, pas d'auto-description, donc pas
+de verdict d'activité : le candidat restait `incertain`, `score: 0`, et
+l'annuaire ne produisait que du bruit. L'étape manquante est
+`registre → recherche du site officiel → vérification d'identité → crawl → score`.
+
+**Sans preuve, on ignore.** `KONEXIO` ne devient pas `konexio.fr` parce que ça
+tombe bien, et `konexio` n'est pas `konexio-formation.fr` : la comparaison au
+domaine est une égalité, pas une inclusion. Les domaines examinés et refusés
+restent dans `site_candidates` avec leur motif — un refus nommé, jamais un vide.
+
 ## Cache de géocodage
 
 `data/geocode_cache.json`, indexé par adresse normalisée (espaces réduits,
@@ -282,8 +311,10 @@ qui est gitignoré : le perdre ne coûte qu'un run plus lent.
 Les écartés restent **nommés**. « Rien dans le rayon » doit pouvoir se relire
 comme « ces N-là étaient trop loin », jamais comme un vide inexpliqué.
 
-Quand `inside` vaut 0, `latest.json` n'est pas écrasé (on ne détruit pas une
-prospection précédente pour une passe vide) et le v2 le signale sur `stderr`.
+Quand `inside` vaut 0, la passe est publiée quand même — `latest.json` compris —
+et le v2 le signale sur `stderr`. Ne pas écraser serait rassurant et faux :
+l'écran continuerait d'afficher une prospection périmée en la faisant passer pour
+l'actuelle.
 
 ## Produire le fichier
 
@@ -306,7 +337,7 @@ porte lui aussi, pour qu'un fichier lu isolément sache de quelle passe il vient
 ```
 front/public/data/agencies/
 ├── index.json                       # index des recherches publiées
-├── latest.json                      # alias de compatibilité (dernière passe réussie)
+├── latest.json                      # alias de compatibilité (dernière passe publiée)
 └── searches/
     ├── montreuil-20260922-010000.json
     └── lille-20260922-020000.json
@@ -349,9 +380,14 @@ front/public/data/agencies/
 
 1. `searches/<search_id>.json` est écrit **toujours** (atomiquement, `tmp` +
    `os.replace`), même si la passe n'a rien retenu ;
-2. `latest.json` n'est mis à jour qu'en cas de succès — une passe vide ne
-   remplace pas un historique utile, et `latest_search_id` reste sur la
-   précédente ;
+2. `latest.json` recopie la **dernière passe publiée, même vide**, et
+   `latest_search_id` la suit. La règle inverse a été appliquée jusqu'au
+   2026-09-22 : elle protégeait l'historique, mais elle rendait invisible toute
+   correction qui *retire* des résultats. Une passe qui ne retient plus rien
+   parce qu'on vient de filtrer des faux positifs doit vider l'écran, pas laisser
+   le bruit d'avant s'y faire passer pour un résultat frais. La passe précédente
+   n'est pas perdue pour autant : elle reste sous son `search_id` dans
+   `searches/`, listée dans l'index ;
 3. la rétention (20 recherches) ne supprime jamais une recherche `pinned`, celle
    que `latest.json` recopie, ni celle qui vient d'être publiée. Les
    identifiants supprimés sont listés dans `search.pruned` du récapitulatif.

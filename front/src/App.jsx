@@ -1695,6 +1695,14 @@ function AgenciesView() {
                 {/* `how` dit d'où vient la position : une approximation ne doit
                     jamais se relire comme une adresse relevée. */}
                 {agency.how && <span className="agency-how">position : {agency.how}</span>}
+                {/* `site_match` dit ce qui rattache ce site à cette structure.
+                    Un site trouvé pour un candidat du registre et affiché sans
+                    sa preuve serait une attribution incontestable. */}
+                {agency.site_match && agency.site_match !== 'aucun' && (
+                  <span className="agency-how" title={agency.site_match_evidence || ''}>
+                    site : {agency.site_match}
+                  </span>
+                )}
                 {agency.stack?.length > 0 && <span><Wrench /> {agency.stack.join(', ')}</span>}
                 {agency.emails?.length > 0 && <span><Mail /> {agency.emails[0]}</span>}
                 {agency.query && <span><Search /> {agency.query}</span>}

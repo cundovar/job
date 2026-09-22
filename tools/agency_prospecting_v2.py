@@ -22,6 +22,7 @@ proche d'un domaine n'a jamais le droit de produire une propriété de site.
 """
 from __future__ import annotations
 
+import base64
 import html
 import csv
 import json
@@ -39,7 +40,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote_plus, unquote, urljoin, urlparse
+from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 from urllib.request import Request, urlopen
 
 # Racine déduite du fichier, jamais codée en dur : les chemins absolus précédents
@@ -92,6 +93,17 @@ from city_resolver import (  # noqa: E402
     query_families,
     resolve_city,
 )
+from official_site import (  # noqa: E402
+    EXCLUSION_DIRECTORY,
+    EXCLUSION_INFRA,
+    EXCLUSION_PROFILE,
+    SITE_MATCH_NONE,
+    SITE_MATCH_STRENGTH,
+    exclusion_reason as site_exclusion_reason,
+    find_official_site,
+)
+
+EXCLUSION_LABELS = {EXCLUSION_DIRECTORY, EXCLUSION_PROFILE, EXCLUSION_INFRA}
 from company_analysis.duplicate import normalize_name  # noqa: E402
 from company_analysis.verifier import classify_self_description  # noqa: E402
 
@@ -682,6 +694,21 @@ def compose_record(group: dict) -> dict:
     # Le registre ne monte dans la fiche que si le rapprochement est un
     # identifiant, ou s'il n'y a rien d'autre dans le groupe à qui l'attribuer.
     promote = registry_rec is not None and (match in CERTAIN_IDENTITY or len(members) == 1)
+    # La preuve d'appartenance du site suit le site : si c'est la fiche registre
+    # qui a apporté le domaine, c'est sa preuve qui doit rester lisible. Un
+    # `site_match` perdu au dédoublonnage rendrait l'acceptation incontestable.
+    site_holder = next(
+        (m for m in sorted(members, key=lambda m: -SITE_MATCH_STRENGTH.get(m.get('site_match') or '', 0))
+         if m.get('website') == merged.get('website')
+         and (m.get('site_match') or SITE_MATCH_NONE) != SITE_MATCH_NONE),
+        None,
+    )
+    merged['site_match'] = (site_holder or {}).get('site_match', SITE_MATCH_NONE)
+    merged['site_match_evidence'] = (site_holder or {}).get('site_match_evidence', '')
+    merged['site_candidates'] = (site_holder or {}).get('site_candidates', []) or [
+        c for m in members for c in (m.get('site_candidates') or [])
+    ][:6]
+
     merged['identity_candidates'] = []
     if registry_rec and not promote:
         merged['identity_candidates'] = [
@@ -966,6 +993,12 @@ def registry_record(candidate: dict, zone_key: str) -> dict:
         'distance_m': None,
         'legal_address': candidate.get('legal_address'),
         'legal_address_source': candidate.get('legal_address_source'),
+        'commune_label': candidate.get('commune_label'),
+        # Le site n'est pas encore cherché : `aucun` dit « rien d'établi », pas
+        # « rien à chercher ». `resolve_registry_sites` remplira ces champs.
+        'site_match': SITE_MATCH_NONE,
+        'site_match_evidence': '',
+        'site_candidates': [],
     }
 
 
@@ -1007,6 +1040,28 @@ def registry_candidates(zone_key: str, client: RegistryClient | None = None) -> 
             )
     except RegistryError as exc:
         return [], [f"registre indisponible ({exc}) — le crawl web continue seul"]
+
+    warnings: list[str] = []
+    if insee and not raw and codes:
+        # Paris, Lyon et Marseille sont immatriculées par **arrondissement**
+        # (75101…75120), jamais sous le code de la commune entière (75056). La
+        # requête par code INSEE y renvoie donc zéro, sans erreur — un silence
+        # qui se relit comme « aucune structure à Paris », ce qui est faux.
+        # On retombe sur les codes postaux, et on le dit.
+        warnings.append(
+            f"registre : aucun résultat sur le code commune {insee} "
+            f"(communes à arrondissements) — repli sur les {len(codes)} codes postaux de la zone"
+        )
+        try:
+            raw = search_zone_candidates(
+                postal_codes=codes,
+                naf_codes=NAF_AGENCE + NAF_FORMATION,
+                client=registry,
+            )
+        except RegistryError as exc:
+            return [], warnings + [f"registre indisponible ({exc}) — le crawl web continue seul"]
+        insee = ''  # le périmètre vient désormais des codes postaux, pas du code commune
+
     rows = [registry_record(candidate, zone_key) for candidate in raw]
     if insee:
         # Le code commune vient de la requête, pas d'une déduction sur l'adresse :
@@ -1014,7 +1069,175 @@ def registry_candidates(zone_key: str, client: RegistryClient | None = None) -> 
         # inventer une adresse que le registre n'a pas publiée.
         for row in rows:
             row['commune_code'] = insee
-    return rows, []
+    return rows, warnings
+
+
+# Le SIREN d'une structure française se lit dans ses mentions légales : c'est la
+# page la moins chère à obtenir et la plus probante. L'accueil sert au titre, le
+# contact à l'adresse.
+REGISTRY_SITE_PATHS = ['/', '/mentions-legales', '/mentions-legales/',
+                       '/mentions-legales.html', '/contact', '/contact/', '/a-propos']
+# Plafond dur, même principe que les 15 appels IA : chercher un site coûte deux
+# requêtes moteur et jusqu'à trois pages par candidat. Sans plafond, une commune
+# à 300 immatriculations ferait exploser la durée d'une passe.
+REGISTRY_SITE_CAP = 12
+
+MOTIF_NO_CANDIDATE = 'aucun site candidat'
+MOTIF_ONLY_EXCLUDED = 'seulement des annuaires ou des profils'
+MOTIF_NO_PROOF = 'site trouvé sans preuve d’identité'
+MOTIF_CAPPED = 'plafond de recherches atteint'
+
+
+def _site_lookup_search(query: str, max_results: int = 6) -> list[tuple[str, str]]:
+    """Les `(url, moteur)` d'une requête, annuaires déjà écartés par les moteurs.
+
+    Les deux moteurs sont interrogés même si le premier répond, et **chaque URL
+    porte sa provenance** : c'est ce qui donne son sens à `sources convergentes`.
+    Trois requêtes posées au même moteur ne convergent pas, elles se répètent.
+    """
+    found: list[tuple[str, str]] = []
+    for engine, label in ((search_ddg, 'ddg'), (search_bing, 'bing')):
+        try:
+            hits = engine(query, max_results=max_results)
+        except Exception:
+            continue  # un moteur muet ne fabrique pas de site
+        for href, _title, _source in hits:
+            if (href, label) not in found:
+                found.append((href, label))
+    return found[:max_results * 2]
+
+
+def _site_lookup_crawl(url: str) -> tuple[list[tuple[str, str]], str]:
+    """Les pages utiles d'un site candidat, en texte **non tronqué**, plus le titre.
+
+    Non tronqué volontairement : un SIREN vit en bas des mentions légales, et le
+    couper à 2 500 caractères reviendrait à conclure « pas de preuve » alors
+    qu'on n'a pas lu la page.
+    """
+    pages: list[tuple[str, str]] = []
+    title = ''
+    for path in REGISTRY_SITE_PATHS:
+        target = urljoin(url, path.lstrip('/')) if path != '/' else url
+        try:
+            page = fetch(target, timeout=8, max_bytes=500_000)
+        except Exception:
+            continue
+        if not title:
+            found = TITLE_RE.search(page)
+            if found:
+                title = strip_text(found.group(1))
+        text = strip_text(page)
+        if text:
+            pages.append((target, text))
+        if len(pages) >= 3:
+            break
+        time.sleep(0.15)
+    return pages, title
+
+
+def resolve_registry_sites(rows: list[dict], cap: int = REGISTRY_SITE_CAP,
+                           search: Callable | None = None,
+                           crawl: Callable | None = None) -> dict:
+    """Donne un site aux candidats du registre — seulement quand il est prouvé.
+
+    C'est l'étape qui manquait, et son absence rendait l'annuaire inutilisable :
+    un candidat sans site n'a pas d'auto-description, donc pas de catégorie,
+    donc il finissait en `incertain 0/100`. Le registre ne produisait que du
+    bruit parce qu'on lui demandait un verdict qu'il ne peut pas rendre.
+
+    Les candidats sans preuve ne sont **pas** supprimés : ils restent avec leur
+    motif, comptés dans le récapitulatif. « 22 candidats ignorés faute de site »
+    est une information ; une liste vide n'en est pas une.
+    """
+    search = search or _site_lookup_search
+    crawl = crawl or _site_lookup_crawl
+    stats = {'examines': 0, 'trouves': 0, 'sans_preuve': 0, 'motifs': {}}
+
+    def note(motif: str) -> None:
+        stats['motifs'][motif] = stats['motifs'].get(motif, 0) + 1
+
+    for row in rows:
+        if row.get('website'):
+            continue
+        if stats['examines'] >= max(0, int(cap)):
+            row['site_match_evidence'] = (
+                f'non cherché : plafond de {cap} recherches de site atteint dans cette passe'
+            )
+            stats['sans_preuve'] += 1
+            note(MOTIF_CAPPED)
+            continue
+        stats['examines'] += 1
+        outcome = find_official_site(row, search, crawl)
+        row['site_match'] = outcome['site_match']
+        row['site_match_evidence'] = outcome['site_match_evidence']
+        row['site_candidates'] = outcome['site_candidates'][:6]
+        if outcome['website']:
+            row['website'] = outcome['website']
+            row['sources'] = sorted(set(row.get('sources') or [])
+                                    | {f'site officiel ({outcome["site_match"]})'})
+            row['reasons'] = [r for r in (row.get('reasons') or []) if r] + [
+                f'site officiel retenu — {outcome["site_match"]} : {outcome["site_match_evidence"]}'
+            ]
+            stats['trouves'] += 1
+            continue
+        stats['sans_preuve'] += 1
+        candidates = outcome['site_candidates']
+        if not candidates:
+            note(MOTIF_NO_CANDIDATE)
+        elif all(c.get('evidence') in EXCLUSION_LABELS for c in candidates):
+            note(MOTIF_ONLY_EXCLUDED)
+        else:
+            note(MOTIF_NO_PROOF)
+    return stats
+
+
+def classify_registry_sites(rows: list[dict], zone_key: str,
+                            excluded_hosts: dict[str, str] | None = None) -> dict:
+    """Fait passer un candidat du registre par le même juge que les autres.
+
+    Un site prouvé ne vaut rien tant qu'il n'a pas été lu : c'est l'auto-
+    description qui rend le verdict d'activité, ici comme ailleurs. Le registre
+    n'a toujours pas le droit de dire ce que fait la structure — il a seulement
+    permis d'atteindre la page qui, elle, le dit.
+    """
+    stats = {'lus': 0, 'classes': 0, 'ecartes': 0}
+    for row in rows:
+        if row.get('origin') != ORIGIN_REGISTRY or not row.get('website'):
+            continue
+        if row.get('site_match') in (None, '', SITE_MATCH_NONE):
+            continue
+        text, links, fetched, pages, description = crawl_site(row['website'])
+        stats['lus'] += 1
+        if not text:
+            continue
+        scored = score_candidate(row['name'], row['website'], text, links,
+                                 zone_key, description, excluded_hosts)
+        row.update({
+            'score': scored['score'],
+            'raw_score': scored['raw_score'],
+            'stack': scored['stack'],
+            'emails': scored['emails'],
+            'contact_urls': scored['contact_urls'],
+            'signals': scored['signals'],
+            'family_scores': scored['family_scores'],
+            'fetched_pages': fetched[:7],
+            'snippet': text[:700],
+            'page_texts': pages[:4],
+            'category': scored['category'],
+            'category_reason': scored['category_reason'],
+            'category_evidence': scored['category_evidence'],
+        })
+        # La zone du registre vient du siège déclaré, qui est une preuve plus
+        # forte qu'un terme trouvé dans une page : on ne la dégrade pas.
+        if row.get('zone_match') in (None, '', 'none'):
+            row['zone_match'] = scored['zone_match']
+            row['zone_term'] = scored['zone_term']
+        if scored['category'] == 'ecarte':
+            stats['ecartes'] += 1
+        else:
+            stats['classes'] += 1
+        time.sleep(0.2)
+    return stats
 
 
 def parse_links(page: str, base: str) -> list[tuple[str, str]]:
@@ -1042,7 +1265,13 @@ def root_url(url: str) -> str:
 
 
 def is_bad_host(host: str) -> bool:
-    return not host or any(b in host for b in BAD_HOST_PARTS)
+    if not host or any(b in host for b in BAD_HOST_PARTS):
+        return True
+    # Les CDN, polices et assets entrent dans les graines parce qu'ils sont liés
+    # depuis les pages crawlées, puis ressortent en « page d'accueil illisible ».
+    # Ce sont des dépendances techniques, pas des candidats : les écarter ici
+    # évite de payer une requête réseau pour les refuser ensuite.
+    return site_exclusion_reason(f'https://{host}/') is not None
 
 
 def is_directory(host: str, title='', text='') -> bool:
@@ -1050,42 +1279,97 @@ def is_directory(host: str, title='', text='') -> bool:
     return host in DIRECTORY_HOSTS or any(p in blob for p in DIRECTORY_TEXT_PATTERNS)
 
 
+ENGINE_STATUS: dict[str, dict] = {}
+
+
+def note_engine(engine: str, outcome: str, detail: str = '') -> None:
+    """Retient ce qu'un moteur a répondu, pour que son silence se lise.
+
+    Un moteur bloqué et un moteur sans réponse pertinente rendent tous deux une
+    liste vide : sans cette trace, une passe entière se relit comme « le web ne
+    contient rien », ce qui est faux et ce qui a déjà coûté une analyse.
+    """
+    slot = ENGINE_STATUS.setdefault(engine, {'appels': 0, 'avec_resultats': 0,
+                                             'vides': 0, 'erreurs': 0, 'motifs': {}})
+    slot['appels'] += 1
+    if outcome == 'ok':
+        slot['avec_resultats'] += 1
+        return
+    slot['erreurs' if outcome == 'erreur' else 'vides'] += 1
+    if detail:
+        slot['motifs'][detail] = slot['motifs'].get(detail, 0) + 1
+
+
+def decode_redirect(href: str) -> str:
+    """Rend l'URL de destination cachée derrière une redirection de moteur.
+
+    Bing réécrit **tous** ses résultats en `bing.com/ck/a?…&u=a1<base64url>` ;
+    lus tels quels, leur hôte est `bing.com` et le filtre anti-moteur les jette
+    tous. Une page de 46 liens se relisait donc en « 0 résultat ». DuckDuckGo
+    fait la même chose avec `uddg=`.
+    """
+    if 'uddg=' in href:
+        m = re.search(r'uddg=([^&]+)', href)
+        if m:
+            return unquote(m.group(1))
+    if '/ck/a' in href:
+        raw = (parse_qs(urlparse(href).query).get('u') or [''])[0]
+        if raw.startswith('a1'):
+            payload = raw[2:]
+            payload += '=' * (-len(payload) % 4)
+            try:
+                return base64.urlsafe_b64decode(payload).decode('utf-8', 'ignore')
+            except Exception:
+                return ''
+    return href
+
+
+def _harvest(page: str, base: str, engine: str, query: str,
+             max_results: int) -> list[tuple[str, str, str]]:
+    out: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    for href, label in parse_links(page, base):
+        href = decode_redirect(href)
+        if not href.startswith('http') or href in seen:
+            continue
+        h = host_of(href)
+        if is_bad_host(h) or is_directory(h, label):
+            continue
+        seen.add(href)
+        out.append((href, label, f'{engine}:{query}'))
+        if len(out) >= max_results:
+            break
+    return out
+
+
 def search_ddg(query: str, max_results=12) -> list[tuple[str, str, str]]:
     # DuckDuckGo HTML is unstable but useful when it responds.
-    urls=[]
     for endpoint in ['https://duckduckgo.com/html/?q=', 'https://html.duckduckgo.com/html/?q=']:
         try:
             page = fetch(endpoint + quote_plus(query), timeout=10)
-        except Exception:
+        except Exception as exc:
+            note_engine('ddg', 'erreur', type(exc).__name__ + (
+                f' {getattr(exc, "code", "")}'.rstrip()))
             continue
-        for href, label in parse_links(page, endpoint):
-            if 'uddg=' in href:
-                m = re.search(r'uddg=([^&]+)', href)
-                if m: href = unquote(m.group(1))
-            h=host_of(href)
-            if href.startswith('http') and not is_bad_host(h) and not is_directory(h, label):
-                urls.append((href, label, 'ddg:'+query))
-            if len(urls) >= max_results: break
-        if urls: break
-    return urls
+        urls = _harvest(page, endpoint, 'ddg', query, max_results)
+        if urls:
+            note_engine('ddg', 'ok')
+            return urls
+        note_engine('ddg', 'vide', 'page reçue sans lien exploitable')
+    return []
 
 
 def search_bing(query: str, max_results=12) -> list[tuple[str, str, str]]:
+    endpoint = 'https://www.bing.com/search?q='
     try:
-        page = fetch('https://www.bing.com/search?q=' + quote_plus(query), timeout=10)
-    except Exception:
+        page = fetch(endpoint + quote_plus(query) + '&setlang=fr&cc=FR', timeout=10)
+    except Exception as exc:
+        note_engine('bing', 'erreur', type(exc).__name__ + (
+            f' {getattr(exc, "code", "")}'.rstrip()))
         return []
-    links=parse_links(page, 'https://www.bing.com/')
-    out=[]
-    for href,label in links:
-        h=host_of(href)
-        if not href.startswith('http') or is_bad_host(h) or is_directory(h, label):
-            continue
-        # Bing internal redirects/noise
-        if 'bing.com' in h or '/ck/a' in href:
-            continue
-        out.append((href,label,'bing:'+query))
-        if len(out)>=max_results: break
+    out = _harvest(page, 'https://www.bing.com/', 'bing', query, max_results)
+    note_engine('bing', 'ok' if out else 'vide',
+                '' if out else 'page reçue sans lien exploitable')
     return out
 
 
@@ -1415,7 +1699,8 @@ def is_publishable_result(agency: dict) -> bool:
 # ── Étapes mesurées d'une passe (phase 4) ────────────────────────────────────
 
 STEP_NAMES = (
-    'resolution', 'registre', 'decouverte_web', 'crawl', 'geocodage', 'ia', 'publication',
+    'resolution', 'registre', 'site_officiel', 'crawl_registre',
+    'decouverte_web', 'preselection', 'crawl', 'geocodage', 'ia', 'publication',
 )
 
 
@@ -1856,11 +2141,28 @@ def run():
     # Le registre apporte des candidats locaux que les moteurs ne montrent pas.
     # Il n'apporte ni verdict d'activité ni site : ces deux-là restent au crawl.
     registry_rows, registry_warnings = ([], ['registre désactivé (--no-registry)'])
+    site_stats = {'examines': 0, 'trouves': 0, 'sans_preuve': 0, 'motifs': {}}
+    site_class_stats = {'lus': 0, 'classes': 0, 'ecartes': 0}
     with steps.step('registre') as measures:
         if not options['no_registry']:
             registry_rows, registry_warnings = registry_candidates(zone_key)
         measures['candidats'] = len(registry_rows)
         measures['avertissements'] = len(registry_warnings)
+
+    # Un candidat du registre n'est publiable que s'il a un site, et il n'a de
+    # site que si on le cherche. Sans cette étape le registre ne produit que des
+    # fiches `incertain 0/100` — c'est-à-dire du bruit.
+    if registry_rows:
+        with steps.step('site_officiel') as measures:
+            site_stats = resolve_registry_sites(registry_rows)
+            measures['examines'] = site_stats['examines']
+            measures['trouves'] = site_stats['trouves']
+            measures['sans_preuve'] = site_stats['sans_preuve']
+        with steps.step('crawl_registre') as measures:
+            site_class_stats = classify_registry_sites(registry_rows, zone_key, excluded_hosts)
+            measures['lus'] = site_class_stats['lus']
+            measures['classes'] = site_class_stats['classes']
+            measures['ecartes'] = site_class_stats['ecartes']
     for warning in registry_warnings:
         print(f'WARN: {warning}', file=sys.stderr)
 
@@ -2062,6 +2364,20 @@ def run():
                 1 for r in unpublished_results
                 if r.get('category') == 'incertain' and ORIGIN_REGISTRY in r.get('origins', [])
             ),
+            # Ce que l'étape « site officiel » a réellement produit. Un candidat
+            # écarté est compté **par motif** : « 22 ignorés faute de site » et
+            # « 22 ignorés parce que le moteur n'a rendu que des annuaires » ne
+            # se corrigent pas de la même façon.
+            'site_lookup': {
+                'examines': site_stats['examines'],
+                'trouves': site_stats['trouves'],
+                'sans_preuve': site_stats['sans_preuve'],
+                'motifs': site_stats['motifs'],
+                'cap': REGISTRY_SITE_CAP,
+                'crawles': site_class_stats['lus'],
+                'classes': site_class_stats['classes'],
+                'ecartes': site_class_stats['ecartes'],
+            },
         },
         'publication_filter': {
             'published_categories': sorted(PUBLISHABLE_CATEGORIES),
@@ -2099,6 +2415,10 @@ def run():
         f'- Seeds collectés : {len(seeds)}', f'- Domaines scannés : {scanned}', f'- Agences/studios retenus : {len(results)}',
         f'- Zone : {zone["label"]}',
         f'- Candidats du registre : {len(registry_rows)}',
+        f'- Sites officiels cherchés : {site_stats["examines"]} · trouvés avec preuve : '
+        f'{site_stats["trouves"]} · sans preuve : {site_stats["sans_preuve"]}'
+        + (f' ({", ".join(f"{m} ×{n}" for m, n in sorted(site_stats["motifs"].items()))})'
+           if site_stats['motifs'] else ''),
         f'- Candidats non publiés faute de preuve agence/formation : {len(unpublished_results)}',
         '',
     ]

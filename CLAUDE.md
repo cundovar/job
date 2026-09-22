@@ -56,11 +56,14 @@ front/ server/   interface de validation (Vite/React + Express)
   externe doit référencer** plutôt que redécrire ces règles.
 - **Une passe vit sous son identifiant immuable**, pas dans un fichier unique.
   `searches/<search_id>.json` + `index.json` ; `latest.json` n'est plus que
-  l'alias de compatibilité de la dernière passe **réussie**. Un run Lille
-  n'efface donc plus Montreuil — c'est ce qu'il faisait avant, sans le dire. Une
-  passe vide est quand même indexée (`state: vide`) : son absence se relirait
-  comme « pas de run ». La rétention ne supprime jamais une recherche `pinned`
-  ni celle que `latest.json` recopie, et annonce ce qu'elle supprime.
+  l'alias de compatibilité de la **dernière passe publiée, même vide**. Un run
+  Lille n'efface donc plus Montreuil — c'est ce qu'il faisait avant, sans le
+  dire. Une passe vide est quand même indexée (`state: vide`) et recopiée dans
+  `latest.json` : son absence se relirait comme « pas de run », et surtout une
+  correction qui filtre des faux positifs doit faire disparaître l'ancien bruit
+  de l'écran au lieu de l'y laisser. La rétention ne supprime jamais une
+  recherche `pinned` ni celle que `latest.json` recopie, et annonce ce qu'elle
+  supprime.
 - **Le ciblage porte sur la recherche affichée.** `POST /api/agencies/target`
   prend un `search_id` et relit l'agence dans ce fichier-là ; un identifiant
   inconnu est refusé en **nommant les recherches connues**, jamais par une liste
@@ -103,6 +106,33 @@ front/ server/   interface de validation (Vite/React + Express)
   toujours son extrait. Les quatre catégories sont `agence`, `formation`,
   `incertain`, `ecarte` — une donnée manquante donne `incertain`, jamais
   `ecarte`, et un formateur n'est jamais écarté pour n'être pas une agence.
+- **Seules `agence` et `formation` sont publiées** (`is_publishable_result`). Un
+  candidat sans site ni auto-description lue n'est pas une piste, c'est un nom
+  dans un registre : il sort des `agencies` du payload. Il n'est pas jeté en
+  silence pour autant — `publication_filter` le compte par catégorie, parce
+  qu'« aucun résultat » et « 22 candidats ignorés faute de site » ne se relisent
+  pas pareil.
+- **`site_match` est à l'appartenance du site ce que `how` est à l'adresse.**
+  Le chemin est `registre → recherche du site officiel → vérification d'identité
+  → crawl → score` (`tools/official_site.py`), jamais `registre → affichage
+  direct` : sans site il n'y a pas d'auto-description, donc pas de verdict, donc
+  une fiche `incertain 0/100` — c'était la fabrique à bruit de l'annuaire. Les
+  preuves acceptées, par force décroissante : `siret affiché`, `siren affiché`,
+  `adresse concordante` (code postal **et** nom de voie), `raison sociale` (le
+  nom **porte** le domaine ou le titre — une citation dans le corps de page ne
+  prouve rien, comme `city_match: mention`), `sources convergentes` (plusieurs
+  **moteurs**, pas plusieurs requêtes du même). **Sans preuve, on ignore** : un
+  domaine n'est jamais déduit d'un nom, et `konexio` n'est pas
+  `konexio-formation.fr` — la comparaison au domaine est une égalité, pas une
+  inclusion. Annuaires (`societe.com`, `pappers`, `manageo`…), profils de
+  plateformes et domaines d'infrastructure (CDN, polices) ne sont jamais des
+  sites officiels. Plafond dur : `REGISTRY_SITE_CAP` recherches par passe, et un
+  candidat non cherché le dit au lieu de se confondre avec un candidat sans
+  preuve.
+- **Paris, Lyon et Marseille sont immatriculées par arrondissement.** Une
+  requête registre sur le code commune `75056` rend zéro sans erreur — un
+  silence qui se relit comme « aucune structure à Paris ». `registry_candidates`
+  retombe sur les codes postaux de la zone et l'annonce dans `warnings`.
 - **`identity_match` est à l'identité ce que `how` est à l'adresse.** Un
   rapprochement par nom seul (`nom normalisé (incertain)`) ne fait jamais monter
   le SIREN ni le siège du registre dans la fiche : ils attendent dans

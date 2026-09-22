@@ -92,6 +92,63 @@ python3 tools/agency_prospecting_v2.py --ville Quimper --radius 3000
 | `incertain` | Auto-description absente ou illisible — reste qualifiable | — |
 | `ecarte` | Plateforme, annuaire, ou activité sans rapport | — |
 
+### Seules `agence` et `formation` sont publiées
+
+`is_publishable_result()` ne laisse passer que ces deux catégories. Un candidat
+`incertain` ou `ecarte` sort des `agencies` du payload et ne devient jamais une
+carte : une fiche sans site ni auto-description lue n'est pas une piste, c'est un
+nom dans un registre. Les recalés sont **comptés et nommés par catégorie** dans
+`publication_filter` du récapitulatif, pas jetés en silence — « 22 candidats
+registre ignorés faute de site » est une information, un vide ne l'est pas.
+
+### Comment un candidat du registre devient publiable : `site_match`
+
+Un candidat du registre arrive sans site. Sans site il n'y a pas
+d'auto-description, donc pas de verdict d'activité, donc une fiche
+`incertain 0/100` — KONEXIO, organisme de formation, s'affichait « Agence
+0/100 ». C'était la fabrique à bruit de l'annuaire.
+
+Le chemin est désormais :
+
+```
+registre → recherche du site officiel → vérification d'identité → crawl → score
+```
+
+et jamais `registre → affichage direct`. `tools/official_site.py` tient l'étape
+du milieu. **Sans preuve, on ignore** : aucun domaine n'est déduit d'un nom.
+
+| `site_match` | Ce qui l'établit | Force |
+|---|---|---|
+| `siret affiché` | les 14 chiffres lus sur le site, séparateurs décoratifs recollés | 5 |
+| `siren affiché` | idem, 9 chiffres, bornes non chiffrées exigées | 4 |
+| `adresse concordante` | code postal **et** nom de voie du siège, dans la même page | 3 |
+| `raison sociale` | le nom **porte** le domaine (par égalité) ou figure dans le titre | 2 |
+| `sources convergentes` | plusieurs **moteurs** désignent le domaine | 1 |
+| `aucun` | rien d'établi — le site n'est pas retenu | 0 |
+
+Trois pièges que ce tableau ferme, et qui avaient chacun leur incident :
+
+- **le nom cité dans une page n'attribue rien.** Une page de partenaire, de
+  client ou d'actualité cite un nom sans lui appartenir. Même distinction que
+  `city_match` entre `adresse` et `mention` ;
+- **`konexio` n'est pas `konexio-formation.fr`.** La comparaison au domaine est
+  une **égalité**, pas une inclusion : un domaine qui porte des mots en plus est
+  une autre marque tant que rien d'autre ne le rattache ;
+- **trois requêtes posées au même moteur ne convergent pas**, elles se répètent.
+  La convergence compte des sources, pas des questions.
+
+Ne sont jamais des sites officiels : les annuaires et rediffuseurs de données
+légales (`societe.com`, `pappers`, `manageo`, `infogreffe`, `pagesjaunes`…) —
+ce sont eux qui passeraient le mieux la vérification, puisqu'ils affichent le
+SIREN et l'adresse —, les profils de plateformes (LinkedIn, Malt…) et les
+domaines d'infrastructure (CDN, polices, assets).
+
+Plafond dur : `REGISTRY_SITE_CAP` (12) recherches par passe. Un candidat non
+cherché le **dit** (`plafond de recherches atteint`) au lieu de se confondre
+avec un candidat cherché sans succès. Les refus sont comptés par motif dans
+`registry.site_lookup.motifs` : « ignoré faute de site » et « ignoré parce que
+le moteur n'a rendu que des annuaires » ne se corrigent pas de la même façon.
+
 ## 5. Plafonds de coût par run
 
 | Poste | Limite | Où |
@@ -111,7 +168,7 @@ repris dans le récapitulatif JSON imprimé sur stdout.
 |---|---|---|
 | `front/public/data/agencies/searches/<search_id>.json` | **Snapshot immuable** d'une passe, verdict IA inclus | non (runtime) |
 | `front/public/data/agencies/index.json` | Index des recherches publiées | non (runtime) |
-| `front/public/data/agencies/latest.json` | Alias de compatibilité de la dernière passe **réussie** | oui |
+| `front/public/data/agencies/latest.json` | Alias de compatibilité de la dernière passe **publiée, même vide** | oui |
 | `data/agency_analyses.json` | Cache d'analyses par domaine + empreinte, avec `history` | non — volume persistant en prod |
 | `data/geocode_cache.json` | Cache de géocodage | non |
 | `data/agencies_cache.json` | Dernière liste d'agences pour la chaîne `company_*` | non |
@@ -180,7 +237,8 @@ navigateur.
 
 | Symptôme | Cause probable | Reprise |
 |---|---|---|
-| Le front affiche une ancienne passe | la passe n'a rien retenu, `latest.json` n'a donc pas été touché | lire le message stderr : il nomme la recherche vide et le `latest_search_id` conservé ; la recherche vide reste dans l'index |
+| Le front affiche une ancienne passe | aucune passe n'a été publiée depuis : `latest.json` date d'avant | lire `generated_at` et `search_id` dans le fichier — le front les affiche. `latest.json` suit **toujours** la dernière passe publiée, une passe vide comprise : si l'écran montre du vieux, c'est qu'il n'y a pas eu de run, pas qu'un run a été refusé |
+| L'écran se vide après une correction | la passe ne retient plus rien une fois les faux positifs filtrés | c'est le comportement voulu. Lire `publication_filter` du récapitulatif : il compte les candidats non publiés et leur catégorie. La passe précédente reste sous son `search_id` dans `searches/` |
 | Le front n'a pas de sélecteur | installation antérieure à la phase 3 : pas d'`index.json` | normal — le front synthétise une entrée depuis `latest.json` ; le sélecteur réapparaît au premier run |
 | `Recherche inconnue : « … »` | l'identifiant vient d'un index plus ancien que les fichiers | recharger l'onglet ; le sélecteur repart de l'index courant |
 | `index.json` corrompu | écriture interrompue | il est relu de façon tolérante et reconstruit au run suivant ; les snapshots déjà écrits ne sont pas perdus |
@@ -188,6 +246,8 @@ navigateur.
 | Le cache d'analyses a disparu en prod | `data/` hors volume persistant | remonter le volume ; une analyse perdue se recalcule, elle n'est jamais inventée |
 | `Commune introuvable : « … »` | faute de frappe, ou commune fusionnée | l'erreur liste les communes approchantes rendues par l'API — reprendre un de ces noms ; **aucune recherche de repli n'est lancée** |
 | `Plusieurs communes portent ce nom` | homonymes (Montreuil : 93, 85, 28) | rejouer avec `--departement <code>` ; le message donne les codes |
+| `registre : aucun résultat sur le code commune 75056` | Paris, Lyon et Marseille sont immatriculées par **arrondissement** | rien à faire : le repli sur les codes postaux de la zone est automatique et annoncé. Sans lui, la requête rendait zéro sans erreur — un silence qui se relit comme « aucune structure à Paris » |
+| `registry.site_lookup.trouves` à 0 alors que `candidats` est élevé | les moteurs ne rendent que des annuaires, ou les sites n'affichent pas leur SIREN | lire `motifs` : `aucun site candidat` appelle d'autres requêtes, `seulement des annuaires ou des profils` appelle un moteur qui réponde, `site trouvé sans preuve d’identité` est un refus **correct** — c'est la règle « sans preuve, on ignore » qui travaille |
 | Toutes les agences en `city_match: mention` | la ville n'apparaît que dans des textes de page | c'est un résultat, pas une panne : aucune implantation n'a été établie. Élargir avec `--radius` ou vérifier à la main |
 
 ## 10. Ce que cette chaîne ne fait pas (encore)

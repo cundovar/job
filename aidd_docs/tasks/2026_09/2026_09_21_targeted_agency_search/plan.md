@@ -20,6 +20,7 @@ status: in-progress
 | 2 | Points forts, points faibles et angle de candidature | [`phase-2.md`](./phase-2.md) |
 | 3 | Historique par recherche et sélecteur géographique | [`phase-3.md`](./phase-3.md) |
 | 4 | Mode ville générique de bout en bout | [`phase-4.md`](./phase-4.md) |
+| 4b | Découverte web-first et recherche du site officiel | [`phase-4b.md`](./phase-4b.md) |
 | 5 | Mesure du juge d'agences et porte de fiabilité | [`phase-5.md`](./phase-5.md) |
 | 6 | Préparation automatique avec validation humaine en lot | [`phase-6.md`](./phase-6.md) |
 | 7 | Approbation conditionnelle par agent | [`phase-7.md`](./phase-7.md) |
@@ -40,6 +41,7 @@ status: in-progress
 | Utiliser l'API Recherche d'Entreprises, pas PagesJaunes ni l'API Entreprise authentifiée | Source publique, légale, sans clé, adaptée à la recherche et aux adresses ouvertes. |
 | Traiter le registre comme source de candidats et d'adresses, jamais comme juge d'activité | Un code APE de développement peut appartenir à une ESN, un freelance ou une activité sans rapport avec une agence web. |
 | Garder une découverte hybride web + registre | Le web révèle l'auto-description et le site réel ; le registre retrouve des structures locales invisibles des moteurs. |
+| Rendre le web primaire et le registre secondaire, avec une étape explicite « trouver le site officiel » (phase 4b) | Constat d'usage : un candidat registre arrive sans site, donc en `incertain 0/100`, et ne devient jamais une piste. Masquer ces fiches supprime le bruit sans produire de signal ; seule une recherche de site prouvée rend le registre exploitable. |
 | Conserver `agence` et `formation` comme deux catégories de premier rang | Les organismes RGAA/numérique comme Access42 ou Simplon sont des cibles légitimes avec un positionnement différent. |
 | Conserver les preuves séparées selon leur origine | Une adresse légale issue de Sirene/RNE ne prouve pas que le site web appartient à l'entreprise ; chaque champ garde sa source. |
 | Stocker une recherche sous un identifiant immuable et maintenir `latest.json` comme alias de compatibilité | Les recherches Montreuil, Paris et Lille coexistent sans casser les consommateurs actuels. |
