@@ -69,6 +69,23 @@ def _mail_parts(mail_path: Path) -> tuple[str, str]:
     return "Candidature", "\n".join(lines).strip()
 
 
+def _mail_html(body: str) -> str:
+    """Version HTML sobre du corps texte, CSS inline (les clients mail
+    suppriment les <style>) : paragraphes aérés, lisibilité d'abord."""
+    from html import escape
+
+    blocks = [block.strip() for block in body.split("\n\n") if block.strip()]
+    rendered = "".join(
+        f'<p style="margin:0 0 14px 0;font-size:14px;line-height:1.6;'
+        f'color:#111111;">{escape(block).replace(chr(10), "<br>")}</p>'
+        for block in blocks
+    )
+    return (
+        '<div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;'
+        f'margin:0 auto;padding:8px 0;">{rendered}</div>'
+    )
+
+
 def run_controls(
     dossier: Path,
     tracker: ApplicationTracker,
@@ -204,7 +221,7 @@ def send_dossier(
         return result
 
     send_result: SendResult = sender.send(
-        to=address, subject=subject, body=body, attachments=attachments
+        to=address, subject=subject, body=body, attachments=attachments, html=_mail_html(body)
     )
     if send_result.ok:
         tracker.mark_sent(
@@ -239,6 +256,7 @@ def send_dossier(
                     to=confirm_to,
                     subject=f"✓ Candidature envoyée à {job.get('company', '')}",
                     body=recap,
+                    html=_mail_html(recap),
                 )
             except Exception:
                 pass  # l'accusé ne doit jamais casser la confirmation d'envoi

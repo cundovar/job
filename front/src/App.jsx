@@ -335,6 +335,7 @@ function CandidaturesView({ mission = 'annonce' }) {
   const [approvals, setApprovals] = useState({})    // { [id]: { status, approved } }
   const [approvalPendingId, setApprovalPendingId] = useState(null)
   const [sendBrevo, setSendBrevo] = useState({})    // { [id]: { pending, ok, to, error } }
+  const [manualContact, setManualContact] = useState({}) // { [id]: { value, pending, ok, error } }
   const cvPollControllerRef = useRef(null)
 
   // Charge les candidatures depuis le fichier JSON statique. Le bloc `preuves`
@@ -611,6 +612,27 @@ function CandidaturesView({ mission = 'annonce' }) {
     }
   }
 
+  // Ajout manuel de l'email d'une agence qui n'en expose pas (source citée).
+  const handleAddContact = async (id) => {
+    const value = (manualContact[id]?.value || '').trim()
+    setManualContact(prev => ({ ...prev, [id]: { ...prev[id], pending: true } }))
+    setApiError(null)
+    try {
+      const res = await fetch(`/api/applications/${id}/contact`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: value }),
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
+      setManualContact(prev => ({ ...prev, [id]: { pending: false, ok: true } }))
+      // L'adresse entre dans l'index : on recharge pour rouvrir les verrous.
+      setTimeout(() => window.location.reload(), 900)
+    } catch (err) {
+      setManualContact(prev => ({ ...prev, [id]: { pending: false, error: err.message || 'Ajout impossible.' } }))
+    }
+  }
+
   // Marque une candidature comme postulée
   const handleApplied = async (e, id) => {
     e.stopPropagation()
@@ -711,6 +733,28 @@ function CandidaturesView({ mission = 'annonce' }) {
                 )}
                 {sendBrevo[selected]?.error && (
                   <p className="approval-note" style={{ color: '#fb7185' }}>{sendBrevo[selected].error}</p>
+                )}
+              </div>
+            )}
+            {c?.preuves && !c?.preuves?.adresse && backendOk && (
+              <div className="send-brevo-zone">
+                <input
+                  type="email"
+                  placeholder="email de l'agence (ex. contact@agence.fr)"
+                  value={manualContact[selected]?.value || ''}
+                  onChange={e => setManualContact(prev => ({ ...prev, [selected]: { ...prev[selected], value: e.target.value } }))}
+                  style={{ padding: '0.4rem 0.6rem', border: '1px solid var(--border-strong)', borderRadius: 6, background: 'var(--surface)', font: 'inherit', fontSize: '0.85rem' }}
+                />
+                <button
+                  type="button"
+                  className="approve-btn"
+                  onClick={() => handleAddContact(selected)}
+                  disabled={manualContact[selected]?.pending || !(manualContact[selected]?.value || '').includes('@')}
+                >
+                  {manualContact[selected]?.pending ? 'Ajout…' : 'Ajouter cet email'}
+                </button>
+                {manualContact[selected]?.error && (
+                  <p className="approval-note" style={{ color: '#fb7185' }}>{manualContact[selected].error}</p>
                 )}
               </div>
             )}

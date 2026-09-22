@@ -776,6 +776,47 @@ export default function createApplicationsRouter(repo) {
     }
   });
 
+  // POST /api/applications/:id/contact — Ajout manuel d'une adresse email
+  // pour une agence trouvée sans mail. Le constat cite sa source honnête :
+  // « ajout manuel par Cundo ». Il devient l'adresse de destination.
+  router.post('/applications/:id/contact', async (req, res) => {
+    try {
+      const email = String(req.body?.email || '').trim().toLowerCase();
+      if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(email)) {
+        return res.status(400).json({ error: 'Adresse email invalide.' });
+      }
+      const jobPath = path.join(applicationDir(req.params.id), 'job.json');
+      if (!fs.existsSync(jobPath)) return res.status(404).json({ error: 'Pas de job.json de prospection pour ce dossier.' });
+      const job = JSON.parse(fs.readFileSync(jobPath, 'utf-8'));
+      const contacts = Array.isArray(job.public_contact) ? job.public_contact : [];
+      if (JSON.stringify(contacts).toLowerCase().includes(email)) {
+        return res.json({ ok: true, adresse: email, deja_presente: true });
+      }
+      contacts.push({
+        claim: `Adresse email ajoutée à la main : ${email}`,
+        evidence: [`ajout manuel par Cundo le ${new Date().toISOString().slice(0, 10)}`],
+        status: 'CONFIRMED',
+        source_tool: 'ajout_manuel',
+        category: 'contact',
+      });
+      job.public_contact = contacts;
+      fs.writeFileSync(jobPath, JSON.stringify(job, null, 2), 'utf-8');
+      // L'adresse lue par le front vient de l'index : on le reconstruit.
+      await new Promise((resolve, reject) => {
+        execFile(
+          CV_PYTHON_BIN,
+          ['-c', "from applications.candidatures_index import rebuild_candidatures_index as r; print(r('output/applications', 'front/public/data/candidatures.json'))"],
+          { cwd: PROJECT_ROOT, timeout: 60000 },
+          (err, out) => (err ? reject(err) : resolve(out))
+        );
+      });
+      res.json({ ok: true, adresse: email });
+    } catch (err) {
+      console.error('[POST /applications/:id/contact]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // GET /api/applications/:id/lettre/download — Lettre de motivation en PDF
   router.get('/applications/:id/lettre/download', async (req, res) => {
     try {

@@ -29,6 +29,23 @@ class SendResult:
     error: str = ""
 
 
+def _load_repo_env() -> None:
+    """Charge le .env du repo (clé=valeur) sans dépendance externe.
+
+    setdefault : une vraie variable d'environnement (Coolify en prod) gagne
+    toujours sur le fichier.
+    """
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
 class EmailSender(ABC):
     """Ce qui sait partir vers l'extérieur. Une seule implémentation réseau."""
 
@@ -42,6 +59,7 @@ class EmailSender(ABC):
         body: str,
         attachment: Path | None = None,
         attachments: Sequence[Path] = (),
+        html: str | None = None,
     ) -> SendResult:
         raise NotImplementedError
 
@@ -68,12 +86,14 @@ class SMTPEmailSender(EmailSender):
             )
 
     def send(self, to: str, subject: str, body: str, attachment: Path | None = None,
-             attachments: Sequence[Path] = ()) -> SendResult:
+             attachments: Sequence[Path] = (), html: str | None = None) -> SendResult:
         message = EmailMessage()
         message["From"] = self.sender
         message["To"] = to
         message["Subject"] = subject
         message.set_content(body)
+        if html:
+            message.add_alternative(html, subtype="html")
         for path in ([attachment] if attachment else []) + list(attachments):
             message.add_attachment(
                 path.read_bytes(),
@@ -102,6 +122,7 @@ class BrevoEmailSender(EmailSender):
     API_URL = "https://api.brevo.com/v3/smtp/email"
 
     def __init__(self) -> None:
+        _load_repo_env()
         self.api_key = os.getenv("BREVO_API_KEY", "").strip()
         self.sender = os.getenv("BREVO_SENDER_EMAIL") or os.getenv("EMAIL_SENDER")
         self.sender_name = os.getenv("BREVO_SENDER_NAME", "Facundo Varas")
@@ -113,7 +134,7 @@ class BrevoEmailSender(EmailSender):
             )
 
     def send(self, to: str, subject: str, body: str, attachment: Path | None = None,
-             attachments: Sequence[Path] = ()) -> SendResult:
+             attachments: Sequence[Path] = (), html: str | None = None) -> SendResult:
         files = []
         for path in ([attachment] if attachment else []) + list(attachments):
             files.append({
@@ -126,6 +147,8 @@ class BrevoEmailSender(EmailSender):
             "subject": subject,
             "textContent": body,
         }
+        if html:
+            payload["htmlContent"] = html
         if self.reply_to:
             payload["replyTo"] = {"email": self.reply_to}
         if files:

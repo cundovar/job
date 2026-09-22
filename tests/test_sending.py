@@ -17,12 +17,13 @@ class FakeSender(EmailSender):
         self.calls = []
         self.ok = ok
 
-    def send(self, to, subject, body, attachment=None, attachments=None):
+    def send(self, to, subject, body, attachment=None, attachments=None, html=None):
         self.calls.append({
             "to": to,
             "subject": subject,
             "body": body,
             "attachments": [Path(a).name for a in (attachments or [])],
+            "html": html,
         })
         if self.ok:
             return SendResult(ok=True, provider=self.provider, message_id="<fake-1@localhost>")

@@ -43,6 +43,7 @@ def test_brevo_sender_posts_payload_with_attachments(monkeypatch, tmp_path):
         subject="Candidature spontanée",
         body="Bonjour,",
         attachments=[cv, lettre],
+        html="<div><p>Bonjour,</p></div>",
     )
 
     assert result.ok is True
@@ -51,12 +52,16 @@ def test_brevo_sender_posts_payload_with_attachments(monkeypatch, tmp_path):
     assert captured["url"].startswith("https://api.brevo.com/v3/smtp/email")
     assert captured["payload"]["to"] == [{"email": "agence@yotta.paris"}]
     assert captured["payload"]["sender"]["email"] == "me@varascundo.com"
+    assert captured["payload"]["textContent"] == "Bonjour,"
+    assert captured["payload"]["htmlContent"].startswith("<div>")
     names = [a["name"] for a in captured["payload"]["attachment"]]
     assert names == ["cv_final.pdf", "lettre_motivation.pdf"]
     assert captured["payload"]["attachment"][0]["content"] == base64.b64encode(b"%PDF-1.4 fake").decode("ascii")
 
 
 def test_brevo_sender_requires_key_and_validated_sender(monkeypatch):
+    # Le chargeur .env réinjecterait la vraie clé : on le neutralise ici.
+    monkeypatch.setattr("applications.sender._load_repo_env", lambda: None)
     monkeypatch.delenv("BREVO_API_KEY", raising=False)
     monkeypatch.delenv("BREVO_SENDER_EMAIL", raising=False)
     try:
