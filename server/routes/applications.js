@@ -817,6 +817,28 @@ export default function createApplicationsRouter(repo) {
     }
   });
 
+  // POST /api/applications/:id/lettre/regenerate — Régénère le PDF de la
+  // lettre depuis le markdown (après édition manuelle de lettre_motivation.md).
+  router.post('/applications/:id/lettre/regenerate', async (req, res) => {
+    try {
+      const dir = applicationDir(req.params.id);
+      const mdPath = path.join(dir, 'lettre_motivation.md');
+      if (!fs.existsSync(mdPath)) return res.status(404).json({ error: 'Aucune lettre à régénérer pour ce dossier.' });
+      await new Promise((resolve, reject) => {
+        execFile(
+          CV_PYTHON_BIN,
+          ['-c', "import sys; from cv_generator.exporters import lettre_to_pdf; lettre_to_pdf(sys.argv[1], sys.argv[2])", mdPath, path.join(dir, 'lettre_motivation.pdf')],
+          { cwd: PROJECT_ROOT, timeout: 60000 },
+          (err, out) => (err ? reject(err) : resolve(out))
+        );
+      });
+      res.json({ ok: true, regenerated_at: new Date().toISOString() });
+    } catch (err) {
+      console.error('[POST /applications/:id/lettre/regenerate]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // GET /api/applications/:id/lettre/download — Lettre de motivation en PDF
   router.get('/applications/:id/lettre/download', async (req, res) => {
     try {

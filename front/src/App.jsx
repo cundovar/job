@@ -336,6 +336,7 @@ function CandidaturesView({ mission = 'annonce' }) {
   const [approvalPendingId, setApprovalPendingId] = useState(null)
   const [sendBrevo, setSendBrevo] = useState({})    // { [id]: { pending, ok, to, error } }
   const [manualContact, setManualContact] = useState({}) // { [id]: { value, pending, ok, error } }
+  const [lettreRegen, setLettreRegen] = useState({})    // { [id]: { pending, ok, error } }
   const cvPollControllerRef = useRef(null)
 
   // Charge les candidatures depuis le fichier JSON statique. Le bloc `preuves`
@@ -633,6 +634,19 @@ function CandidaturesView({ mission = 'annonce' }) {
     }
   }
 
+  // Régénère le PDF de la lettre depuis le markdown édité à la main.
+  const handleRegenLettre = async (id) => {
+    setLettreRegen(prev => ({ ...prev, [id]: { pending: true } }))
+    try {
+      const res = await fetch(`/api/applications/${id}/lettre/regenerate`, { method: 'POST' })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
+      setLettreRegen(prev => ({ ...prev, [id]: { pending: false, ok: true } }))
+    } catch (err) {
+      setLettreRegen(prev => ({ ...prev, [id]: { pending: false, error: err.message || 'Régénération impossible.' } }))
+    }
+  }
+
   // Marque une candidature comme postulée
   const handleApplied = async (e, id) => {
     e.stopPropagation()
@@ -799,9 +813,25 @@ function CandidaturesView({ mission = 'annonce' }) {
           {copied ? <><Check /> Copié !</> : <><Clipboard /> Copier la lettre</>}
         </button>
         {c?.metadata?.files?.motivation_letter_pdf && (
-          <a className="download-btn" href={`/api/applications/${selected}/lettre/download`} download>
-            <FileDown /> Lettre PDF
-          </a>
+          <>
+            <a className="download-btn" href={`/api/applications/${selected}/lettre/download`} download>
+              <FileDown /> Lettre PDF
+            </a>
+            <button
+              type="button"
+              className="copy-btn"
+              onClick={() => handleRegenLettre(selected)}
+              disabled={lettreRegen[selected]?.pending}
+              title="Après avoir édité lettre_motivation.md : régénère le PDF qui sera envoyé"
+            >
+              {lettreRegen[selected]?.pending ? '…' : lettreRegen[selected]?.ok
+                ? <><CircleCheck /> PDF à jour</>
+                : <><RotateCw /> Régénérer le PDF</>}
+            </button>
+            {lettreRegen[selected]?.error && (
+              <p className="approval-note" style={{ color: '#fb7185' }}>{lettreRegen[selected].error}</p>
+            )}
+          </>
         )}
         <pre className="lettre-content">{c?.lettre}</pre>
         {c?.mail && (

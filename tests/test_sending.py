@@ -198,8 +198,10 @@ def test_dry_run_touches_neither_sender_nor_tracker(tmp_path):
     assert result["would_send"]["subject"].startswith("Candidature spontanée")
 
 
-def test_real_send_journals_the_full_feedback_loop(tmp_path):
+def test_real_send_journals_the_full_feedback_loop(tmp_path, monkeypatch):
     """L'envoi réel journalise tout ce que l'étape 6 du plan attendra."""
+    # Déterministe : l'accusé part vers une adresse fixée, pas celle du .env local.
+    monkeypatch.setenv("BREVO_CONFIRM_TO", "varas.cundo@gmail.com")
     dossier = make_dossier(tmp_path)
     tracker = ApplicationTracker(tmp_path / "tracker.json")
     sender = FakeSender()
