@@ -30,10 +30,15 @@ export function createScoutRouter() {
   });
 
   router.post('/scan', async (req, res) => {
-    const { lat, lng, rayon, reanalyse } = req.body || {};
+    const { lat, lng, rayon, reanalyse, cp } = req.body || {};
     const args = ['scan', '--background'];
     if (Number.isFinite(lat) && Number.isFinite(lng)) args.push('--lat', String(lat), '--lng', String(lng));
     if (Number.isFinite(rayon)) args.push('--rayon', String(Math.min(Math.max(rayon, 200), 50000)));
+    const cps = Array.isArray(cp) ? cp : (cp ? String(cp).split(',') : []);
+    for (const c of cps) {
+      const t = String(c).trim();
+      if (t) args.push('--cp', t); // mode arrondissement : le CP décide, le rayon ne filtre plus
+    }
     if (reanalyse) args.push('--reanalyse');
     try { res.status(202).json(await runScout(args)); } catch (e) { res.status(500).json({ error: e.message }); }
   });

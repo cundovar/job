@@ -30,6 +30,7 @@ export default function AgencyScout() {
   const [sort, setSort] = useState({ key: 'score', dir: -1 })
   const [categorie, setCategorie] = useState('')
   const [rayon, setRayon] = useState(3000)
+  const [cp, setCp] = useState('')
   const [launching, setLaunching] = useState(false)
 
   const load = useCallback(async () => {
@@ -62,7 +63,8 @@ export default function AgencyScout() {
       const r = await fetch('/api/scout/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rayon: Number(rayon) }),
+        // CP rempli = mode arrondissement : le code postal décide, le rayon ne filtre plus.
+        body: JSON.stringify({ rayon: Number(rayon), ...(cp.trim() ? { cp: cp.trim() } : {}) }),
       })
       const json = await r.json()
       if (!r.ok) throw new Error(json.error || `HTTP ${r.status}`)
@@ -89,12 +91,23 @@ export default function AgencyScout() {
           <h1>Agences — Google Places + IA</h1>
           <p className="scout-meta">
             {data?.last_scan
-              ? `Dernier scan : ${new Date(data.last_scan.finished_at).toLocaleString('fr-FR')} · ${data.last_scan.places} lieux · rayon ${fmtDistance(data.last_scan.radius_m)}`
+              ? `Dernier scan : ${new Date(data.last_scan.finished_at).toLocaleString('fr-FR')} · ${data.last_scan.places} lieux · ${data.last_scan.postal_codes?.length ? `CP ${data.last_scan.postal_codes.join(', ')}` : `rayon ${fmtDistance(data.last_scan.radius_m)}`}`
               : 'Aucun scan pour l’instant.'}
             {data && ` · Quota Places : ${data.places_calls_this_month}/${data.places_monthly_cap} ce mois`}
           </p>
         </div>
         <div className="scout-actions">
+          <label>
+            Code postal
+            <input
+              className="scout-cp"
+              type="text"
+              value={cp}
+              onChange={(e) => setCp(e.target.value)}
+              placeholder="ex. 75020"
+              inputMode="numeric"
+            />
+          </label>
           <label>
             Rayon
             <select value={rayon} onChange={(e) => setRayon(e.target.value)}>

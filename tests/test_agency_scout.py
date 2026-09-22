@@ -7,10 +7,18 @@ from agency_scout import core
 
 PLACES = {"places": [
     {"id": "near", "displayName": {"text": "Agence Proche"}, "formattedAddress": "10 rue X, 75020 Paris",
+     "addressComponents": [{"longText": "75020", "types": ["postal_code"]}],
      "location": {"latitude": 48.8560, "longitude": 2.3990}, "websiteUri": "https://www.proche.fr/"},
+    {"id": "voisin", "displayName": {"text": "Agence Voisine"}, "formattedAddress": "2 rue Y, 75019 Paris",
+     "addressComponents": [{"longText": "75019", "types": ["postal_code"]}],
+     "location": {"latitude": 48.8561, "longitude": 2.3991}, "websiteUri": "https://voisin.fr"},
+    {"id": "exote", "displayName": {"text": "Agence Exotique"}, "formattedAddress": "99 rue Z, 75020 Paris",
+     "addressComponents": [{"longText": "75020", "types": ["postal_code"]}],
+     "location": {"latitude": 48.80, "longitude": 2.30}, "websiteUri": "https://exote.fr"},
     {"id": "far", "displayName": {"text": "Agence Loin"}, "formattedAddress": "Lyon",
      "location": {"latitude": 45.76, "longitude": 4.83}, "websiteUri": "https://loin.fr"},
     {"id": "nosite", "displayName": {"text": "Sans Site"}, "formattedAddress": "75020 Paris",
+     "addressComponents": [{"longText": "75020", "types": ["postal_code"]}],
      "location": {"latitude": 48.8554, "longitude": 2.3985}},
 ]}
 
@@ -35,9 +43,16 @@ def db(tmp_path, monkeypatch):
 
 def test_discover_keeps_only_places_inside_radius(db):
     ids = core.discover(db, ["agence web"], (48.85536, 2.39845), 3000, "key")
-    assert set(ids) == {"near", "nosite"}
+    assert set(ids) == {"near", "voisin", "nosite"}  # le rayon seul décide, le CP est ignoré
     row = db.execute("SELECT * FROM agencies WHERE place_id='near'").fetchone()
     assert row["domain"] == "proche.fr" and row["distance_m"] < 100
+
+
+def test_postal_mode_admits_by_code_postal_not_radius(db):
+    ids = core.discover(db, ["agence web"], (48.85536, 2.39845), 3000, "key",
+                        postal_codes={"75020"})
+    # voisin (75019, tout proche) rejeté ; exote (75020, hors rayon) gardé.
+    assert set(ids) == {"near", "exote", "nosite"}
 
 
 def test_monthly_cap_is_a_hard_stop(db, monkeypatch):

@@ -1,6 +1,7 @@
 """CLI : python3 -m agency_scout {scan,list}
 
-  scan  [--lat 48.85 --lng 2.39] [--rayon 3000] [--requete "agence web" ...] [--reanalyse] [--background]
+  scan  [--lat 48.85 --lng 2.39] [--rayon 3000] [--cp 75020 ...] [--requete "agence web" ...] [--reanalyse] [--background]
+        --cp impose le code postal de l'adresse Google : le rayon ne filtre plus (mode arrondissement).
   list  [--categorie agence|formation|autre] [--min-score 0]   → JSON sur stdout
 """
 
@@ -29,6 +30,7 @@ def main(argv: list[str]) -> int:
     s.add_argument("--lat", type=float, default=DEFAULT_CENTER[0])
     s.add_argument("--lng", type=float, default=DEFAULT_CENTER[1])
     s.add_argument("--rayon", type=int, default=DEFAULT_RADIUS_M)
+    s.add_argument("--cp", action="append", help="code postal imposé, répétable (ex. --cp 75020) ; le rayon ne filtre plus")
     s.add_argument("--requete", action="append", help="répétable ; défaut : 4 requêtes agence/formation")
     s.add_argument("--reanalyse", action="store_true", help="refaire l'IA même si le site n'a pas changé")
     s.add_argument("--background", action="store_true")
@@ -45,6 +47,7 @@ def main(argv: list[str]) -> int:
         return 0
     try:
         summary = scan(args.requete, (args.lat, args.lng), args.rayon, args.reanalyse,
+                       postal_codes=set(args.cp) if args.cp else None,
                        log=lambda m: print(m, flush=True))
     except Exception as exc:  # noqa: BLE001
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False), flush=True)

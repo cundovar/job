@@ -97,7 +97,7 @@ def places_text_search(
     return places
 
 
-def _postal_code(place: dict) -> str | None:
+def postal_code_of(place: dict) -> str | None:
     for component in place.get("addressComponents") or []:
         if "postal_code" in (component.get("types") or []):
             return component.get("longText") or component.get("shortText")
@@ -121,7 +121,7 @@ def search_places(
             "name": (place.get("displayName") or {}).get("text") or website,
             "website": website,
             "address": place.get("formattedAddress") or None,
-            "postal_code": _postal_code(place),
+            "postal_code": postal_code_of(place),
             "google_maps_url": place.get("googleMapsUri") or None,
             "business_status": place.get("businessStatus") or None,
             "types": place.get("types") or [],

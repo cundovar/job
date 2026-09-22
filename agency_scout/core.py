@@ -40,7 +40,7 @@ _TOOLS_DIR = ROOT / "tools"
 if str(_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_TOOLS_DIR))
 
-from google_places import places_text_search  # noqa: E402
+from google_places import places_text_search, postal_code_of  # noqa: E402
 
 # Centre par défaut : l'adresse de référence déjà utilisée par la V2 (Paris 20e).
 DEFAULT_CENTER = tuple(float(x) for x in os.getenv("AGENCY_SCOUT_CENTER", "48.85536,2.39845").split(","))
@@ -147,8 +147,14 @@ def domain_of(url: str | None) -> str | None:
     return host[4:] if host.startswith("www.") else host or None
 
 
-def discover(db, queries: list[str], center, radius_m: int, api_key: str) -> list[str]:
-    """Enregistre les lieux dans le rayon, renvoie leurs place_id."""
+def discover(db, queries: list[str], center, radius_m: int, api_key: str,
+             postal_codes: set[str] | None = None) -> list[str]:
+    """Enregistre les lieux, renvoie leurs place_id.
+
+    ``postal_codes`` inverse la règle d'admission : le code postal de l'adresse
+    Google décide, le rayon ne filtre plus (il ne reste qu'un biais de
+    recherche) — un 75020 à 3,2 km du centre reste dedans.
+    """
     kept: list[str] = []
     for query in queries:
         for p in search_places(db, query, center, radius_m, api_key):
@@ -156,7 +162,10 @@ def discover(db, queries: list[str], center, radius_m: int, api_key: str) -> lis
             if "latitude" not in loc:
                 continue
             dist = haversine_m(center, (loc["latitude"], loc["longitude"]))
-            if dist > radius_m:  # locationBias favorise, ne filtre pas : on filtre ici.
+            if postal_codes:
+                if postal_code_of(p) not in postal_codes:
+                    continue  # le CP est la règle ; le voisinage est exclu même s'il est proche.
+            elif dist > radius_m:  # locationBias favorise, ne filtre pas : on filtre ici.
                 continue
             website = p.get("websiteUri")
             db.execute(
@@ -316,7 +325,7 @@ def save_analysis(db, a: dict) -> None:
 
 
 def scan(queries: list[str] | None = None, center=DEFAULT_CENTER, radius_m: int = DEFAULT_RADIUS_M,
-         reanalyze: bool = False, log=print) -> dict:
+         reanalyze: bool = False, postal_codes: set[str] | None = None, log=print) -> dict:
     api_key = os.getenv("GOOGLE_PLACES_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("GOOGLE_PLACES_API_KEY absente de l'environnement.")
@@ -324,11 +333,15 @@ def scan(queries: list[str] | None = None, center=DEFAULT_CENTER, radius_m: int 
     running = get_meta(db, "running")
     if running and (datetime.now(timezone.utc) - datetime.fromisoformat(running["since"])).total_seconds() < 1800:
         raise RuntimeError(f"Un scan est déjà en cours depuis {running['since']}.")
-    set_meta(db, "running", {"since": now(), "radius_m": radius_m, "center": list(center)})
+    set_meta(db, "running", {"since": now(), "radius_m": radius_m, "center": list(center),
+                             "postal_codes": sorted(postal_codes) if postal_codes else []})
     try:
         queries = queries or DEFAULT_QUERIES
-        ids = discover(db, queries, center, radius_m, api_key)
-        log(f"{len(ids)} lieux dans le rayon de {radius_m} m")
+        ids = discover(db, queries, center, radius_m, api_key, postal_codes=postal_codes)
+        if postal_codes:
+            log(f"{len(ids)} lieux — code postal imposé : {', '.join(sorted(postal_codes))}")
+        else:
+            log(f"{len(ids)} lieux dans le rayon de {radius_m} m")
         rows = db.execute(
             f"SELECT DISTINCT domain, website FROM agencies WHERE domain IS NOT NULL AND place_id IN ({','.join('?' * len(ids))})",
             ids).fetchall() if ids else []
@@ -342,7 +355,8 @@ def scan(queries: list[str] | None = None, center=DEFAULT_CENTER, radius_m: int 
                     save_analysis(db, result)
                     log(f"  {result['domain']}: {result.get('categorie') or result.get('error')}")
         summary = {"finished_at": now(), "places": len(ids), "sites": len(rows), "analyzed": len(todo),
-                   "radius_m": radius_m, "center": list(center), "queries": queries}
+                   "radius_m": radius_m, "center": list(center), "queries": queries,
+                   "postal_codes": sorted(postal_codes) if postal_codes else []}
         set_meta(db, "last_scan", summary)
         return summary
     finally:

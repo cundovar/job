@@ -438,6 +438,8 @@ def scout_scan(args: Dict[str, Any]) -> str:
         cli += ["--rayon", str(int(args["radius_m"]))]
     for q in args.get("queries") or []:
         cli += ["--requete", str(q)]
+    for c in args.get("cp") or []:
+        cli += ["--cp", str(c)]
     if args.get("reanalyse"):
         cli.append("--reanalyse")
     info = start_background(cli)
@@ -453,7 +455,10 @@ def scout_list(args: Dict[str, Any]) -> str:
     if data["running"]:
         head.append(f"⏳ Scan en cours depuis {data['running']['since']} — résultats partiels.")
     last = data["last_scan"]
-    head.append(f"Dernier scan : {last['finished_at']} ({last['places']} lieux, rayon {last['radius_m']} m)"
+    last_scope = (f"codes postaux {', '.join(last.get('postal_codes') or [])}"
+                  if last and last.get("postal_codes")
+                  else (f"rayon {last['radius_m']} m" if last else ""))
+    head.append(f"Dernier scan : {last['finished_at']} ({last['places']} lieux, {last_scope})"
                 if last else "Aucun scan terminé pour l'instant.")
     head.append(f"Quota Google Places : {data['places_calls_this_month']}/{data['places_monthly_cap']} appels ce mois.")
     rows = data["agencies"]
@@ -473,8 +478,10 @@ TOOLS: Dict[str, Dict[str, Any]] = {
         "description": (
             "ENTREPRISES/AGENCES — Lance un scan d'agences web et d'organismes de formation "
             "(Google Places + analyse IA de chaque site). Rend la main tout de suite ; "
-            "les résultats se lisent ensuite avec scout_list. Par défaut : rayon 3000 m "
-            "autour de Paris 20e. Pour une autre ville, passer lat/lng de son centre."
+            "les résultats se lisent ensuite avec scout_list. Deux modes : passer cp "
+            "(ex. [\"75020\"]) pour un arrondissement strict — l'adresse Google décide, "
+            "le rayon ne filtre plus ; sinon rayon 3000 m autour de Paris 20e. "
+            "Pour une autre ville, passer lat/lng de son centre."
         ),
         "handler": scout_scan,
         "inputSchema": {
@@ -482,7 +489,9 @@ TOOLS: Dict[str, Dict[str, Any]] = {
             "properties": {
                 "lat": {"type": "number"},
                 "lng": {"type": "number"},
-                "radius_m": {"type": "integer", "description": "Rayon en mètres (défaut 3000, max 50000)."},
+                "radius_m": {"type": "integer", "description": "Rayon en mètres (défaut 3000, max 50000) — ignoré si cp est fourni."},
+                "cp": {"type": "array", "items": {"type": "string"},
+                       "description": "Codes postaux imposés (ex. [\"75020\"]) : mode arrondissement strict, l'adresse Google décide."},
                 "queries": {"type": "array", "items": {"type": "string"},
                             "description": "Requêtes Google Places ; défaut : agence web, agence digitale, création site internet, organisme de formation numérique."},
                 "reanalyse": {"type": "boolean", "description": "Refaire l'IA même si le site n'a pas changé."},
