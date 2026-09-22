@@ -55,7 +55,10 @@ def test_brevo_sender_posts_payload_with_attachments(monkeypatch, tmp_path):
     assert captured["payload"]["textContent"] == "Bonjour,"
     assert captured["payload"]["htmlContent"].startswith("<div>")
     names = [a["name"] for a in captured["payload"]["attachment"]]
-    assert names == ["cv_final.pdf", "lettre_motivation.pdf"]
+    assert names == [
+        "CV - Facundo Varas.pdf",
+        "Lettre de motivation - Facundo Varas.pdf",
+    ]
     assert captured["payload"]["attachment"][0]["content"] == base64.b64encode(b"%PDF-1.4 fake").decode("ascii")
 
 

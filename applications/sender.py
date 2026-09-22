@@ -46,6 +46,18 @@ def _load_repo_env() -> None:
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
+ATTACHMENT_LABELS = {
+    "cv_final.pdf": "CV - Facundo Varas.pdf",
+    "cv_ats.pdf": "CV ATS - Facundo Varas.pdf",
+    "lettre_motivation.pdf": "Lettre de motivation - Facundo Varas.pdf",
+}
+
+
+def _attachment_label(path: Path) -> str:
+    """Nom lisible pour le destinataire, pas un nom de fichier interne."""
+    return ATTACHMENT_LABELS.get(Path(path).name.lower(), Path(path).name)
+
+
 class EmailSender(ABC):
     """Ce qui sait partir vers l'extérieur. Une seule implémentation réseau."""
 
@@ -99,7 +111,7 @@ class SMTPEmailSender(EmailSender):
                 path.read_bytes(),
                 maintype="application",
                 subtype="pdf",
-                filename=path.name,
+                filename=_attachment_label(path),
             )
         try:
             with smtplib.SMTP(self.server, self.port) as connection:
@@ -138,7 +150,7 @@ class BrevoEmailSender(EmailSender):
         files = []
         for path in ([attachment] if attachment else []) + list(attachments):
             files.append({
-                "name": Path(path).name,
+                "name": _attachment_label(path),
                 "content": base64.b64encode(Path(path).read_bytes()).decode("ascii"),
             })
         payload: dict[str, Any] = {
