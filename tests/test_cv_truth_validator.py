@@ -250,6 +250,43 @@ def test_unknown_skill_and_unknown_education_are_refused(master):
     assert {"UNKNOWN_SKILL", "UNKNOWN_EDUCATION"} <= codes
 
 
+def test_composed_education_rendering_is_supported(master):
+    """Le créateur rend les formations composées — année, niveau, statut et
+    école ajoutés autour du titre — et le rendu reste couvert par
+    person.education : l'écart de formatage ne doit pas produire un faux
+    refus de vérité (cas réel du 22/09/2026, VAE CDA + Doranco)."""
+    content = _grouped_cv()
+    content["cv"]["education"] = [
+        {
+            "title": (
+                "2019 — Titre professionnel Developpeur web (fictif) "
+                "(niveau 5, en cours de passage)"
+            )
+        },
+    ]
+
+    report = validate_cv_content(content, master)
+
+    assert not any(
+        item["code"] == "UNKNOWN_EDUCATION" for item in report["truth_issues"]
+    )
+
+
+def test_education_rendering_with_an_invented_title_is_still_refused(master):
+    """L'habillage ne pardonne pas un titre qui n'existe pas : le rendu composé
+    d'une formation inventée reste un refus de vérité."""
+    content = _grouped_cv()
+    content["cv"]["education"] = [
+        {"title": "2019 — Doctorat en Astrochimie (niveau 8, obtenue)"},
+    ]
+
+    report = validate_cv_content(content, master)
+
+    assert any(
+        item["code"] == "UNKNOWN_EDUCATION" for item in report["truth_issues"]
+    )
+
+
 def test_project_technology_must_belong_to_the_project(master):
     content = _grouped_cv()
     content["cv"]["projects"][0]["technologies"] = ["Kubernetes"]

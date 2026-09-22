@@ -17,6 +17,7 @@ Deux familles d'erreurs cohabitent :
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
@@ -499,6 +500,28 @@ def _validate_projects(
     return issues
 
 
+def _rendering_matches_catalog(rendered: str, catalog: Dict[str, Dict[str, Any]]) -> bool:
+    """Un rendu composé est couvert par un titre du catalogue.
+
+    Le créateur rend les formations sous forme composée — « 2026 — Titre
+    Professionnel Concepteur Développeur d'Applications (niveau 6, VAE en
+    cours) » — tandis que `person.education` porte des champs séparés. Le
+    rendu peut ajouter de l'habillage (année, niveau, statut, école) ; il ne
+    peut pas remplacer le titre par un autre. La vérification est donc : le
+    titre maître figure-t-il dans le rendu, avec des délimiteurs de mots ?
+    Le jugement sémique (niveau ou statut contradictoire) reste au checker IA.
+    """
+    if not rendered:
+        return False
+    for master_title in catalog:
+        if not master_title:
+            continue
+        pattern = r"(?:^|[^\w])" + re.escape(master_title) + r"(?:[^\w]|$)"
+        if re.search(pattern, rendered):
+            return True
+    return False
+
+
 def _validate_education(
     cv: Dict[str, Any],
     master: Dict[str, Any],
@@ -521,7 +544,8 @@ def _validate_education(
         )
     for position, item in enumerate(education):
         title = item.get("title") if isinstance(item, dict) else item
-        if normalize(title) not in catalog:
+        rendered = normalize(title)
+        if rendered not in catalog and not _rendering_matches_catalog(rendered, catalog):
             issues.append(
                 TruthIssue(
                     "UNKNOWN_EDUCATION",
