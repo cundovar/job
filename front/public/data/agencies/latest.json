@@ -1,123 +1,117 @@
 {
   "ok": true,
   "version": "v2",
-  "search_id": "ville-montreuil-93-20260922-124713",
-  "generated_at": "2026-09-22T12:47:13",
-  "total": 4,
-  "scanned_domains": 24,
-  "seed_count": 24,
+  "search_id": "paris-20-20260922-145101",
+  "generated_at": "2026-09-22T14:51:02",
+  "total": 1,
+  "scanned_domains": 75,
+  "seed_count": 223,
   "queries": [
+    "agence web WordPress React Paris",
+    "agence WordPress headless Paris",
+    "agence développement React WordPress Paris",
+    "agence Next.js WordPress Paris",
+    "studio digital WordPress React Paris",
+    "studio développement web sur mesure Paris",
+    "agence WooCommerce WordPress Paris",
+    "agence PHP Symfony WordPress Paris",
     "agence web Montreuil WordPress",
-    "agence digitale Montreuil création site internet",
-    "studio développement web Montreuil",
-    "développeur web freelance agence Montreuil 93100",
-    "organisme de formation numérique Montreuil",
-    "formation développeur web Montreuil",
-    "formation accessibilité RGAA Montreuil Seine-Saint-Denis"
+    "agence digitale Montreuil développement web",
+    "agence web Pantin WordPress",
+    "studio web Bagnolet site internet",
+    "agence web Vincennes WordPress",
+    "agence web Saint-Denis développement web",
+    "agence web Créteil WordPress",
+    "agence digitale Val-de-Marne site internet",
+    "agence web Seine-Saint-Denis WordPress",
+    "studio digital Île-de-France WordPress React",
+    "organisme de formation développeur web Paris",
+    "centre de formation WordPress développement web Paris",
+    "organisme de formation numérique Île-de-France",
+    "école développement web Paris",
+    "bootcamp développeur web Paris",
+    "formation reconversion développeur web Île-de-France",
+    "organisme formation accessibilité numérique RGAA",
+    "centre formation webmaster WordPress",
+    "organisme formation web développement Paris",
+    "agence web Paris 20 WordPress",
+    "agence digitale Paris 20e site internet",
+    "studio web Belleville Ménilmontant agence",
+    "agence web Gambetta Charonne création site"
   ],
   "query_families": {
     "agence": [
+      "agence web WordPress React Paris",
+      "agence WordPress headless Paris",
+      "agence développement React WordPress Paris",
+      "agence Next.js WordPress Paris",
+      "studio digital WordPress React Paris",
+      "studio développement web sur mesure Paris",
+      "agence WooCommerce WordPress Paris",
+      "agence PHP Symfony WordPress Paris",
       "agence web Montreuil WordPress",
-      "agence digitale Montreuil création site internet",
-      "studio développement web Montreuil",
-      "développeur web freelance agence Montreuil 93100"
+      "agence digitale Montreuil développement web",
+      "agence web Pantin WordPress",
+      "studio web Bagnolet site internet",
+      "agence web Vincennes WordPress",
+      "agence web Saint-Denis développement web",
+      "agence web Créteil WordPress",
+      "agence digitale Val-de-Marne site internet",
+      "agence web Seine-Saint-Denis WordPress",
+      "studio digital Île-de-France WordPress React",
+      "agence web Paris 20 WordPress",
+      "agence digitale Paris 20e site internet",
+      "studio web Belleville Ménilmontant agence",
+      "agence web Gambetta Charonne création site"
     ],
     "formation": [
-      "organisme de formation numérique Montreuil",
-      "formation développeur web Montreuil",
-      "formation accessibilité RGAA Montreuil Seine-Saint-Denis"
+      "organisme de formation développeur web Paris",
+      "centre de formation WordPress développement web Paris",
+      "organisme de formation numérique Île-de-France",
+      "école développement web Paris",
+      "bootcamp développeur web Paris",
+      "formation reconversion développeur web Île-de-France",
+      "organisme formation accessibilité numérique RGAA",
+      "centre formation webmaster WordPress",
+      "organisme formation web développement Paris"
     ]
   },
-  "zone": "ville-montreuil-93",
-  "zone_label": "Montreuil (93 · Seine-Saint-Denis)",
-  "city": {
-    "name": "Montreuil",
-    "insee": "93048",
-    "departement": "93",
-    "departement_name": "Seine-Saint-Denis",
-    "postal_codes": [
-      "93100"
-    ],
-    "latitude": 48.8637,
-    "longitude": 2.4491,
-    "source": "geo.api.gouv.fr (API Découpage administratif)"
-  },
-  "perimeter": {
-    "city": "Montreuil",
-    "insee": "93048",
-    "verifie": 0,
-    "mention_seule": 1,
-    "sans_lien": 5,
-    "sans_lien_details": [
-      {
-        "name": "WEBDIGITAL",
-        "website": "https://www.webdigital.fr/",
-        "how": "adresse"
-      },
-      {
-        "name": "Bew Web Agency",
-        "website": "https://www.bew-web-agency.fr/",
-        "how": "adresse"
-      },
-      {
-        "name": "YOTTA",
-        "website": "https://www.yotta-agency.com/",
-        "how": "adresse"
-      },
-      {
-        "name": "Digital Web",
-        "website": "https://digitalweb.fr",
-        "how": "aucune position"
-      },
-      {
-        "name": "Web Conception",
-        "website": "https://webconception.fr",
-        "how": "contact/legales"
-      }
-    ]
-  },
+  "zone": "paris-20",
+  "zone_label": "Paris 20e et est parisien",
+  "city": null,
+  "perimeter": null,
   "steps": [
     {
       "step": "resolution",
-      "started_at": "2026-09-22T12:46:04",
-      "duration_ms": 158,
+      "started_at": "2026-09-22T14:42:48",
+      "duration_ms": 0,
       "volumes": {
-        "postal_codes": 1
+        "postal_codes": 0
       }
     },
     {
       "step": "decouverte_web",
-      "started_at": "2026-09-22T12:46:05",
-      "duration_ms": 11147,
+      "started_at": "2026-09-22T14:42:48",
+      "duration_ms": 91622,
       "volumes": {
-        "queries": 7,
-        "seeds": 11
-      }
-    },
-    {
-      "step": "preselection",
-      "started_at": "2026-09-22T12:46:16",
-      "duration_ms": 6806,
-      "volumes": {
-        "examines": 24,
-        "retenus": 2,
-        "ecartes": 22
+        "queries": 31,
+        "seeds": 210
       }
     },
     {
       "step": "crawl",
-      "started_at": "2026-09-22T12:46:22",
-      "duration_ms": 5651,
+      "started_at": "2026-09-22T14:44:20",
+      "duration_ms": 382954,
       "volumes": {
-        "crawles": 2,
-        "retenus": 2,
-        "ecartes": 22
+        "crawles": 75,
+        "retenus": 0,
+        "ecartes": 7
       }
     },
     {
       "step": "registre",
-      "started_at": "2026-09-22T12:46:28",
-      "duration_ms": 1902,
+      "started_at": "2026-09-22T14:50:43",
+      "duration_ms": 1683,
       "volumes": {
         "candidats": 100,
         "avertissements": 0
@@ -125,8 +119,8 @@
     },
     {
       "step": "site_officiel",
-      "started_at": "2026-09-22T12:46:30",
-      "duration_ms": 38042,
+      "started_at": "2026-09-22T14:50:45",
+      "duration_ms": 11899,
       "volumes": {
         "examines": 12,
         "trouves": 0,
@@ -135,7 +129,7 @@
     },
     {
       "step": "crawl_registre",
-      "started_at": "2026-09-22T12:47:08",
+      "started_at": "2026-09-22T14:50:57",
       "duration_ms": 0,
       "volumes": {
         "lus": 0,
@@ -145,17 +139,17 @@
     },
     {
       "step": "geocodage",
-      "started_at": "2026-09-22T12:47:08",
-      "duration_ms": 4811,
+      "started_at": "2026-09-22T14:50:57",
+      "duration_ms": 4809,
       "volumes": {
-        "adresses_lues": 5,
+        "adresses_lues": 4,
         "positions_inconnues": 1
       }
     },
     {
       "step": "ia",
-      "started_at": "2026-09-22T12:47:13",
-      "duration_ms": 0,
+      "started_at": "2026-09-22T14:51:01",
+      "duration_ms": 373,
       "volumes": {
         "analysees": 0,
         "cache": 0,
@@ -164,27 +158,39 @@
     },
     {
       "step": "publication",
-      "started_at": "2026-09-22T12:47:13",
+      "started_at": "2026-09-22T14:51:02",
       "duration_ms": null,
       "volumes": {}
     }
   ],
   "distance_origin": "21 Rue Monte-Cristo, 75020 Paris",
   "zone_stats": {
-    "tier1": 0,
-    "tier2": 1,
-    "hors_zone_gardes": 3,
+    "tier1": 1,
+    "tier2": 0,
+    "hors_zone_gardes": 0,
     "hors_zone_ecartes": 0
   },
   "hors_zone_ecartes_details": [],
   "radius": {
-    "radius_m": 5000,
+    "radius_m": 2000,
     "origin_query": "21 Rue Monte-Cristo, 75020 Paris",
-    "inside": 4,
+    "inside": 1,
     "approximate": 0,
-    "outside": 1,
+    "outside": 3,
     "unknown": 1,
     "outside_radius": [
+      {
+        "name": "WEBDIGITAL",
+        "website": "https://www.webdigital.fr/",
+        "dist_m": 2018,
+        "how": "adresse"
+      },
+      {
+        "name": "Bew Web Agency",
+        "website": "https://www.bew-web-agency.fr/",
+        "dist_m": 2256,
+        "how": "adresse"
+      },
       {
         "name": "Web Conception",
         "website": "https://webconception.fr",
@@ -209,7 +215,8 @@
       "trouves": 0,
       "sans_preuve": 100,
       "motifs": {
-        "aucun site candidat": 12,
+        "aucun site candidat": 10,
+        "site trouvé sans preuve d’identité": 2,
         "plafond de recherches atteint": 88
       },
       "cap": 12,
@@ -223,339 +230,63 @@
       "agence",
       "formation"
     ],
-    "unpublished": 101,
+    "unpublished": 100,
     "unpublished_by_category": {
-      "incertain": 101
+      "incertain": 100
     }
   },
   "origin_stats": {
-    "csv": 3,
+    "csv": 1,
     "registre": 0,
-    "web": 1
+    "web": 0
   },
   "ecartes": [
     {
-      "name": "Newsletter",
-      "website": "https://impli.substack.com/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
+      "name": "gelbeseiten.de https://www.gelbeseiten.de › gsbiz",
+      "website": "https://www.gelbeseiten.de/",
+      "motif": "annuaire ou comparateur"
     },
     {
-      "name": "Amphibee",
-      "website": "https://amphibee.fr/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
+      "name": "journaldesfemmes.fr https://sante-medecine.journaldesfemmes.fr › forum",
+      "website": "https://sante-medecine.journaldesfemmes.fr/",
+      "motif": "annuaire ou comparateur"
     },
     {
-      "name": "Youdemus",
-      "website": "https://www.youdemus.fr/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
+      "name": "wp.pl https://sportowefakty.wp.pl",
+      "website": "https://sportowefakty.wp.pl/",
+      "motif": "annuaire ou comparateur"
     },
     {
-      "name": "Wedezign",
-      "website": "https://wedezign.fr/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
+      "name": "search.ch https://search.ch › map",
+      "website": "https://search.ch/",
+      "motif": "l'auto-description est celle d'un annuaire ou d'un service en libre-service (annuaire)"
     },
     {
-      "name": "Oscar-referencement",
-      "website": "https://www.oscar-referencement.com/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
+      "name": "xplorer.ro https://xplorer.ro › europa › obiective-turistice-szeged",
+      "website": "https://xplorer.ro/",
+      "motif": "annuaire ou comparateur"
     },
     {
-      "name": "Tactee",
-      "website": "https://www.tactee.fr/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
+      "name": "szegedtourism.hu https://szegedtourism.hu › en › home",
+      "website": "https://szegedtourism.hu/",
+      "motif": "annuaire ou comparateur"
     },
     {
-      "name": "Bew-web-agency",
-      "website": "https://www.bew-web-agency.fr/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
-    },
-    {
-      "name": "Ingenius",
-      "website": "https://ingenius.agency/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
-    },
-    {
-      "name": "Bsa-web",
-      "website": "https://www.bsa-web.fr/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
-    },
-    {
-      "name": "webflow.com",
-      "website": "https://webflow.com/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
-    },
-    {
-      "name": "livementor.com",
-      "website": "https://www.livementor.com/",
-      "motif": "écartée à la main dans le CSV (Livementor)"
-    },
-    {
-      "name": "Reactive Tech Solutions",
-      "website": "https://reactive-tech-solutions.com/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
-    },
-    {
-      "name": "WordPress Paris",
-      "website": "https://www.wordpress-paris.com/",
-      "motif": "page d’accueil illisible ou injoignable"
-    },
-    {
-      "name": "Le Wagon — bootcamp développeur web",
-      "website": "https://www.lewagon.com/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
-    },
-    {
-      "name": "O'clock — école développeur web",
-      "website": "https://www.oclock.io/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
-    },
-    {
-      "name": "3W Academy — formation développeur web",
-      "website": "https://3wa.fr/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
-    },
-    {
-      "name": "WebForce3 — formation développement web",
-      "website": "https://www.wf3.fr/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
-    },
-    {
-      "name": "Wild Code School — formation dev web",
-      "website": "https://www.wildcodeschool.com/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
-    },
-    {
-      "name": "La Capsule — bootcamp dev web",
-      "website": "https://lacapsule.academy/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
-    },
-    {
-      "name": "Studi — formation web & numérique",
-      "website": "https://www.studi.com/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
-    },
-    {
-      "name": "Access42 — accessibilité numérique RGAA + formation",
-      "website": "https://access42.net/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
-    },
-    {
-      "name": "Atalan — accessibilité numérique + formation",
-      "website": "https://atalan.fr/",
-      "motif": "aucun lien avec Montreuil (93 · Seine-Saint-Denis) en page d’accueil"
+      "name": "destinationabroad.co.uk https://destinationabroad.co.uk › is-szeged-worth-visiting",
+      "website": "https://destinationabroad.co.uk/",
+      "motif": "annuaire ou comparateur"
     }
   ],
-  "fit_analysis": null,
+  "fit_analysis": {
+    "eligible": 0,
+    "analyzed": 0,
+    "cache_hits": 0,
+    "review": 0,
+    "calls": 0,
+    "limite_appels": 15,
+    "seuil_min_score": 45
+  },
   "agencies": [
-    {
-      "name": "Opus agence WordPress",
-      "website": "https://opus.paris/",
-      "origin": "web",
-      "score": 67,
-      "raw_score": 67,
-      "stack": [
-        "WordPress",
-        "Headless",
-        "RGAA"
-      ],
-      "emails": [],
-      "contact_urls": [
-        "https://opus.paris/contact",
-        "https://opus.paris/contact/"
-      ],
-      "reasons": [
-        "+25 stack:wordpress",
-        "+16 stack:headless",
-        "+6 stack:accessibilité",
-        "+6 stack:rgaa",
-        "plafond stack : 53 ramené à 35",
-        "+8 agence:création de site",
-        "+8 agence:développement web",
-        "+5 agence:sur-mesure",
-        "+4 agence:réalisations",
-        "+4 agence:realisations",
-        "plafond agence : 29 ramené à 25",
-        "+12 zone-large:93",
-        "+10 contact joignable (plafonné à 15)",
-        "-15 ssii"
-      ],
-      "signals": {
-        "positive": [
-          "+25 stack:wordpress",
-          "+16 stack:headless",
-          "+6 stack:accessibilité",
-          "+6 stack:rgaa",
-          "plafond stack : 53 ramené à 35",
-          "+8 agence:création de site",
-          "+8 agence:développement web",
-          "+5 agence:sur-mesure",
-          "+4 agence:réalisations",
-          "+4 agence:realisations",
-          "plafond agence : 29 ramené à 25",
-          "+12 zone-large:93",
-          "+10 contact joignable (plafonné à 15)"
-        ],
-        "negative": [
-          "-15 ssii"
-        ],
-        "exclusion": []
-      },
-      "family_scores": {
-        "stack": 35,
-        "agence": 25,
-        "formation": 0
-      },
-      "sources": [
-        "known"
-      ],
-      "fetched_pages": [
-        "https://opus.paris/",
-        "https://opus.paris/a-propos",
-        "https://opus.paris/realisations",
-        "https://opus.paris/contact"
-      ],
-      "snippet": "Opus, agence WordPress : Création et Développement sur mesure Group Réalisations À propos Équipe Contact Menu Group Fermer Réalisations À propos Équipe Contact ABONNEZ-NOUS À NOTRE NEWSLETTER © 2026, Opus. All rights reserved Opus. Studio de création et développement de sites WordPress sur-mesure. Réalisations Opus réinvente votre projet avec toute la puissance de l’écosystème WordPress afin de créer des expériences digitales. Découvrir → Beauté & Cosmétique UX / UI Développement Maintenance & évolutions Fondation Écouter Voir Habitat UX / UI Développement Maintenance & évolutions Hébergement Etna France Industrie & BTP Headless UX / UI Développement Maintenance & évolutions RGAA Framatome S",
-      "zone_match": "tier2",
-      "zone_term": "93",
-      "category": "agence",
-      "category_reason": "la structure se décrit comme une agence ou un studio (studio de création, développement de sites)",
-      "category_evidence": [
-        "in de créer des expériences digitales. Opus. Studio de création et développement de sites WordPress sur-mesu",
-        "ences digitales. Opus. Studio de création et développement de sites WordPress sur-mesure. Réalisations Opus c'es"
-      ],
-      "page_texts": [
-        {
-          "url": "https://opus.paris/",
-          "text": "Opus, agence WordPress : Création et Développement sur mesure Group Réalisations À propos Équipe Contact Menu Group Fermer Réalisations À propos Équipe Contact ABONNEZ-NOUS À NOTRE NEWSLETTER © 2026, Opus. All rights reserved Opus. Studio de création et développement de sites WordPress sur-mesure. Réalisations Opus réinvente votre projet avec toute la puissance de l’écosystème WordPress afin de créer des expériences digitales. Découvrir → Beauté & Cosmétique UX / UI Développement Maintenance & évolutions Fondation Écouter Voir Habitat UX / UI Développement Maintenance & évolutions Hébergement Etna France Industrie & BTP Headless UX / UI Développement Maintenance & évolutions RGAA Framatome Santé UX / UI Développement Maintenance & évolutions Hébergement Écouter Voir Éducation UX / UI Développement Maintenance & évolutions Hébergement RGAA Le site Compagnon Domino Luxe UX / UI Développement Maintenance & évolutions Hébergement Comité Colbert Éducation UX / UI Développement Maintenance & évolutions Hébergement CFA Afia Opus c'est : Nous sommes une équipe d'une quinzaine de passionnés, nous mettons tout en oeuvre pour développer des sites web WordPress modernes, impactants et performants. Découvrir l'équipe au complet → Développeur LinkedIn Pierre MAGNIEN Développeur LinkedIn Nabile BATAILLE Responsable pôle projets LinkedIn Thaly ROUGÉ Chef de projets web Senior LinkedIn Laure DARCILLON Page suivante Découvrez nos réalisations Page suivante Opus réinvente votre projet avec toute la puissance de l'écosystème WordPress afin de créer des expériences digitales et innovantes. Une société Zee Group Groupe de communication indépendant et spécialisé dans l’élaboration et la production de dispositifs digitaux : Restons en contact 33, rue d’Hauteville 75010 Paris France +01 77 92 15 20 LinkedIn ABONNEZ-NOUS À NOTRE NEWSLETTER © 2026, Opus. All rights reserved Mentions légales back to top ↑ {\"props\":{\"pageProps\":{\"post\":{\"data\":{\"id\":628,\"date\":\"2022-11-22T13:52:44\",\"date_gmt\":\"2022-11-22T12:52:44\",\"guid\":{\"rendered\":\"https://backend.opus.local/?page_id=628\"},\"modified\":\"2023-06-20T16:13:52\",\"modified_gmt\":\"2023-06-20T14:13:52\",\"slug\":\"page-daccueil\",\"status\":\"publish\",\"type\":\"page\",\"link\":\"https://backend.opus.paris/\",\"title\":{\"rendered\":\"Studio de création et développement de sites WordPress sur-mesure\"},\"content\":{\"rendered\":\"\\u003cdiv class=\\\"hero__wrapper\\\"\\u003e\\n\\t\\nA Hero block using ACF.\\n\\n\\u003c/div\\u003e\\n\\n\\u003cdiv class=\\\"content__wrapper\\\"\\u003e\\n\\t\\nA "
-        },
-        {
-          "url": "https://opus.paris/a-propos",
-          "text": "À propos - Opus, agence WordPress Group Réalisations À propos Équipe Contact Menu Group Fermer Réalisations À propos Équipe Contact ABONNEZ-NOUS À NOTRE NEWSLETTER © 2026, Opus. All rights reserved Opus. Studio WordPress créateur de vitrines digitales. La promesse Reflet de votre identité, de vos produits-services ou de votre organisation, votre ou vos site(s) web reste(nt) une vitrine et une brique incontournable dans votre écosystème digital et dans les parcours de vos cibles ou parties prenantes. Mais dans le développement web, les modes technologiques succèdent souvent aux grands discours révolutionnaires. Entre les plateformes cheap de thèmes rigides et stéréotypés (coucou Wix) et les spécialistes en ingénierie qui rêvent de faire décoller sur Mars des usines à gaz complexes et surdimensionnées (big up certains concurrents SSII)... difficile d’y voir clair. Combien investir ? Quelle technologie adopter ? Et demain ? Combien cela va me coûter ? Chez Opus, pas de Grand Soir ni de grandes envolées lyriques mais des convictions simples et des parti-pris forgés par 20 ans d’expérience du digital, de passion et d’attention aux détails. Notre recette Notre recette : le cousu main durable (ou « codé main » durable – désolé, blague de geek). Création, refonte, conseil ou maintenance… Pour nous, chaque projet et chaque site internet est un nouvel «opus ». Une « oeuvre » développée sur-mesure pour répondre à vos objectifs business ou communication, et aux spécificités de votre organisation. « C’est dans les vieilles marmites qu’on fait les meilleures soupes » Des fondations stables grâce à la fiabilité de la technologie WordPress . Une plateforme Open Source éprouvée dont la qualité du code est améliorée en continu par la communauté des développeurs. Comme votre usine ou vos boutiques, votre site est toujours ouvert et sécurisé. « Un bon site web vaut mieux qu’un beau site web » Une conception « non linéaire » pour accroitre la flexibilité du développement et de la maintenance, tout en diminuant les risques . Grâce au « Headless » (désolé ce sera le seul mot de jargon), le back-office et front-office sont « déconnectés ». Ils fonctionnent indépendamment pour augmenter les performances de chargement et diminuer les risques de plantage lors des mises à jour. « On n’a pas deux fois l’occasion de faire une bonne première impression » Un webdesign poussé et inclusif pour renforcer l’image de marque et augmenter l’acquisition ou la conversion . Qualité des images et d"
-        },
-        {
-          "url": "https://opus.paris/realisations",
-          "text": "Nos réalisations sur mesure - Opus, agence WordPress Group Réalisations À propos Équipe Contact Menu Group Fermer Réalisations À propos Équipe Contact ABONNEZ-NOUS À NOTRE NEWSLETTER © 2026, Opus. All rights reserved Réalisations Opus réinvente votre projet avec toute la puissance de l’écosystème WordPress afin de créer des expériences digitales. Secteur(s) ↓ Banque & Finance Beauté & Cosmétique Éducation Humanitaire & ONG Industrie & BTP Santé Habitat Luxe expertise(s) ↓ Headless UX / UI Développement Maintenance & évolutions Hébergement RGAA Vous avez un projet de création ou de refonte de votre site internet WordPress ? Contactez-nous → Page suivante À propos Page suivante Opus réinvente votre projet avec toute la puissance de l'écosystème WordPress afin de créer des expériences digitales et innovantes. Une société Zee Group Groupe de communication indépendant et spécialisé dans l’élaboration et la production de dispositifs digitaux : Restons en contact 33, rue d’Hauteville 75010 Paris France +01 77 92 15 20 LinkedIn ABONNEZ-NOUS À NOTRE NEWSLETTER © 2026, Opus. All rights reserved Mentions légales back to top ↑ {\"props\":{\"pageProps\":{\"post\":{\"data\":{\"id\":634,\"date\":\"2022-11-22T13:59:50\",\"date_gmt\":\"2022-11-22T12:59:50\",\"guid\":{\"rendered\":\"https://backend.opus.local/?page_id=634\"},\"modified\":\"2023-06-29T17:03:57\",\"modified_gmt\":\"2023-06-29T15:03:57\",\"slug\":\"realisations\",\"status\":\"publish\",\"type\":\"page\",\"link\":\"https://backend.opus.paris/realisations/\",\"title\":{\"rendered\":\"Réalisations\"},\"content\":{\"rendered\":\"\\u003cdiv class=\\\"hero__wrapper\\\"\\u003e\\n\\t\\nA Hero block using ACF.\\n\\n\\u003c/div\\u003e\\n\\n\\u003cdiv class=\\\"content__wrapper\\\"\\u003e\\n\\t\\nA Hero block using ACF.\\n\\nA Hero block using ACF.\\n\\n\\u003c/div\\u003e\",\"protected\":false},\"excerpt\":{\"rendered\":\"\",\"protected\":false},\"author\":2,\"featured_media\":2933,\"parent\":0,\"menu_order\":0,\"comment_status\":\"closed\",\"ping_status\":\"closed\",\"template\":\"\",\"meta\":{\"_acf_changed\":false,\"footnotes\":\"\"},\"class_list\":[\"post-634\",\"page\",\"type-page\",\"status-publish\",\"has-post-thumbnail\",\"hentry\"],\"yoast_head\":\"\\u003c!-- This site is optimized with the Yoast SEO Premium plugin v24.7 (Yoast SEO v24.7) - https://yoast.com/wordpress/plugins/seo/ --\\u003e\\n\\u003ctitle\\u003eNos réalisations sur mesure - Opus, agence WordPress\\u003c/title\\u003e\\n\\u003cmeta name=\\\"description\\\" content=\\\"La satisfaction de nos clients est notre plus grande fierté. Découvrez nos dernières réalisations de sites développés sous WordPress.\\\" /\\"
-        },
-        {
-          "url": "https://opus.paris/contact",
-          "text": "Contact - Opus, agence WordPress Group Réalisations À propos Équipe Contact Menu Group Fermer Réalisations À propos Équipe Contact ABONNEZ-NOUS À NOTRE NEWSLETTER © 2026, Opus. All rights reserved Laissez-nous un petit mot Où nous trouver NUMÉRO DE TÉLÉPHONE +33 (0)1 77 92 15 20 ADRESSE 33, rue d’Hauteville CODE POSTAL ET VILLE 75010 Paris, France LinkedIn ↘ Opus réinvente votre projet avec toute la puissance de l'écosystème WordPress afin de créer des expériences digitales et innovantes. Une société Zee Group Groupe de communication indépendant et spécialisé dans l’élaboration et la production de dispositifs digitaux : Restons en contact 33, rue d’Hauteville 75010 Paris France +01 77 92 15 20 LinkedIn ABONNEZ-NOUS À NOTRE NEWSLETTER © 2026, Opus. All rights reserved Mentions légales back to top ↑ {\"props\":{\"pageProps\":{\"post\":{\"data\":{\"id\":583,\"date\":\"2022-11-04T11:39:52\",\"date_gmt\":\"2022-11-04T10:39:52\",\"guid\":{\"rendered\":\"https://backend.opus.local/?page_id=583\"},\"modified\":\"2026-02-20T12:55:12\",\"modified_gmt\":\"2026-02-20T11:55:12\",\"slug\":\"contact\",\"status\":\"publish\",\"type\":\"page\",\"link\":\"https://backend.opus.paris/contact/\",\"title\":{\"rendered\":\"Contact\"},\"content\":{\"rendered\":\"\\u003cdiv class=\\\"hero__wrapper\\\"\\u003e\\n\\t\\nA Hero block using ACF.\\n\\n\\u003c/div\\u003e\\n\\n\\u003cdiv class=\\\"content__wrapper\\\"\\u003e\\n\\t\\nA Hero block using ACF.\\n\\nA Hero block using ACF.\\n\\n\\u003c/div\\u003e\",\"protected\":false},\"excerpt\":{\"rendered\":\"\",\"protected\":false},\"author\":2,\"featured_media\":2933,\"parent\":0,\"menu_order\":0,\"comment_status\":\"closed\",\"ping_status\":\"closed\",\"template\":\"\",\"meta\":{\"_acf_changed\":false,\"footnotes\":\"\"},\"class_list\":[\"post-583\",\"page\",\"type-page\",\"status-publish\",\"has-post-thumbnail\",\"hentry\"],\"yoast_head\":\"\\u003c!-- This site is optimized with the Yoast SEO Premium plugin v24.7 (Yoast SEO v24.7) - https://yoast.com/wordpress/plugins/seo/ --\\u003e\\n\\u003ctitle\\u003eContact - Opus, agence WordPress\\u003c/title\\u003e\\n\\u003cmeta name=\\\"description\\\" content=\\\"Vous avez un projet de création ou de refonte web WordPress ? Contactez-nous via notre formulaire ou appelez-nous au au +33 (0)1 77 92 15 20.\\\" /\\u003e\\n\\u003cmeta name=\\\"robots\\\" content=\\\"index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1\\\" /\\u003e\\n\\u003clink rel=\\\"canonical\\\" href=\\\"https://backend.opus.paris/contact/\\\" /\\u003e\\n\\u003cmeta property=\\\"og:locale\\\" content=\\\"fr_FR\\\" /\\u003e\\n\\u003cmeta property=\\\"og:type\\\" content=\\\"article\\\" /\\u003e\\n\\u003cmeta pro"
-        }
-      ],
-      "origins": [
-        "web"
-      ],
-      "identity_match": "",
-      "identity_conflicts": [],
-      "site_match": "aucun",
-      "site_match_evidence": "",
-      "site_candidates": [],
-      "identity_candidates": [],
-      "siren": null,
-      "siret": null,
-      "legal_address": null,
-      "legal_address_source": null,
-      "address": "33, rue d’Hauteville 75010",
-      "postal_code": "75010",
-      "address_source": "site (pages crawlées)",
-      "distance_m": 4053,
-      "how": "adresse",
-      "city": "Montreuil",
-      "city_insee": "93048",
-      "city_match": "mention",
-      "city_match_evidence": "mention « 93 » en page"
-    },
-    {
-      "name": "WEBDIGITAL",
-      "website": "https://www.webdigital.fr/",
-      "siren": null,
-      "origin": "csv",
-      "score": 0,
-      "raw_score": 0,
-      "stack": [],
-      "emails": [],
-      "contact_urls": [],
-      "reasons": [
-        "cible versionnée dans config/companies.csv"
-      ],
-      "sources": [
-        "config/companies.csv"
-      ],
-      "fetched_pages": [],
-      "snippet": "",
-      "zone_match": "none",
-      "zone_term": "",
-      "category": "agence",
-      "category_reason": "retenue à la main dans config/companies.csv",
-      "category_evidence": [],
-      "page_texts": [],
-      "address": "6 Villa du Borrégo",
-      "postal_code": "75020",
-      "address_source": "relevé à la main (config/companies.csv)",
-      "distance_m": 2018,
-      "origins": [
-        "csv"
-      ],
-      "identity_match": "",
-      "identity_conflicts": [],
-      "site_match": "aucun",
-      "site_match_evidence": "",
-      "site_candidates": [],
-      "identity_candidates": [],
-      "siret": null,
-      "legal_address": null,
-      "legal_address_source": null,
-      "how": "adresse",
-      "city": "Montreuil",
-      "city_insee": "93048",
-      "city_match": "aucun",
-      "city_match_evidence": ""
-    },
-    {
-      "name": "Bew Web Agency",
-      "website": "https://www.bew-web-agency.fr/",
-      "siren": null,
-      "origin": "csv",
-      "score": 0,
-      "raw_score": 0,
-      "stack": [],
-      "emails": [],
-      "contact_urls": [],
-      "reasons": [
-        "cible versionnée dans config/companies.csv"
-      ],
-      "sources": [
-        "config/companies.csv"
-      ],
-      "fetched_pages": [],
-      "snippet": "",
-      "zone_match": "none",
-      "zone_term": "",
-      "category": "agence",
-      "category_reason": "retenue à la main dans config/companies.csv",
-      "category_evidence": [],
-      "page_texts": [],
-      "address": "401 rue des Pyrénées",
-      "postal_code": "75020",
-      "address_source": "relevé à la main (config/companies.csv)",
-      "distance_m": 2256,
-      "origins": [
-        "csv"
-      ],
-      "identity_match": "",
-      "identity_conflicts": [],
-      "site_match": "aucun",
-      "site_match_evidence": "",
-      "site_candidates": [],
-      "identity_candidates": [],
-      "siret": null,
-      "legal_address": null,
-      "legal_address_source": null,
-      "how": "adresse",
-      "city": "Montreuil",
-      "city_insee": "93048",
-      "city_match": "aucun",
-      "city_match_evidence": ""
-    },
     {
       "name": "YOTTA",
       "website": "https://www.yotta-agency.com/",
@@ -574,8 +305,8 @@
       ],
       "fetched_pages": [],
       "snippet": "",
-      "zone_match": "none",
-      "zone_term": "",
+      "zone_match": "tier1",
+      "zone_term": "75020",
       "category": "agence",
       "category_reason": "retenue à la main dans config/companies.csv",
       "category_evidence": [],
@@ -596,11 +327,7 @@
       "siret": null,
       "legal_address": null,
       "legal_address_source": null,
-      "how": "adresse",
-      "city": "Montreuil",
-      "city_insee": "93048",
-      "city_match": "aucun",
-      "city_match_evidence": ""
+      "how": "adresse"
     }
   ]
 }

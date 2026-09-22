@@ -90,5 +90,15 @@ def test_hermes_has_no_sending_tool():
     assert forbidden == []
 
 
+def test_job_search_api_url_is_distinct_from_hermes_gateway(monkeypatch):
+    """Le MCP appelle Express, jamais le gateway Hermes utilisé par le chat."""
+    import hermes_mcp_server
+
+    monkeypatch.setenv("HERMES_API_URL", "http://127.0.0.1:8642")
+    monkeypatch.setenv("JOB_SEARCH_API_URL", "http://127.0.0.1:3001/")
+
+    assert hermes_mcp_server._job_search_base_url() == "http://127.0.0.1:3001"
+
+
 if __name__ == "__main__":
     unittest.main()

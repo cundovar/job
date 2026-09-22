@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import re
+import signal
 import unicodedata
 import urllib.parse
 from typing import Any, Callable, Dict, List
@@ -67,8 +68,19 @@ class AmbiguousCityError(CityResolutionError):
 
 def _default_opener(url: str, timeout: int) -> str:
     request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
-    with urlopen(request, timeout=timeout) as response:
-        return response.read().decode("utf-8", errors="replace")
+    # Même garde-fou que le registre : `urlopen(timeout=)` ne couvre pas la
+    # résolution DNS ni l'établissement TCP, qui peuvent figer le run.
+    def _alarm(_signum, _frame):
+        raise TimeoutError(f"résolution de ville : délai dépassé ({timeout}s) sur {url}")
+
+    previous = signal.signal(signal.SIGALRM, _alarm)
+    signal.setitimer(signal.ITIMER_REAL, timeout)
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            return response.read().decode("utf-8", errors="replace")
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 def normalize_name(value: str) -> str:

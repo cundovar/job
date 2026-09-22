@@ -168,15 +168,15 @@ ROOT = Path(__file__).resolve().parent
 AGENCIES_PATH = ROOT / "front" / "public" / "data" / "agencies" / "latest.json"
 
 
-def _hermes_base_url() -> str:
-    """URL du serveur Node, déduite de la même source que lui.
+def _job_search_base_url() -> str:
+    """URL du backend Node job-search, distincte du gateway Hermes.
 
-    `server/config.js` lit `PORT` dans l'environnement puis, à défaut, dans le
-    `.env` racine. Le MCP fait la même lecture : un port codé en dur des deux
-    côtés finit par diverger (ici 3001 était déjà pris par une autre
-    application, le serveur tournait sur 3002, et le MCP appelait l'autre app).
+    `HERMES_API_URL` désigne le gateway Hermes (chat et runs, port 8642) et ne
+    doit jamais servir à joindre Express. Le backend peut être configuré par
+    `JOB_SEARCH_API_URL`; sinon son port suit la même source que
+    `server/config.js` (`PORT`, puis le `.env` racine, puis 3001).
     """
-    explicit = os.getenv("HERMES_API_URL")
+    explicit = os.getenv("JOB_SEARCH_API_URL")
     if explicit:
         return explicit.rstrip("/")
     port = os.getenv("PORT")
@@ -194,7 +194,7 @@ def _hermes_base_url() -> str:
 # Le serveur Node possède déjà la file asynchrone et le lancement du script de
 # prospection. Le MCP l'appelle plutôt que de dupliquer une seconde file, qui
 # écrirait latest.json en concurrence de la première.
-HERMES_API = _hermes_base_url()
+JOB_SEARCH_API = _job_search_base_url()
 
 
 def _api(method: str, path: str, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
@@ -203,7 +203,7 @@ def _api(method: str, path: str, payload: Dict[str, Any] | None = None) -> Dict[
 
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     request = urllib.request.Request(
-        f"{HERMES_API}{path}",
+        f"{JOB_SEARCH_API}{path}",
         data=data,
         method=method,
         headers={"Content-Type": "application/json"},
@@ -213,11 +213,11 @@ def _api(method: str, path: str, payload: Dict[str, Any] | None = None) -> Dict[
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", "replace")
-        raise ValueError(f"Hermes a répondu {exc.code} : {body}") from exc
+        raise ValueError(f"Backend job-search a répondu {exc.code} : {body}") from exc
     except urllib.error.URLError as exc:
         raise ValueError(
-            f"Serveur Hermes injoignable sur {HERMES_API} ({exc.reason}). "
-            "Démarre-le avec `node server/index.js`."
+            f"Backend job-search injoignable sur {JOB_SEARCH_API} ({exc.reason}). "
+            "Démarre-le avec `cd server && npm start`."
         ) from exc
 
 

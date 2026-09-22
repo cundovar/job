@@ -29,6 +29,7 @@ import json
 import math
 import os
 import re
+import signal
 import ssl
 import sys
 import tempfile
@@ -479,10 +480,27 @@ def fetch(url: str, timeout=6, max_bytes=700_000) -> str:
         'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.7',
     })
     ctx = ssl.create_default_context()
-    with urlopen(req, timeout=timeout, context=ctx) as r:
-        raw = r.read(max_bytes)
-        charset = r.headers.get_content_charset() or 'utf-8'
-        return raw.decode(charset, errors='ignore')
+    # `urlopen(timeout=)` ne borne que la socket une fois connectée. La
+    # résolution DNS (`getaddrinfo`) et l'établissement TCP qui la précèdent
+    # gardent leurs propres délais, bien plus longs : un hôte qui droppe
+    # silencieusement les paquets fige le run entier sans lever d'exception.
+    # Une alarme dure garantit qu'aucun appel ne dépasse `timeout`, quel que
+    # soit le point de blocage. Ne fonctionne que sur le thread principal —
+    # ce script est mono-thread ; en multi-thread, passer par des sockets
+    # avec timeout explicite.
+    def _alarm(_signum, _frame):
+        raise TimeoutError(f'fetch: délai dépassé ({timeout}s) sur {url}')
+
+    previous = signal.signal(signal.SIGALRM, _alarm)
+    signal.setitimer(signal.ITIMER_REAL, timeout)
+    try:
+        with urlopen(req, timeout=timeout, context=ctx) as r:
+            raw = r.read(max_bytes)
+            charset = r.headers.get_content_charset() or 'utf-8'
+            return raw.decode(charset, errors='ignore')
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 def strip_text(s: str) -> str:
@@ -492,12 +510,34 @@ def strip_text(s: str) -> str:
     return re.sub(r'\s+', ' ', s).strip()
 
 
+def _bounded_urlopen(req, timeout: int):
+    """`urlopen` dont le délai couvre aussi la résolution DNS et le connect().
+
+    `urlopen(timeout=)` ne borne que la socket une fois connectée : la
+    résolution DNS et l'établissement TCP qui la précèdent gardent leurs
+    propres délais, bien plus longs, et un hôte qui droppe les paquets fige
+    le run entier sans lever d'exception. Une alarme dure borne tout le
+    chemin. Ne fonctionne que sur le thread principal — ce script est
+    mono-thread ; en multi-thread, passer par des sockets explicites.
+    """
+    def _alarm(_signum, _frame):
+        raise TimeoutError(f'délai dépassé ({timeout}s)')
+
+    previous = signal.signal(signal.SIGALRM, _alarm)
+    signal.setitimer(signal.ITIMER_REAL, timeout)
+    try:
+        return urlopen(req, timeout=timeout)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+
+
 def geocode(q: str):
     """Géocode via Nominatim (OSM). ~1,1 s entre appels (rate limit), countrycodes=fr."""
     try:
         url = 'https://nominatim.openstreetmap.org/search?' + urllib.parse.urlencode(
             {'q': q, 'format': 'json', 'limit': 1, 'countrycodes': 'fr'})
-        with urlopen(Request(url, headers=UA_NOMINATIM), timeout=12) as r:
+        with _bounded_urlopen(Request(url, headers=UA_NOMINATIM), 12) as r:
             res = json.loads(r.read().decode('utf-8'))
         time.sleep(1.1)
         if res:
@@ -511,7 +551,7 @@ def geocode_ban(q: str):
     """Géocode via la Base Adresse Nationale (autorité France), repli de Nominatim."""
     try:
         url = 'https://api-adresse.data.gouv.fr/search?' + urllib.parse.urlencode({'q': q, 'limit': 1})
-        with urlopen(Request(url, headers=UA_NOMINATIM), timeout=12) as r:
+        with _bounded_urlopen(Request(url, headers=UA_NOMINATIM), 12) as r:
             res = json.loads(r.read().decode('utf-8'))
         time.sleep(1.1)
         f = (res.get('features') or [None])[0]
@@ -1386,8 +1426,24 @@ def _harvest(page: str, base: str, engine: str, query: str,
     return out
 
 
+# Coupe-circuit DuckDuckGo : depuis un hébergeur, DDG droppe souvent les
+# paquets en silence. Sans ce garde-fou, chaque run perd deux timeouts par
+# requête (un par endpoint), soit ~10 minutes pour zéro résultat.
+_DDG_MAX_ECHECS = 3
+_ddg_echecs_consecutifs = 0
+_ddg_abandonne = False
+
+
 def search_ddg(query: str, max_results=12) -> list[tuple[str, str, str]]:
-    # DuckDuckGo HTML is unstable but useful when it responds.
+    #
+    # Depuis un hébergeur, DDG droppe souvent les paquets en silence : chaque
+    # appel coûte alors deux timeouts (un par endpoint ci-dessous) au lieu de
+    # répondre. Répété sur les 31 requêtes d'un run, c'est ~10 minutes perdues
+    # pour zéro résultat. Après `_DDG_MAX_ECHECS` échecs consécutifs, on
+    # considère le moteur muet pour le reste de la passe et on n'appelle plus.
+    global _ddg_echecs_consecutifs, _ddg_abandonne
+    if _ddg_abandonne:
+        return []
     for endpoint in ['https://duckduckgo.com/html/?q=', 'https://html.duckduckgo.com/html/?q=']:
         try:
             page = fetch(endpoint + quote_plus(query), timeout=10)
@@ -1398,8 +1454,15 @@ def search_ddg(query: str, max_results=12) -> list[tuple[str, str, str]]:
         urls = _harvest(page, endpoint, 'ddg', query, max_results)
         if urls:
             note_engine('ddg', 'ok')
+            _ddg_echecs_consecutifs = 0
             return urls
         note_engine('ddg', 'vide', 'page reçue sans lien exploitable')
+    _ddg_echecs_consecutifs += 1
+    if _ddg_echecs_consecutifs >= _DDG_MAX_ECHECS:
+        _ddg_abandonne = True
+        note_engine('ddg', 'abandon', (
+            f'{_ddg_echecs_consecutifs} échecs consécutifs : '
+            'moteur abandonné pour le reste de la passe'))
     return []
 
 

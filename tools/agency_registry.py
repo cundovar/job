@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import re
+import signal
 import time
 import urllib.parse
 from typing import Any, Callable, Dict, Iterable, List
@@ -85,8 +86,21 @@ class RegistryError(RuntimeError):
 
 def _default_opener(url: str, timeout: int) -> str:
     request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
-    with urlopen(request, timeout=timeout) as response:
-        return response.read().decode("utf-8", errors="replace")
+    # `urlopen(timeout=)` ne borne que la socket une fois connectée : la
+    # résolution DNS et l'établissement TCP qui la précèdent gardent leurs
+    # propres délais, bien plus longs. Un registre injoignable fige alors le
+    # run entier sans lever d'exception. L'alarme dure borne tout le chemin.
+    def _alarm(_signum, _frame):
+        raise TimeoutError(f"registre : délai dépassé ({timeout}s) sur {url}")
+
+    previous = signal.signal(signal.SIGALRM, _alarm)
+    signal.setitimer(signal.ITIMER_REAL, timeout)
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            return response.read().decode("utf-8", errors="replace")
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 def _text(value: Any) -> str:
