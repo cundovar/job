@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ExternalLink, LoaderCircle, RotateCw, Search, TriangleAlert } from 'lucide-react'
 import './AgencyScout.css'
 
+const SCOUT_TARGET_TASKS_KEY = 'scout_target_tasks'
+
 const COLUMNS = [
   { key: 'name', label: 'Structure' },
   { key: 'categorie', label: 'Catégorie' },
@@ -32,6 +34,12 @@ export default function AgencyScout() {
   const [rayon, setRayon] = useState(3000)
   const [cp, setCp] = useState('')
   const [launching, setLaunching] = useState(false)
+  // Ciblage par domaine : { pending, done, error, taskId }. Le task_id vit dans
+  // le localStorage : changer de page pendant une préparation ne perd rien.
+  const [targeting, setTargeting] = useState({})
+
+  const setTargetState = (domain, patch) =>
+    setTargeting((s) => ({ ...s, [domain]: { ...(s[domain] || {}), ...patch } }))
 
   const load = useCallback(async () => {
     try {
@@ -57,6 +65,52 @@ export default function AgencyScout() {
     return () => clearInterval(t)
   }, [data?.running, load])
 
+  // Reprise des ciblages en cours au remontage de la vue : le task_id persisté
+  // dans le localStorage est réinterrogé ; 404 = serveur redémarré, on nettoie
+  // honnêtement au lieu de faire croire que ça tourne encore.
+  useEffect(() => {
+    const readTasks = () => {
+      try { return JSON.parse(localStorage.getItem(SCOUT_TARGET_TASKS_KEY) || '{}') } catch { return {} }
+    }
+    const saveTasks = (tasks) => localStorage.setItem(SCOUT_TARGET_TASKS_KEY, JSON.stringify(tasks))
+    let tasks = readTasks()
+    const pending = Object.entries(tasks).filter(([, t]) => t?.task_id && !t.done && !t.error)
+    if (pending.length === 0) return undefined
+    let cancelled = false
+    const watch = (domain, taskId) => {
+      const tick = async () => {
+        try {
+          const r = await fetch(`/api/agencies/target/status/${encodeURIComponent(taskId)}`)
+          if (cancelled) return
+          if (r.status === 404) {
+            setTargetState(domain, { pending: false, error: 'Tâche introuvable (serveur redémarré) — vérifie l’onglet Candidatures.' })
+            delete tasks[domain]
+            saveTasks(tasks)
+            return
+          }
+          const json = await r.json()
+          if (cancelled) return
+          if (json.state === 'completed' || json.state === 'failed') {
+            const done = json.state === 'completed'
+            setTargetState(domain, { pending: false, done, error: done ? null : (json.error || 'Échec de la préparation') })
+            tasks[domain] = { task_id: taskId, done, error: done ? null : (json.error || '') }
+            saveTasks(tasks)
+          } else {
+            setTimeout(tick, 4000)
+          }
+        } catch {
+          if (!cancelled) setTimeout(tick, 6000)
+        }
+      }
+      tick()
+    }
+    pending.forEach(([domain, t]) => {
+      setTargetState(domain, { pending: true, taskId: t.task_id })
+      watch(domain, t.task_id)
+    })
+    return () => { cancelled = true }
+  }, [])
+
   const launch = async () => {
     setLaunching(true)
     try {
@@ -80,6 +134,48 @@ export default function AgencyScout() {
     const list = (data?.agencies || []).filter((a) => !categorie || a.categorie === categorie)
     return [...list].sort((a, b) => sort.dir * compare(a, b, sort.key))
   }, [data, categorie, sort])
+
+  // Retenir & préparer : même circuit que la V2 (POST /api/agencies/target,
+  // source=scout). Le serveur vérifie le domaine dans la base scout, ajoute
+  // la ligne au banc d'essai (statut retenue) et rend un task_id pollable.
+  const target = async (a) => {
+    const domain = a.domain
+    if (!domain || targeting[domain]?.pending) return
+    setTargetState(domain, { pending: true, done: false, error: null })
+    try {
+      const r = await fetch('/api/agencies/target', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: 'scout', domain }),
+      })
+      const json = await r.json()
+      if (!r.ok) throw new Error(json.error || `HTTP ${r.status}`)
+      const tasks = (() => { try { return JSON.parse(localStorage.getItem(SCOUT_TARGET_TASKS_KEY) || '{}') } catch { return {} } })()
+      tasks[domain] = { task_id: json.task_id }
+      localStorage.setItem(SCOUT_TARGET_TASKS_KEY, JSON.stringify(tasks))
+      setTargetState(domain, { taskId: json.task_id })
+      const tick = async () => {
+        const sr = await fetch(`/api/agencies/target/status/${encodeURIComponent(json.task_id)}`)
+        if (sr.status === 404) {
+          setTargetState(domain, { pending: false, error: 'Tâche introuvable (serveur redémarré) — vérifie l’onglet Candidatures.' })
+          return
+        }
+        const sj = await sr.json()
+        if (sj.state === 'completed' || sj.state === 'failed') {
+          const done = sj.state === 'completed'
+          setTargetState(domain, { pending: false, done, error: done ? null : (sj.error || 'Échec de la préparation') })
+          const t2 = (() => { try { return JSON.parse(localStorage.getItem(SCOUT_TARGET_TASKS_KEY) || '{}') } catch { return {} } })()
+          t2[domain] = { task_id: json.task_id, done, error: done ? null : (sj.error || '') }
+          localStorage.setItem(SCOUT_TARGET_TASKS_KEY, JSON.stringify(t2))
+        } else {
+          setTimeout(tick, 4000)
+        }
+      }
+      tick()
+    } catch (e) {
+      setTargetState(domain, { pending: false, error: e.message })
+    }
+  }
 
   const toggleSort = (key) =>
     setSort((s) => (s.key === key ? { key, dir: -s.dir } : { key, dir: key === 'score' ? -1 : 1 }))
@@ -143,6 +239,7 @@ export default function AgencyScout() {
                 </th>
               ))}
               <th>Analyse</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -168,6 +265,25 @@ export default function AgencyScout() {
                     </blockquote>
                   )}
                   {!a.resume && <span className="scout-sub">{a.error || (a.website ? 'Pas encore analysé' : 'Pas de site web sur Google')}</span>}
+                </td>
+                <td className="scout-action">
+                  {a.domain && (
+                    <button
+                      type="button"
+                      className="btn-scout-target"
+                      onClick={() => target(a)}
+                      disabled={targeting[a.domain]?.pending}
+                    >
+                      {targeting[a.domain]?.pending
+                        ? '⏳ Préparation…'
+                        : targeting[a.domain]?.done
+                          ? '✓ Ciblé'
+                          : '🎯 Retenir & préparer'}
+                    </button>
+                  )}
+                  {targeting[a.domain]?.error && (
+                    <div className="scout-target-error">{targeting[a.domain].error}</div>
+                  )}
                 </td>
               </tr>
             ))}

@@ -4,6 +4,23 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_agency_scout_view_carries_target_button_and_task_resume():
+    # Le scout V3 doit pouvoir candidater : bouton Retenir & préparer branché
+    # sur le circuit V2 (source=scout), task_id persisté côté navigateur et
+    # repris au remontage de la vue — et côté serveur, le nom vient de la base
+    # scout, jamais du client.
+    jsx = (PROJECT_ROOT / "front/src/AgencyScout.jsx").read_text(encoding="utf-8")
+    assert "Retenir & préparer" in jsx
+    assert "scout_target_tasks" in jsx
+    assert "'/api/agencies/target'" in jsx
+    assert "/api/agencies/target/status/" in jsx
+
+    server = (PROJECT_ROOT / "server/routes/applications.js").read_text(encoding="utf-8")
+    assert "source === 'scout'" in server
+    assert "findScoutAgencyByDomain" in server
+    assert "'-m', 'agency_scout', 'list'" in server
+
+
 def test_runtime_image_contains_front_export_module():
     dockerfile = (PROJECT_ROOT / "Dockerfile").read_text(encoding="utf-8")
     copy_commands = [

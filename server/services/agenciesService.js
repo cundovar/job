@@ -135,8 +135,15 @@ function escapeCSVField(field) {
 // décalerait toutes les colonnes à la relecture.
 const CSV_HEADER = 'nom,site,ville,type,statut,poste_vise,adresse,code_postal,siren';
 
-function appendToCSV(csvPath, agencyName, domain) {
-  const line = `${escapeCSVField(agencyName)},https://${domain},,agence_com_engagee,a_qualifier,,,,\n`;
+function appendToCSV(csvPath, agencyName, domain, options = {}) {
+  // Colonnes : nom,site,ville,type,statut,poste_vise,adresse,code_postal,siren
+  const ville = '';
+  const type = 'agence_com_engagee';
+  const statut = options.statut || 'a_qualifier';
+  const poste = '';
+  const adresse = options.adresse ? escapeCSVField(options.adresse) : '';
+  const codePostal = options.codePostal || '';
+  const line = `${escapeCSVField(agencyName)},https://${domain},${ville},${type},${statut},${poste},${adresse},${codePostal},\n`;
 
   // Ajoute en-tête si le fichier n'existe pas
   if (!fs.existsSync(csvPath)) {
@@ -146,16 +153,20 @@ function appendToCSV(csvPath, agencyName, domain) {
   fs.appendFileSync(csvPath, line, 'utf-8');
 }
 
-function appendToYAML(yamlPath, agencyName, domain) {
+function appendToYAML(yamlPath, agencyName, domain, options = {}) {
   const today = new Date().toISOString().slice(0, 10);
   const yamlName = `"${String(agencyName).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  const statut = options.statut || 'a_qualifier';
+  const notes = options.statut
+    ? `Ajoutée le ${today} via Agency Scout (bouton Retenir & préparer). URL: https://${domain}. Adresse Google: ${options.adresse || 'n/a'}. Statut retenue : préparation lancée, registre/SIREN à confirmer.`
+    : `Ajoutée le ${today} via bouton front (découverte Étape 0). URL: https://${domain}. Type et taille non confirmés.`;
   const entry = `  - nom: ${yamlName}
     type: agence_com_engagee
     zone: Ile-de-France
     taille_estimee: null
     taille_verifiee: false
-    statut: a_qualifier
-    notes: "Ajoutée le ${today} via bouton front (découverte Étape 0). URL: https://${domain}. Type et taille non confirmés."
+    statut: ${statut}
+    notes: "${notes}"
 `;
 
   // Ajoute avant la fermeture du fichier ou après les autres entrées

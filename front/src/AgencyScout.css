@@ -6,6 +6,9 @@
 .scout-actions label { display: flex; align-items: center; gap: var(--sp-1); font-size: 0.85rem; }
 .scout-actions select, .scout-actions input.scout-cp { padding: 0.35rem 0.5rem; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); }
 .scout-actions input.scout-cp { width: 7rem; }
+.btn-scout-target { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.6rem; border: 1px solid var(--accent-border); border-radius: 6px; background: var(--surface); color: var(--text-strong); font: inherit; font-size: 0.82rem; cursor: pointer; white-space: nowrap; }
+.btn-scout-target:disabled { opacity: 0.6; cursor: default; }
+.scout-target-error { color: var(--danger, #b3261e); font-size: 0.78rem; margin-top: 0.25rem; max-width: 16rem; }
 .scout .btn-primary, .scout .btn-secondary {
   display: inline-flex; align-items: center; gap: var(--sp-1); padding: 0.45rem 0.8rem;
   border-radius: 6px; border: 1px solid var(--accent-border); cursor: pointer; font: inherit;

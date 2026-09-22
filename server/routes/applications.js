@@ -9,7 +9,7 @@
 import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { PROJECT_ROOT } from '../config.js';
 import { downloadFilename } from '../services/cvDownloads.js';
 import {
@@ -33,6 +33,22 @@ import {
   readSearchPayload,
   readPersistedAnalyses
 } from '../services/agenciesService.js';
+
+// Vérifie qu'un domaine existe dans la base Agency Scout (SQLite via CLI).
+// Le nom affiché vient TOUJOURS de la base, jamais du client.
+async function findScoutAgencyByDomain(domain) {
+  const pythonBin = process.env.PYTHON_BIN || 'python3';
+  const stdout = await new Promise((resolve, reject) => {
+    execFile(
+      pythonBin,
+      ['-m', 'agency_scout', 'list'],
+      { cwd: PROJECT_ROOT, timeout: 20000, maxBuffer: 20 * 1024 * 1024 },
+      (err, out) => (err ? reject(err) : resolve(out))
+    );
+  });
+  const data = JSON.parse(stdout);
+  return (data.agencies || []).find(a => a.domain === domain) || null;
+}
 
 const MAX_CV_PROCESS_OUTPUT = 10 * 1024 * 1024;
 const CV_PYTHON_BIN = process.env.CV_PYTHON_BIN || 'python3';
@@ -888,9 +904,14 @@ export default function createApplicationsRouter(repo) {
   });
 
   // POST /api/agencies/target — Ajoute une agence puis met la préparation en file
-  router.post('/agencies/target', (req, res) => {
+  // Deux sources : 'search' (défaut) relit l'agence dans la passe affichée
+  // (search_id) ; 'scout' vérifie le domaine dans la base Agency Scout
+  // (SQLite via CLI) — jamais le nom venu du client. La suite est commune :
+  // idempotence CSV, banc d'essai, file de tâche, task_id pollable.
+  router.post('/agencies/target', async (req, res) => {
     const domain = req.body?.domain;
     const dry = req.body?.dry === true;
+    const source = req.body?.source === 'scout' ? 'scout' : 'search';
     // Le ciblage doit porter sur la recherche AFFICHÉE : sans search_id, deux
     // passes de villes différentes donneraient la même agence « la plus récente ».
     const searchId = req.body?.search_id ?? null;
@@ -905,37 +926,66 @@ export default function createApplicationsRouter(repo) {
       return res.status(400).json({ error: 'Format de domaine invalide' });
     }
 
-    let resolved;
-    try {
-      // Charger la recherche demandée (repli contrôlé sur latest.json)
-      resolved = readSearchPayload(searchId);
-    } catch (err) {
-      return res.status(404).json({ error: err.message });
+    if (source === 'scout' && searchId) {
+      return res.status(400).json({ error: 'search_id est incompatible avec source=scout' });
     }
 
-    try {
-      const agencies = resolved.payload.agencies || [];
+    let displayNameSource = null;
+    let scoutRow = null;
+    let resolved = null;
 
-      // Trouver l'agence
-      const agency = agencies.find(a => domainMatchesAgency(normalizedDomain, a));
-      if (!agency) {
-        return res.status(404).json({
-          error: `Agence avec domaine ${normalizedDomain} non trouvée dans la recherche « ${resolved.search_id} »`
-        });
+    try {
+      if (source === 'scout') {
+        try {
+          scoutRow = await findScoutAgencyByDomain(normalizedDomain);
+        } catch (err) {
+          console.error('[POST /agencies/target] Agency Scout indisponible:', err.message);
+          return res.status(500).json({ error: `Agency Scout indisponible : ${err.message}` });
+        }
+        if (!scoutRow) {
+          return res.status(404).json({
+            error: `Domaine ${normalizedDomain} absent de la base Agency Scout — relance un scan ou vérifie le domaine`
+          });
+        }
+        displayNameSource = scoutRow.name;
+      } else {
+        try {
+          // Charger la recherche demandée (repli contrôlé sur latest.json)
+          resolved = readSearchPayload(searchId);
+        } catch (err) {
+          return res.status(404).json({ error: err.message });
+        }
+
+        const agencies = resolved.payload.agencies || [];
+
+        // Trouver l'agence
+        const agency = agencies.find(a => domainMatchesAgency(normalizedDomain, a));
+        if (!agency) {
+          return res.status(404).json({
+            error: `Agence avec domaine ${normalizedDomain} non trouvée dans la recherche « ${resolved.search_id} »`
+          });
+        }
+        displayNameSource = agency.name;
       }
 
       // Vérifier idempotence
       const csvPath = path.join(PROJECT_ROOT, 'config/companies.csv');
       const yamlPath = path.join(PROJECT_ROOT, 'config/companies.yaml');
       // Nom nettoyé : évite qu'un « Voir » scrapé pollue csv → mesure → lettre
-      const displayName = cleanAgencyName(agency.name, normalizedDomain);
+      const displayName = cleanAgencyName(displayNameSource, normalizedDomain);
       const alreadyTargeted = isAlreadyTargeted(normalizedDomain, csvPath);
 
       if (!dry && !alreadyTargeted) {
-        // Ajouter append-only
-        appendToCSV(csvPath, displayName, normalizedDomain);
-        appendToYAML(yamlPath, displayName, normalizedDomain);
-        console.log(`[POST /agencies/target] Agence ${displayName} ajoutée au ciblage`);
+        // Ajouter append-only. Le scout apporte une adresse Google vérifiée :
+        // statut « retenue » + adresse/CP écrits dans le banc d'essai.
+        const scoutOptions = scoutRow ? {
+          statut: 'retenue',
+          adresse: scoutRow.address || '',
+          codePostal: (String(scoutRow.address || '').match(/\b(\d{5})\b/) || [])[1] || '',
+        } : undefined;
+        appendToCSV(csvPath, displayName, normalizedDomain, scoutOptions);
+        appendToYAML(yamlPath, displayName, normalizedDomain, scoutOptions);
+        console.log(`[POST /agencies/target] Agence ${displayName} ajoutée au ciblage (source: ${source})`);
       }
 
       if (dry) {
@@ -945,7 +995,8 @@ export default function createApplicationsRouter(repo) {
           dry: true,
           already_targeted: alreadyTargeted,
           agency_name: displayName,
-          search_id: resolved.search_id
+          source,
+          search_id: resolved ? resolved.search_id : null
         });
       }
 
@@ -957,7 +1008,8 @@ export default function createApplicationsRouter(repo) {
       res.status(202).json({
         accepted: true,
         task_id: task.task_id,
-        search_id: resolved.search_id,
+        source,
+        search_id: resolved ? resolved.search_id : null,
         status: publicAgencyTask(task),
       });
     } catch (err) {
