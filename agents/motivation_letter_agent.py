@@ -88,6 +88,12 @@ def _build_payload(
             key: job.get(key)
             for key in ("title", "company", "location", "contract", "url", "description", "score")
         },
+        # Preuves de prospection mesurées (constats CONFIRMED, contacts, signaux
+        # de recrutement) : la lettre y lit l'angle salarié vs freelance.
+        "preuves_prospection": {
+            "constats": job.get("findings") or [],
+            "contact": job.get("public_contact") or [],
+        },
         "analyse_ia": job.get("ai_analysis", {}),
         "variante_cv": {
             "id": getattr(recommendation, "cv_id", ""),

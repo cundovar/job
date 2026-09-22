@@ -73,9 +73,9 @@
       "deepseek_cv"
     ],
     "agent_redacteur_lettres": [
-      "codex_medium",
       "glm_cv",
-      "deepseek_cv"
+      "deepseek_cv",
+      "codex_medium"
     ],
     "company_verifier": [
       "deepseek_job",

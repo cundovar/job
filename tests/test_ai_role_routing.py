@@ -34,8 +34,9 @@ def test_role_matrix_matches_approved_provider_order():
         ("deepseek", "deepseek-v4-flash", None),
     ]
     assert _route_signature("agent_redacteur_lettres") == [
-        ("codex_cli", "gpt-5.6-sol", "medium"),
+        ("glm", "glm-5.3", None),
         ("deepseek", "deepseek-v4-flash", None),
+        ("codex_cli", "gpt-5.6-sol", "medium"),
     ]
 
 
