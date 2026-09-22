@@ -347,6 +347,7 @@ function CandidaturesView({ mission = 'annonce' }) {
   useEffect(() => {
     return () => {
       cvPollControllerRef.current?.abort()
+      cvPollControllerRef.current = null
     }
   }, [])
 
@@ -449,6 +450,53 @@ function CandidaturesView({ mission = 'annonce' }) {
     throw new Error('La génération prend plus de 30 minutes. Vérifie son état dans quelques instants.')
   }
 
+  // Réarme le suivi de génération au (re)montage de la vue : quitter la page
+  // avorte le polling précédent, mais la génération continue côté serveur —
+  // au retour, un statut `queued/running` doit réafficher la progression et
+  // ramener le feedback de fin, au lieu de laisser la carte muette.
+  const ensureCvPolling = (id, status) => {
+    if (!id || !status) return
+    const state = status?.generation?.state
+    if (!['queued', 'running'].includes(state)) return
+    const existing = cvPollControllerRef.current
+    if (existing && !existing.signal.aborted) return
+    cvPollControllerRef.current?.abort()
+    const controller = new AbortController()
+    cvPollControllerRef.current = controller
+    setCvPendingId(id)
+    ;(async () => {
+      try {
+        const finalStatus = await waitForCvGeneration(id, controller.signal)
+        setCvStatuses(prev => ({ ...prev, [id]: finalStatus }))
+        if (!cvExists(finalStatus)) {
+          setCvFeedback({
+            id,
+            type: 'error',
+            text: 'Les fichiers attendus du CV sont absents.',
+          })
+        } else {
+          setCvFeedback({
+            id,
+            type: 'success',
+            text: 'CV personnalisé terminé. Le PDF est disponible au téléchargement.',
+          })
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') return
+        setCvFeedback({
+          id,
+          type: 'error',
+          text: err.message || 'Suivi de la génération interrompu.',
+        })
+      } finally {
+        setCvPendingId(null)
+        if (cvPollControllerRef.current === controller) {
+          cvPollControllerRef.current = null
+        }
+      }
+    })()
+  }
+
   const handlePrepareCv = async (id) => {
     setCvPendingId(id)
     setCvFeedback(null)
@@ -494,7 +542,10 @@ function CandidaturesView({ mission = 'annonce' }) {
 
   useEffect(() => {
     if (!selected) return
-    const timeout = setTimeout(() => refreshCvStatus(selected), 0)
+    const timeout = setTimeout(async () => {
+      const status = await refreshCvStatus(selected)
+      ensureCvPolling(selected, status)
+    }, 0)
     return () => clearTimeout(timeout)
     // refreshCvStatus dépend déjà de backendOk, volontairement listé ci-dessous.
     // eslint-disable-next-line react-hooks/exhaustive-deps
