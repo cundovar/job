@@ -388,7 +388,7 @@ function CandidaturesView({ mission = 'annonce' }) {
     if (!id) return null
     try {
       if (backendOk) {
-        const res = await fetch(`/api/applications/${id}/cv/status`)
+        const res = await fetch(`/api/applications/${id}/cv/status`, { cache: 'no-store' })
         const raw = await res.text()
         if (res.ok && !isProbablyHtml(res, raw)) {
           const status = JSON.parse(raw)
@@ -560,6 +560,22 @@ function CandidaturesView({ mission = 'annonce' }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, backendOk])
 
+  // Filet de resynchronisation : tant que le dossier affiché est « preparing »,
+  // on relit le statut toutes les 5 s et on réarme le polling s'il est mort
+  // (erreur réseau passagère, retour de page). Sans ce filet, un suivi rompu
+  // laissait le bouton « Génération du CV… » figé après la fin réelle.
+  const cvPreparing = cvPublicationStatus(cvStatuses[selected]) === 'preparing'
+  useEffect(() => {
+    if (!selected || !backendOk || !cvPreparing) return
+    const timer = setInterval(async () => {
+      const fresh = await refreshCvStatus(selected)
+      if (fresh) ensureCvPolling(selected, fresh)
+    }, 5000)
+    return () => clearInterval(timer)
+    // refreshCvStatus / ensureCvPolling stables, volontairement hors deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, backendOk, cvPreparing])
+
   // L'approbation vit dans metadata.json, pas dans l'index statique : elle est
   // toujours relue au serveur pour ne jamais afficher une autorisation périmée.
   const refreshApproval = async (id) => {
@@ -729,6 +745,7 @@ function CandidaturesView({ mission = 'annonce' }) {
     const cvStatus = cvStatuses[selected]
     const cvReady = hasGeneratedCv(cvStatus)
     const cvState = cvPublicationStatus(cvStatus)
+    const cvProgress = cvStatus?.progress || null
     const cvBlocksSending = cvState === 'review' || cvState === 'blocked' 
     const cvReview = cvStatus?.review
     const approval = approvals[selected]
@@ -991,6 +1008,12 @@ function CandidaturesView({ mission = 'annonce' }) {
                   ? <><RotateCw /> Régénérer le CV personnalisé</>
                   : <><Target /> Générer le CV personnalisé</>}
             </button>
+            {cvPendingId === selected && cvProgress?.label && (
+              <p className="cv-progress-line" aria-live="polite" style={{ margin: '0.25rem 0 0', fontSize: '0.8rem', color: 'var(--text-muted, #666)' }}>
+                Étape {cvProgress.index}/{cvProgress.total} — {cvProgress.label}
+                {cvProgress.detail ? ` · ${cvProgress.detail}` : ''}
+              </p>
+            )}
             {cvReady && (
               <>
                 <a className="download-btn" href={cvFileUrl(selected, 'cv_final.pdf', cvStatus)} download><FileDown /> PDF design</a>
