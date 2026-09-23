@@ -1023,9 +1023,16 @@ export default function createApplicationsRouter(repo) {
           + 'city résout une commune réelle. Envoie l’un des deux.',
       });
     }
-    // Sans ville ni zone, on reste sur le préréglage historique : les clients
-    // déjà déployés continuent de fonctionner sans changement.
-    const zone = city ? null : (rawZone || 'ile-de-france');
+    // Sans ville ni zone, on refuse : le défaut historique « ile-de-france » a
+    // déjà lancé une passe non demandée quand un transport perdait les
+    // arguments (incident du 23/09/2026). Le client doit nommer son périmètre.
+    if (!city && !rawZone) {
+      return res.status(400).json({
+        error: 'Périmètre manquant : envoie city (ex. "Pantin") ou zone '
+          + '(ile-de-france | paris-20 | paris-19 | ouest-paris).',
+      });
+    }
+    const zone = city ? null : rawZone;
 
     if (radiusM != null && (!Number.isInteger(Number(radiusM)) || Number(radiusM) <= 0)) {
       return res.status(400).json({ error: 'radius_m doit être un nombre de mètres positif' });
@@ -1171,6 +1178,13 @@ export default function createApplicationsRouter(repo) {
           statut: 'retenue',
           adresse: scoutRow.address || '',
           codePostal: (String(scoutRow.address || '').match(/\b(\d{5})\b/) || [])[1] || '',
+          // URL relevée par le scout (avec www) : ne pas la reconstruire depuis
+          // le domaine normalisé, un certificat TLS peut ne couvrir que www.
+          site: scoutRow.website || '',
+          // Catégorie du scout (agence | formation | autre) : une organisme de
+          // formation entre au banc avec son type réel, sinon poste_vise_par_type
+          // la traite comme une agence et les textes partent en angle « dev ».
+          type: scoutRow.categorie === 'formation' ? 'formation_organisation' : 'agence_com_engagee',
         } : undefined;
         appendToCSV(csvPath, displayName, normalizedDomain, scoutOptions);
         appendToYAML(yamlPath, displayName, normalizedDomain, scoutOptions);

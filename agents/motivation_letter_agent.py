@@ -86,7 +86,7 @@ def _build_payload(
     return {
         "offre": {
             key: job.get(key)
-            for key in ("title", "company", "location", "contract", "url", "description", "score")
+            for key in ("title", "company", "location", "contract", "url", "description", "score", "company_type")
         },
         # Preuves de prospection mesurées (constats CONFIRMED, contacts, signaux
         # de recrutement) : la lettre y lit l'angle salarié vs freelance.
@@ -94,6 +94,10 @@ def _build_payload(
             "constats": job.get("findings") or [],
             "contact": job.get("public_contact") or [],
         },
+        # Auto-description de la structure relevée par le scout (organisme de
+        # formation ? agence de production ? structure sociale ?) : c'est elle
+        # qui décide de l'identité d'accroche, avant tout choix rédactionnel.
+        "structure": job.get("structure_profile") or {},
         "analyse_ia": job.get("ai_analysis", {}),
         "variante_cv": {
             "id": getattr(recommendation, "cv_id", ""),

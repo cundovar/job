@@ -26,6 +26,7 @@ criteres:
 poste_vise_par_type:
   agence_web: "Développeur web / Intégrateur"
   agence_com_engagee: "Développeur web / Intégrateur"
+  formation_organisation: "Formateur numérique / Intervenant développement web"
   scop: "Développeur full-stack PHP / Symfony"
 
 # Statuts possibles : a_qualifier | prioritaire | secondaire | ecartee
@@ -178,6 +179,22 @@ companies:
     zone: Ile-de-France
     taille_estimee: null
     taille_verifiee: false
-    statut: ecartee
-    notes: "Ajoutée le 2026-09-19 via bouton front (découverte Étape 0). URL: https://livementor.com. Type et taille non confirmés. Écartée le 21/09/2026 (re-ciblage Paris-20e) : hors zone et organisme de formation, pas une agence."
+    statut: a_qualifier
+    notes: "Ajoutée le 2026-09-19 via bouton front (découverte Étape 0). URL: https://livementor.com. Type et taille non confirmés. Statut ecartee posé le 21/09/2026 par l'agent lors du re-ciblage Paris-20e — exclusion jamais décidée par Cundo, contestée le 23/09/2026 : remise a_qualifier."
+
+  - nom: "10MentionWeb"
+    type: formation_organisation
+    zone: Ile-de-France
+    taille_estimee: null
+    taille_verifiee: false
+    statut: retenue
+    notes: "Ajoutée le 2026-09-23 via Agency Scout (bouton Retenir & préparer). URL: https://www.10mentionweb.org. Adresse Google: 80 Bd de Reuilly, 75012 Paris. Statut retenue : préparation lancée, registre/SIREN à confirmer. Organisme de formation (groupe Colombbus), catégorie scout « formation »."
+
+  - nom: "Le Garage Numérique"
+    type: formation_organisation
+    zone: Ile-de-France
+    taille_estimee: null
+    taille_verifiee: false
+    statut: retenue
+    notes: "Ré-ajoutée le 2026-09-23 : la ligne écrite par le clic du 22/09 (prod) n'avait pas survécu ; type corrigé en formation_organisation (catégorie scout « formation » — structure d'accompagnement et de formation). URL: https://legaragenumerique.fr. Adresse Google: 4 Pl. Henri Matisse, 75020 Paris."
 

@@ -76,6 +76,21 @@ Facundo Varas
 Portfolio : varascundo.com
 ```
 
+## Qualifier la structure AVANT d'écrire
+
+Avant tout choix rédactionnel, répondre à une question : **à quelle structure ai-je affaire ?** Les données pour le dire sont fournies, jamais à deviner :
+
+- le champ `structure` (auto-description du site relevée par le scout : `categorie` — agence | formation | autre —, `resume`, `preuve` citée) ;
+- `offre.company_type` (type du banc : `agence_com_engagee`, `formation_organisation`, `scop`…) ;
+- les constats CONFIRMED de `preuves_prospection`.
+
+Règle d'identité d'accroche, dans cet ordre de priorité :
+
+- **Organisme de formation / structure d'accompagnement ou d'insertion** (`categorie: formation`, `company_type: formation_organisation`, ou constats centrés « former / accompagner / équiper ») → accroche **formateur d'abord** : l'expérience de formateur web (Le Pôle S, publics en insertion) porte la lettre, la compétence technique devient le soutien (« je peux aussi faire évoluer votre site »). L'objet mentionne le poste visé formateur, pas « Développeur web / Intégrateur ».
+- **Agence de production web** → accroche **dev / intégrateur d'abord**, la casse formateur en renfort ponctuel.
+- **Structure sociale / ESS / petite équipe** (indices : mission d'insertion, réemploi, association, « jeunes », « publics éloignés de l'emploi ») → ton concret et sobre, parler autonomie des publics et outillage simple, éviter le jargon d'agence.
+- Si `structure` est vide (structure jamais passée au scout) : seuls les constats font foi — ne pas inventer la nature de la structure, rester sur l'identité du poste visé.
+
 ## Angle : candidature salariée ou freelance — décidé par les constats
 
 Les constats de prospection fournis dans `preuves_prospection` (constats CONFIRMED, signaux de recrutement, contacts mesurés) décident de l'angle. Ne jamais deviner hors d'eux :

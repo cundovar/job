@@ -138,12 +138,20 @@ const CSV_HEADER = 'nom,site,ville,type,statut,poste_vise,adresse,code_postal,si
 function appendToCSV(csvPath, agencyName, domain, options = {}) {
   // Colonnes : nom,site,ville,type,statut,poste_vise,adresse,code_postal,siren
   const ville = '';
-  const type = 'agence_com_engagee';
+  // Le scout sait si la structure est une organisme de formation
+  // (options.type = formation_organisation) : c'est ce type qui choisit le
+  // poste visé (poste_vise_par_type) donc l'angle lettre/mail/CV.
+  const type = options.type || 'agence_com_engagee';
   const statut = options.statut || 'a_qualifier';
   const poste = '';
   const adresse = options.adresse ? escapeCSVField(options.adresse) : '';
   const codePostal = options.codePostal || '';
-  const line = `${escapeCSVField(agencyName)},https://${domain},${ville},${type},${statut},${poste},${adresse},${codePostal},\n`;
+  // Site : l'URL relevée par le scout (options.site) fait foi — la reconstruire
+  // depuis le domaine normalisé perd le « www », et un certificat TLS qui ne
+  // couvre pas le domaine nu fait alors échouer la mesure en « site injoignable
+  // SSLError hostname mismatch » (cas 10MentionWeb, 23/09/2026).
+  const site = (options.site || `https://${domain}`).replace(/\/+$/, '');
+  const line = `${escapeCSVField(agencyName)},${site},${ville},${type},${statut},${poste},${adresse},${codePostal},\n`;
 
   // Ajoute en-tête si le fichier n'existe pas
   if (!fs.existsSync(csvPath)) {
@@ -157,11 +165,13 @@ function appendToYAML(yamlPath, agencyName, domain, options = {}) {
   const today = new Date().toISOString().slice(0, 10);
   const yamlName = `"${String(agencyName).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
   const statut = options.statut || 'a_qualifier';
+  // Même règle que appendToCSV : l'URL du scout (avec www) fait foi.
+  const site = (options.site || `https://${domain}`).replace(/\/+$/, '');
   const notes = options.statut
-    ? `Ajoutée le ${today} via Agency Scout (bouton Retenir & préparer). URL: https://${domain}. Adresse Google: ${options.adresse || 'n/a'}. Statut retenue : préparation lancée, registre/SIREN à confirmer.`
-    : `Ajoutée le ${today} via bouton front (découverte Étape 0). URL: https://${domain}. Type et taille non confirmés.`;
+    ? `Ajoutée le ${today} via Agency Scout (bouton Retenir & préparer). URL: ${site}. Adresse Google: ${options.adresse || 'n/a'}. Statut retenue : préparation lancée, registre/SIREN à confirmer.`
+    : `Ajoutée le ${today} via bouton front (découverte Étape 0). URL: ${site}. Type et taille non confirmés.`;
   const entry = `  - nom: ${yamlName}
-    type: agence_com_engagee
+    type: ${options.type || 'agence_com_engagee'}
     zone: Ile-de-France
     taille_estimee: null
     taille_verifiee: false
@@ -283,14 +293,30 @@ function parseCompanyTopOutput(output, targetName) {
       }
     }
 
-    // Check pour une ligne de refus (-. Nom : REFUS. motif)
-    const refusalMatch = trimmed.match(/^-\.\s+(.+?)\s*:\s*REFUS\.\s*(.+)$/);
+    // Check pour une ligne de refus. Format actuel de company_top (motif sur
+    // la ligne suivante) :
+    //   -. Nom : REFUS
+    //      Motif : raison
+    // L'ancien format inline « -. Nom : REFUS. raison » reste accepté.
+    const refusalMatch = trimmed.match(/^-\.\s+(.+?)\s*:\s*REFUS\b\.?\s*(.*)$/);
     if (refusalMatch) {
-      const [, name, msg] = refusalMatch;
+      const [, name, inlineMsg] = refusalMatch;
       if (name.toLowerCase().includes(targetName.toLowerCase()) ||
           targetName.toLowerCase().includes(name.toLowerCase())) {
-        reason = msg;
         foundTarget = true;
+        reason = (inlineMsg || '').trim() || null;
+        if (!reason) {
+          // Le motif vit sur la ligne suivante (« Motif : … »)
+          for (let j = i + 1; j < lines.length; j++) {
+            const motifLine = lines[j].trim();
+            if (!motifLine) break;
+            const motifMatch = motifLine.match(/^Motif\s*:\s*(.+)$/i);
+            if (motifMatch) {
+              reason = motifMatch[1].trim();
+            }
+            break;
+          }
+        }
         break;
       }
     }

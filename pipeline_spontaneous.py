@@ -65,6 +65,21 @@ def collect_facts(url: str) -> Dict[str, Dict[str, Any]]:
     return {name: COLLECTORS[name](url) for name in FACT_COLLECTORS}
 
 
+def _scout_structure_profile(domain: str | None) -> Dict[str, Any]:
+    """Profil auto-déclaré du scout (catégorie, résumé, preuve), s'il existe.
+
+    Import paresseux et silencieux : la voie spontanée doit fonctionner même
+    quand le module scout ou sa base sont absents. Le profil est un plus de
+    contexte pour les rédacteurs, jamais une dépendance.
+    """
+    try:
+        from agency_scout.core import structure_profile
+
+        return structure_profile(domain or "")
+    except Exception:
+        return {}
+
+
 def analyse_company(
     company: Dict[str, Any],
     criteria: Dict[str, Any],
@@ -97,6 +112,12 @@ def analyse_company(
         refusal = "aucun constat CONFIRMED exploitable : rien à affirmer sur cette structure"
     else:
         refusal = ""
+        # Contexte « qu'est-ce que cette structure » (organisme de formation ?
+        # agence de production ?) pour la lettre et le mail : auto-description
+        # du site relevée par le scout, jamais une déduction.
+        opportunity["structure_profile"] = _scout_structure_profile(
+            domain["value"].get("domain")
+        )
 
     return {
         "company": name,

@@ -106,6 +106,41 @@ def get_meta(db, key: str, default=None):
     return json.loads(row["value"]) if row else default
 
 
+def structure_profile(domain: str, path: Path = DB_PATH) -> dict:
+    """Profil auto-déclaré d'une structure, lu dans la base du scout.
+
+    Lecture seule : catégorie (agence | formation | autre), résumé de
+    l'auto-description du site et preuve citée. Retourne {} si le domaine est
+    absent ou jamais analysé — aucune déduction depuis le nom ou l'URL.
+    Utilisé par la voie spontanée pour donner aux rédacteurs (lettre, mail)
+    le contexte « qu'est-ce que cette structure » avant d'écrire.
+    """
+    clean = str(domain or "").strip().lower()
+    if not clean:
+        return {}
+    db = connect(path)
+    try:
+        row = db.execute(
+            "SELECT categorie, score, resume, preuve FROM analyses WHERE domain = ?",
+            (clean,),
+        ).fetchone()
+    finally:
+        db.close()
+    if row is None:
+        return {}
+    categorie = (row["categorie"] or "").strip()
+    resume = (row["resume"] or "").strip()
+    if not categorie and not resume:
+        return {}
+    return {
+        "categorie": categorie,
+        "score": row["score"],
+        "resume": resume,
+        "preuve": (row["preuve"] or "").strip(),
+        "source": "agency_scout.db — auto-description du site, analyse du scout",
+    }
+
+
 # ── 1. Découverte Google Places ──────────────────────────────────────────────
 
 
