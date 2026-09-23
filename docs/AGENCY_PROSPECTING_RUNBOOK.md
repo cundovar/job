@@ -59,6 +59,11 @@ python3 tools/agency_prospecting_v2.py --ville Quimper --radius 3000
 
 - `--ville` et `--zone` sont **exclusifs**. Donner les deux est refusé, pas
   arbitré.
+- **Aucun périmètre par défaut.** Un appel API/MCP sans `city` ni `zone` reçoit
+  une erreur (400 côté Express, `ValueError` côté MCP) au lieu de retomber sur
+  `ile-de-france` : le défaut historique a déjà lancé une passe non demandée
+  quand un transport perdait les arguments (23/09/2026). Les clients qui
+  voulaient l'IDF doivent le nommer explicitement.
 - La commune est résolue chez
   [`geo.api.gouv.fr`](https://geo.api.gouv.fr/communes) (API Découpage
   administratif, ouverte, sans jeton) : nom officiel, **code INSEE**, codes

@@ -241,8 +241,13 @@ def agency_search(args: Dict[str, Any]) -> str:
             payload["departement"] = departement
         perimetre = f"Ville : {city}" + (f" (departement {departement})" if departement else "")
     else:
-        payload["zone"] = zone or "ile-de-france"
-        perimetre = f"Zone (prereglage) : {payload['zone']}"
+        if not zone:
+            raise ValueError(
+                "Perimetre manquant : donne city (ex. 'Pantin') ou zone "
+                "(ile-de-france, paris-20, paris-19, ouest-paris)."
+            )
+        payload["zone"] = zone
+        perimetre = f"Zone (prereglage) : {zone}"
     if radius_m is not None:
         payload["radius_m"] = int(radius_m)
 

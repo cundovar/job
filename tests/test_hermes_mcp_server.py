@@ -90,6 +90,19 @@ def test_hermes_has_no_sending_tool():
     assert forbidden == []
 
 
+def test_agency_search_refuses_a_scope_less_call():
+    """Sans city ni zone explicites, l'ancien défaut « ile-de-france » lançait
+    une passe pleine IDF à l'insu de l'appelant : un transport qui perd les
+    arguments (schémas MCP vides, incident du 23/09/2026) déclenchait une
+    prospection non demandée. Un périmètre se nomme, il ne se déduit plus."""
+    import pytest
+
+    import hermes_mcp_server
+
+    with pytest.raises(ValueError, match="Perimetre manquant"):
+        hermes_mcp_server.TOOLS["agency_search"]["handler"]({})
+
+
 def test_job_search_api_url_is_distinct_from_hermes_gateway(monkeypatch):
     """Le MCP appelle Express, jamais le gateway Hermes utilisé par le chat."""
     import hermes_mcp_server
