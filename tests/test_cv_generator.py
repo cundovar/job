@@ -1996,3 +1996,41 @@ def test_a_refused_patch_tells_the_reviser_why_on_the_fallback_call(tmp_path, ca
     refus = [item for item in appel_repli if item.get("origin") == "patch"]
     assert refus and refus[0]["code"] == "PATCH_REFUSE"
     assert "hors périmètre" in refus[0]["problem"]
+
+
+# ── Liste blanche des compétences au point d'assemblage ────────────────────
+
+def test_filter_skills_whitelist_ramene_au_canonique_et_retire_hors_liste():
+    """Une révision ne peut plus réintroduire un libellé hors profil maître."""
+    from cv_generator.ai_agents import _filter_skills_whitelist
+
+    master = {
+        "skills_confidence": {"Animation de groupe": {"level": "confirme"}},
+        "cv_variants": [
+            {"id": "formateur_developpement_web", "skills": {"Technique": ["WordPress"]}}
+        ],
+    }
+    skills = [
+        {
+            "title": "Pédagogie",
+            "items": ["animation  de groupe", "Élaboration de projets pédagogiques"],
+        },
+        {"title": "Technique", "items": ["wordpress", "Expert IA"]},
+        {"title": "Vide", "items": ["Médiation numérique"]},
+    ]
+
+    filtered = _filter_skills_whitelist(skills, master)
+
+    # « animation  de groupe » → forme canonique ; « Élaboration… » (hors liste)
+    # retiré ; la section qui ne garde rien disparaît.
+    assert filtered == [
+        {"title": "Pédagogie", "items": ["Animation de groupe"]},
+        {"title": "Technique", "items": ["WordPress"]},
+    ]
+
+
+def test_filter_skills_whitelist_sans_liste_ne_rien_invente():
+    from cv_generator.ai_agents import _filter_skills_whitelist
+
+    assert _filter_skills_whitelist([{"title": "T", "items": ["WordPress"]}], {}) == []
+    assert _filter_skills_whitelist("pas une liste", {"skills_confidence": {}}) == []

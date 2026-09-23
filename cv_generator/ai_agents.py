@@ -641,6 +641,43 @@ def _sanitize_skill_mapping(
     return result
 
 
+def _filter_skills_whitelist(
+    skills: Any,
+    master: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """N'autorise en section compétences que les libellés du profil maître.
+
+    Même contrat que `_sanitize_skill_mapping` sur le plan, appliqué au contenu
+    final : chaque libellé est ramené à sa forme canonique ou retiré. Sans ce
+    filtre au point d'assemblage, le réviseur (patch ou réécriture complète)
+    réintroduisait un vocabulaire d'offre que la liste blanche ne porte pas —
+    le contrôle qualité le refusait trois tours plus tard (UNKNOWN_SKILL) et
+    le CV finissait bloqué (cas La Goutte d'Or, 23/09/2026).
+    """
+    allowed = _allowed_skills(master)
+    sections: List[Dict[str, Any]] = []
+    if not isinstance(skills, list):
+        return sections
+    for section in skills:
+        if not isinstance(section, dict):
+            continue
+        picked: List[str] = []
+        for item in section.get("items") or []:
+            if not isinstance(item, str):
+                continue
+            canonical = allowed.get(normalize(item))
+            if canonical and canonical not in picked:
+                picked.append(canonical)
+        if picked:
+            sections.append(
+                {
+                    "title": _clip(section.get("title"), 60, "Compétences"),
+                    "items": picked,
+                }
+            )
+    return sections
+
+
 def _validate_plan(
     proposed: Dict[str, Any],
     rule_plan: Dict[str, Any],
@@ -1010,14 +1047,7 @@ def _assemble_cv_content(
         ),
         "contact": build_structural_shell(master, variant_id)["contact"],
         "location": person.get("location", ""),
-        "skills": [
-            {
-                "title": _clip(section.get("title"), 60, "Compétences"),
-                "items": [str(entry) for entry in section.get("items", []) or []],
-            }
-            for section in (proposed.get("skills") or [])
-            if isinstance(section, dict)
-        ],
+        "skills": _filter_skills_whitelist(proposed.get("skills"), master),
         "experiences": experiences,
         "projects": projects,
         "education": education,
@@ -1857,6 +1887,10 @@ class AICVPipeline:
                 result,
                 "cv_style_reviser_ai",
             )
+        # Dernier passage obligatoire : quelle que soit la voie (patch ciblé ou
+        # réécriture complète), la section compétences repasse par la liste
+        # blanche du profil maître avant de sortir de la révision.
+        final["skills"] = _filter_skills_whitelist(final.get("skills"), master)
         final["source_draft_agent"] = draft.get("agent")
         final["review_applied"] = {
             "initial_quality_score": review.get("quality_score"),
