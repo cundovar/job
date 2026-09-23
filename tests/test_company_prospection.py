@@ -350,3 +350,102 @@ def test_hermes_tools_expose_no_sending_capability():
     forbidden = ("send", "envoi", "envoyer", "mail", "post", "publish", "apply")
     for name, spec in TOOLS.items():
         assert not any(word in name.lower() for word in forbidden), name
+
+
+# ── Mesure unitaire (--nom) : le ciblage front mesure une seule ligne ──────
+
+def _bench(tmp_path):
+    csv_path = tmp_path / "companies.csv"
+    csv_path.write_text(
+        "nom,site\nAlpha,https://alpha.invalid\nBeta,https://beta.invalid\n",
+        encoding="utf-8",
+    )
+    cache_path = tmp_path / "companies_cache.json"
+    cache_path.write_text(
+        json.dumps([{"company": "Alpha", "opportunity": {"title": "Dev"}, "claims": []}]),
+        encoding="utf-8",
+    )
+    return csv_path, cache_path
+
+
+def _stub_analyse(monkeypatch, measured):
+    import hermes_commands.company_top as company_top
+
+    def fake_analyse(company, criteria, use_ai=True):
+        measured.append(company["nom"])
+        return {
+            "company": company["nom"],
+            "opportunity": None,
+            "refusal": "site injoignable : test",
+            "claims": [],
+        }
+
+    monkeypatch.setattr(company_top, "analyse_company", fake_analyse)
+    return company_top
+
+
+def test_measure_single_company_ne_mesure_que_la_cible_et_fusionne(tmp_path, monkeypatch):
+    csv_path, cache_path = _bench(tmp_path)
+    measured = []
+    company_top = _stub_analyse(monkeypatch, measured)
+
+    results = company_top.measure_single_company(
+        "beta", cache_path=cache_path, csv_path=csv_path
+    )
+
+    # Une seule mesure : relancer tout le banc pour une agence était le bug.
+    assert measured == ["Beta"]
+    # L'ordre du cache est préservé, la cible est ajoutée à la fin.
+    assert [entry["company"] for entry in results] == ["Alpha", "Beta"]
+    # Le cache a bien été réécrit avec la fusion.
+    reloaded = json.loads(cache_path.read_text(encoding="utf-8"))
+    assert [entry["company"] for entry in reloaded] == ["Alpha", "Beta"]
+
+
+def test_measure_single_company_remplace_l_entree_homonyme(tmp_path, monkeypatch):
+    csv_path, cache_path = _bench(tmp_path)
+    measured = []
+    company_top = _stub_analyse(monkeypatch, measured)
+
+    results = company_top.measure_single_company(
+        "Alpha", cache_path=cache_path, csv_path=csv_path
+    )
+
+    assert measured == ["Alpha"]
+    # Alpha remplaçait l'entrée de cache homonyme ; Beta n'a jamais été au cache.
+    assert [entry["company"] for entry in results] == ["Alpha"]
+    reloaded = json.loads(cache_path.read_text(encoding="utf-8"))
+    assert [entry["company"] for entry in reloaded] == ["Alpha"]
+
+
+def test_measure_single_company_nom_inconnu_signale_les_noms_connus(tmp_path, monkeypatch):
+    csv_path, cache_path = _bench(tmp_path)
+    measured = []
+    company_top = _stub_analyse(monkeypatch, measured)
+
+    with pytest.raises(ValueError) as excinfo:
+        company_top.measure_single_company(
+            "Inconnue", cache_path=cache_path, csv_path=csv_path
+        )
+
+    # Un vide ne se relit jamais comme « rien » : les noms connus sont nommés.
+    assert "Alpha" in str(excinfo.value) and "Beta" in str(excinfo.value)
+    assert measured == []
+
+
+def test_numero_affiche_par_la_liste_reste_celui_du_cache(tmp_path, monkeypatch):
+    """Le contrat serveur : le numéro parsé dans la sortie pointe sur le cache."""
+    import hermes_commands.company_top as company_top
+
+    csv_path, cache_path = _bench(tmp_path)
+    measured = []
+    company_top = _stub_analyse(monkeypatch, measured)
+
+    results = company_top.measure_single_company(
+        "Beta", cache_path=cache_path, csv_path=csv_path
+    )
+    output = company_top.format_company_list(results, title="test")
+
+    # Alpha (opportunity) est exploitables n°1 ; Beta (refus) apparaît en REFUS.
+    assert "1. Alpha" in output
+    assert "-. Beta : REFUS" in output

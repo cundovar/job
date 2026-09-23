@@ -218,6 +218,14 @@ python3 tools/agency_prospecting_v2.py --zone inconnue
 # tests/fixtures/geo_communes.json : aucun appel réseau)
 python3 -m pytest tests/test_agency_prospecting.py tests/test_agency_fit_analyzer.py \
                   tests/test_deployment_contract.py tests/test_city_search.py -q
+
+# Ciblage d'une structure (« Retenir & préparer ») : mesure UNITAIRE — la CLI
+# ne mesure que la ligne nommée, fusionne au cache, puis réimprime la liste
+# complète fusionnée : le numéro affiché reste celui qu'attend company_prepare.
+# Un `--refresh` nu relance tout le banc (N fetchs + N verdicts IA) : à réserver
+# à la maintenance du cache.
+python3 -m hermes_commands.company_top --nom "ZOL - Agence digitale Paris" --refresh
+python3 -m hermes_commands.company_prepare <numéro affiché>
 ```
 
 > Les tests Node embarqués exigent Node ≥ 14 (optional chaining). Le `node` du

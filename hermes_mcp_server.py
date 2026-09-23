@@ -14,7 +14,11 @@ from typing import Any, Callable, Dict
 
 from applications import ApplicationTracker, build_application_package
 from hermes_commands.company_prepare import format_preparation, prepare_numbered_application
-from hermes_commands.company_top import format_company_list, load_cached_companies
+from hermes_commands.company_top import (
+    format_company_list,
+    load_cached_companies,
+    measure_single_company,
+)
 from hermes_commands.utils import format_job_list, load_cached_jobs, ranked_jobs
 from pipeline import run_job_search, load_criteria
 from pipeline_spontaneous import run_spontaneous_search
@@ -139,14 +143,34 @@ def company_top(args: Dict[str, Any]) -> str:
     limit = int(limit) if limit is not None else None
     refresh = bool(args.get("refresh", False))
     postal_code = str(args.get("postal_code") or "").strip() or None
+    nom = str(args.get("nom") or "").strip() or None
 
-    results = load_cached_companies()
-    if refresh or not results or postal_code:
-        # Une demande zonée repasse par le banc d'essai : le cache ne sait pas de
-        # quelle zone il vient, le filtrer donnerait une réponse non vérifiée.
-        results = run_spontaneous_search(limit=limit, postal_code=postal_code)
-    elif limit is not None:
-        results = results[:limit]
+    if nom and refresh:
+        # Mesure unitaire (même contrat que la CLI) : ne mesure que la structure
+        # nommée puis fusionne au cache. La liste complète fusionnée est retournée,
+        # donc le numéro affiché reste celui qu'attend company_prepare.
+        results = measure_single_company(
+            nom, use_ai=not bool(args.get("no_ai", False))
+        )
+    else:
+        results = load_cached_companies()
+        if nom:
+            wanted = nom.casefold()
+            results = [
+                entry
+                for entry in results
+                if str(entry.get("company") or "").strip().casefold() == wanted
+            ]
+            if not results:
+                raise SystemExit(
+                    f"« {nom} » absent du cache. Relance avec refresh=true pour le mesurer."
+                )
+        elif refresh or not results or postal_code:
+            # Une demande zonée repasse par le banc d'essai : le cache ne sait pas de
+            # quelle zone il vient, le filtrer donnerait une réponse non vérifiée.
+            results = run_spontaneous_search(limit=limit, postal_code=postal_code)
+        elif limit is not None:
+            results = results[:limit]
 
     return format_company_list(
         results, title=f"Prospection spontanee — {len(results)} structure(s)"
@@ -600,7 +624,9 @@ TOOLS: Dict[str, Dict[str, Any]] = {
             "ENTREPRISES/AGENCES — Mesure les structures du banc d'essai tenu a la main "
             "(config/companies.csv) et affiche pour chacune son adresse, son URL et ses "
             "constats verifies. Ne decouvre rien de nouveau : c'est agency_search qui "
-            "cherche. Lit le cache, sauf refresh=true ou postal_code (traitement long)."
+            "cherche. Lit le cache, sauf refresh=true ou postal_code (traitement long). "
+            "nom + refresh=true : mesure UNITAIRE de la structure nommee (un seul site "
+            "fetch + un verdict IA), fusionnee au cache — c'est la voie du ciblage front."
         ),
         "handler": company_top,
         "inputSchema": {
@@ -608,6 +634,15 @@ TOOLS: Dict[str, Dict[str, Any]] = {
             "properties": {
                 "limit": {"type": "integer"},
                 "refresh": {"type": "boolean", "default": False},
+                "nom": {
+                    "type": "string",
+                    "description": (
+                        "Nom exact de la structure dans le banc d'essai (insensible a la "
+                        "casse). Avec refresh=true : ne mesure qu'elle, puis fusionne au "
+                        "cache et reimprime la liste complete (le numero affiche reste "
+                        "celui qu'attend company_prepare). Sans refresh : filtre le cache."
+                    ),
+                },
                 "postal_code": {
                     "type": "string",
                     "description": (

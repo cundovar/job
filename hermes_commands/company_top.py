@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from company_analysis.verifier import CONFIRMED
-from pipeline_spontaneous import CACHE_PATH, run_spontaneous_search
+from pipeline_spontaneous import CACHE_PATH, analyse_company, run_spontaneous_search
+from prospectors import CSVProspector, load_targeting_criteria
 
 
 def load_cached_companies(path: str | Path = CACHE_PATH) -> List[Dict[str, Any]]:
@@ -35,6 +36,58 @@ def _format_address(opportunity: Dict[str, Any]) -> str:
         # "Paris 75020" contient déjà le code postal : ne pas le répéter.
         postal = ""
     return ", ".join(part for part in (street, " ".join(p for p in (postal, city) if p)) if part)
+
+
+def measure_single_company(
+    nom: str,
+    cache_path: str | Path = CACHE_PATH,
+    use_ai: bool = True,
+    csv_path: str | Path | None = None,
+) -> List[Dict[str, Any]]:
+    """Mesure une seule structure du banc d'essai puis fusionne au cache.
+
+    Le ciblage front (« Retenir & préparer ») n'a besoin que de la ligne ajoutée :
+    relancer tout le banc pour une agence, c'était N fetchs et N verdicts IA pour
+    une mesure — et un plafond serveur trop court dès que le banc dépasse une
+    dizaine de lignes (cas ZOL, 23/09/2026 : « Process timeout (240000ms) »).
+
+    La fusion remplace l'entrée homonyme ou ajoute à la fin, sans toucher au
+    reste : l'ordre du cache est préservé, donc le numéro affiché par
+    format_company_list reste celui que company_prepare attend dans le cache.
+    """
+    criteria = load_targeting_criteria()
+    prospector = CSVProspector(csv_path) if csv_path else CSVProspector()
+    companies = prospector.find(criteria)
+    wanted = nom.strip().casefold()
+    target = next(
+        (
+            company
+            for company in companies
+            if str(company.get("nom") or "").strip().casefold() == wanted
+        ),
+        None,
+    )
+    if target is None:
+        known = ", ".join(sorted(str(company.get("nom") or "") for company in companies))
+        raise ValueError(
+            f"« {nom} » n'est pas dans le banc d'essai. Noms connus : {known}."
+        )
+
+    result = analyse_company(target, criteria, use_ai=use_ai)
+
+    cached = [
+        entry
+        for entry in load_cached_companies(cache_path)
+        if str(entry.get("company") or "").strip().casefold() != wanted
+    ]
+    cached.append(result)
+
+    cache_file = Path(cache_path)
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(
+        json.dumps(cached, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return cached
 
 
 def format_company_list(results: List[Dict[str, Any]], title: str) -> str:
@@ -78,6 +131,16 @@ def main() -> None:
     parser.add_argument(
         "--refresh", action="store_true", help="Relance les mesures au lieu de lire le cache."
     )
+    parser.add_argument(
+        "--nom",
+        default=None,
+        help=(
+            "Ne considérer que cette structure du banc d'essai (nom exact, insensible "
+            "à la casse). Avec --refresh : mesure unitaire puis fusion au cache — "
+            "la liste complète est réimprimée pour que le numéro affiché reste "
+            "celui qu'attend company_prepare."
+        ),
+    )
     parser.add_argument("--no-ai", action="store_true")
     parser.add_argument(
         "--code-postal",
@@ -86,16 +149,35 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    results = load_cached_companies(args.cache)
-    if args.refresh or not results or args.code_postal:
-        # Une demande zonée repasse toujours par le banc d'essai : le cache ne
-        # sait pas de quelle zone il vient, le filtrer donnerait une réponse
-        # plausible mais non vérifiée.
-        results = run_spontaneous_search(
-            limit=args.limit, use_ai=not args.no_ai, postal_code=args.code_postal
+    if args.nom and args.refresh:
+        # Mesure unitaire : la liste complète (cache fusionné) est retournée et
+        # réimprimée — le serveur de ciblage parse le numéro de la structure
+        # visée dedans, et company_prepare relit ce même numéro dans le cache.
+        results = measure_single_company(
+            args.nom, cache_path=args.cache, use_ai=not args.no_ai
         )
-    elif args.limit is not None:
-        results = results[: args.limit]
+    else:
+        results = load_cached_companies(args.cache)
+        if args.nom:
+            wanted = args.nom.strip().casefold()
+            results = [
+                entry
+                for entry in results
+                if str(entry.get("company") or "").strip().casefold() == wanted
+            ]
+            if not results:
+                raise SystemExit(
+                    f"« {args.nom} » absent du cache. Relance avec --refresh pour le mesurer."
+                )
+        elif args.refresh or not results or args.code_postal:
+            # Une demande zonée repasse toujours par le banc d'essai : le cache ne
+            # sait pas de quelle zone il vient, le filtrer donnerait une réponse
+            # plausible mais non vérifiée.
+            results = run_spontaneous_search(
+                limit=args.limit, use_ai=not args.no_ai, postal_code=args.code_postal
+            )
+        elif args.limit is not None:
+            results = results[: args.limit]
 
     print(format_company_list(results, title=f"Prospection spontanee — {len(results)} structure(s)"))
 

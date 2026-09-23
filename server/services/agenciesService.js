@@ -4,7 +4,11 @@ import { spawn } from 'child_process';
 import { PROJECT_ROOT } from '../config.js';
 
 const PYTHON_BIN = process.env.PYTHON_BIN || 'python3';
-const COMPANY_TOP_TIMEOUT = 240000; // 4 min
+// Mesure unitaire (--nom) : fetchs du site d'une seule structure + un verdict
+// IA. Le refresh complet du banc restait sous 4 min seulement quand le banc
+// était petit — au-delà d'une dizaine de lignes, le ciblage front expirait
+// systématiquement (cas ZOL, 23/09/2026). Marge pour un site lent + IA lente.
+const COMPANY_TOP_TIMEOUT = 420000; // 7 min
 
 // ── Historique par recherche (phase 3) ────────────────────────────────────
 // `tools/agency_prospecting_v2.py` est le seul producteur de ces fichiers ; le
@@ -327,8 +331,12 @@ function parseCompanyTopOutput(output, targetName) {
 
 async function measureAgency(agencyName, dry = false) {
   try {
+    // Mesure unitaire : seule la structure ciblée est mesurée, puis fusionnée
+    // au cache. La sortie réimprime la liste complète fusionnée, donc le numéro
+    // parsé ci-dessous pointe toujours sur la bonne entrée du cache pour
+    // company_prepare. Un --refresh nu relançait tout le banc pour une agence.
     const output = await runPython(
-      ['-m', 'hermes_commands.company_top', '--refresh'],
+      ['-m', 'hermes_commands.company_top', '--nom', agencyName, '--refresh'],
       COMPANY_TOP_TIMEOUT
     );
 
