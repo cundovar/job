@@ -198,3 +198,19 @@ companies:
     statut: retenue
     notes: "Ré-ajoutée le 2026-09-23 : la ligne écrite par le clic du 22/09 (prod) n'avait pas survécu ; type corrigé en formation_organisation (catégorie scout « formation » — structure d'accompagnement et de formation). URL: https://legaragenumerique.fr. Adresse Google: 4 Pl. Henri Matisse, 75020 Paris."
 
+  - nom: "TharGo"
+    type: formation_organisation
+    zone: Ile-de-France
+    taille_estimee: null
+    taille_verifiee: false
+    statut: retenue
+    notes: "Ajoutée le 2026-09-23 via Agency Scout (bouton Retenir & préparer, prod) ; ligne récupérée dans le repo le 23/09 soir (elle ne vivait que dans le conteneur). Catégorie scout « formation » — organisme de formation et de conseil. URL: https://thargo.fr. Adresse Google: 61 Rue de Lyon, 75012 Paris."
+
+  - nom: "E-Ard Agency"
+    type: agence_com_engagee
+    zone: Ile-de-France
+    taille_estimee: null
+    taille_verifiee: false
+    statut: retenue
+    notes: "Ajoutée le 2026-09-23 via Agency Scout (bouton Retenir & préparer, prod) ; ligne récupérée dans le repo le 23/09 soir (elle ne vivait que dans le conteneur). Catégorie scout « agence » — sites vitrines/e-commerce pour indépendants et PME de l'Est parisien. URL: https://eard-agency.fr. Adresse Google: 1 Rue Poirier, 94160 Saint-Mandé."
+
