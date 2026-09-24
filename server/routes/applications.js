@@ -266,6 +266,8 @@ function approvalState(id) {
     approval_updated_at: metadata.approval_updated_at || null,
     recipients,
     recipients_hash: metadata.approval_recipients_hash || null,
+    // Clé absente = la lettre part, comme tous les dossiers l'ont toujours fait.
+    include_lettre: metadata.send_include_lettre !== false,
   };
 }
 
@@ -1117,6 +1119,33 @@ export default function createApplicationsRouter(repo) {
       fs.writeFileSync(temporaryPath, `${JSON.stringify(metadata, null, 2)}\n`, 'utf-8');
       fs.renameSync(temporaryPath, metadataPath);
       res.json({ ok: true, recipients, approved: false });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // PUT /api/applications/:id/send-options — Joindre ou non la lettre.
+  // La lettre reste dans le dossier : on choisit ce qui part, on ne supprime
+  // rien. Comme pour les destinataires, changer ce qui partira retire
+  // l'approbation : on approuve un envoi précis, pas une intention.
+  router.put('/applications/:id/send-options', (req, res) => {
+    try {
+      const dir = applicationDir(req.params.id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      if (hasSendRecord(req.params.id)) return res.status(409).json({ error: 'Ce dossier possède déjà une tentative d’envoi ; ses pièces jointes sont verrouillées.' });
+      if (typeof req.body?.include_lettre !== 'boolean') {
+        return res.status(400).json({ error: 'include_lettre doit valoir true ou false.' });
+      }
+      const metadataPath = path.join(dir, 'metadata.json');
+      const metadata = readApplicationMetadata(req.params.id);
+      metadata.send_include_lettre = req.body.include_lettre;
+      metadata.status = READY_STATUS;
+      metadata.approval_updated_at = new Date().toISOString();
+      delete metadata.approval_recipients_hash;
+      const temporaryPath = `${metadataPath}.${process.pid}.tmp`;
+      fs.writeFileSync(temporaryPath, `${JSON.stringify(metadata, null, 2)}\n`, 'utf-8');
+      fs.renameSync(temporaryPath, metadataPath);
+      res.json({ ok: true, include_lettre: metadata.send_include_lettre, approved: false });
     } catch (err) {
       res.status(400).json({ error: err.message });
     }

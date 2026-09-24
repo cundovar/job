@@ -1965,6 +1965,20 @@ h3 > .lucide {
   color: var(--text);
 }
 
+/* Choix des pièces jointes : la lettre part par défaut. */
+.lettre-jointe {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+.lettre-jointe input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
 /* Filtre par arrondissement ou commune. Il ne propose que les zones
    présentes dans la recherche affichée. */
 .agency-zone-filter {

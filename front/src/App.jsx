@@ -339,6 +339,7 @@ function CandidaturesView({ mission = 'annonce' }) {
   const [approvalPendingId, setApprovalPendingId] = useState(null)
   const [sendBrevo, setSendBrevo] = useState({})    // { [id]: { pending, ok, to, cc, error } }
   const [recipientDrafts, setRecipientDrafts] = useState({}) // { [id]: { items, value, pending, error } }
+  const [lettreJointe, setLettreJointe] = useState({}) // { [id]: { pending, error } }
   const [lettreRegen, setLettreRegen] = useState({})    // { [id]: { pending, ok, error } }
   const [editLettre, setEditLettre] = useState({})      // { [id]: { editing, value, pending, saved, error } }
   const [editMail, setEditMail] = useState({})          // { [id]: { editing, value, pending, saved, error } }
@@ -630,12 +631,13 @@ function CandidaturesView({ mission = 'annonce' }) {
 
   // Envoi réel via Brevo : le clic est le verrou humain ; la chaîne Python
   // re-vérifie adresse, CV et tracker avant de partir. Un seul envoi/dossier.
-  const handleSendBrevo = async (id, recipients) => {
+  const handleSendBrevo = async (id, recipients, withLettre = true) => {
     const to = recipients.find(item => item.role === 'to')?.email || recipients[0]?.email
     const cc = recipients.filter(item => item.role === 'cc').map(item => item.email)
     if (!to) return
     const destination = cc.length ? `${to} (Cc : ${cc.join(', ')})` : to
-    if (!window.confirm(`Envoyer la candidature à ${destination} ? CV + lettre en pièces jointes — un seul envoi possible.`)) return
+    const pieces = withLettre ? 'CV + lettre en pièces jointes' : 'CV seul en pièce jointe (lettre écartée)'
+    if (!window.confirm(`Envoyer la candidature à ${destination} ? ${pieces} — un seul envoi possible.`)) return
     setSendBrevo(prev => ({ ...prev, [id]: { pending: true } }))
     setApiError(null)
     try {
@@ -670,6 +672,25 @@ function CandidaturesView({ mission = 'annonce' }) {
   // et des copies. Choisir « To » sur une ligne y déplace donc le rôle, l'ancien
   // To passant en Cc, plutôt que de laisser fabriquer une liste sans destinataire
   // — que le serveur refusait d'enregistrer, sans qu'on voie d'où ça venait.
+  // Joindre ou non la lettre. Le serveur retire l'approbation en même temps :
+  // ce qui a été approuvé n'est plus ce qui partirait.
+  const toggleLettre = async (id, include) => {
+    setLettreJointe(prev => ({ ...prev, [id]: { pending: true, error: null } }))
+    try {
+      const res = await fetch(`/api/applications/${id}/send-options`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ include_lettre: include }),
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
+      setLettreJointe(prev => ({ ...prev, [id]: { pending: false, error: null } }))
+      await refreshApproval(id)
+    } catch (err) {
+      setLettreJointe(prev => ({ ...prev, [id]: { pending: false, error: err.message || 'Choix non enregistré.' } }))
+    }
+  }
+
   const updateRecipient = (id, index, field, value) => {
     setRecipientDrafts(prev => {
       const items = [...(prev[id]?.items || [])]
@@ -794,6 +815,9 @@ function CandidaturesView({ mission = 'annonce' }) {
     const recipientItems = withPrimaryRecipient(recipientDrafts[selected]?.items || approval?.recipients || [])
     const hasRecipients = recipientItems.length > 0
     const recipientSaved = recipientDrafts[selected]?.saved !== false
+    // Clé absente côté serveur = la lettre part : c'est le comportement
+    // historique, et un défaut inversé retirerait une pièce jointe en silence.
+    const lettreIncluse = approval?.include_lettre !== false
     const hasSendAttempt = Boolean(sendBrevo[selected]?.ok)
     const preuvesSuffisantes = Boolean(c?.preuves)
     return (
@@ -826,6 +850,24 @@ function CandidaturesView({ mission = 'annonce' }) {
               onRemove={index => removeRecipient(selected, index)}
               onSave={() => saveRecipients(selected)}
             />
+            <label className="lettre-jointe">
+              <input
+                type="checkbox"
+                checked={lettreIncluse}
+                onChange={e => toggleLettre(selected, e.target.checked)}
+                disabled={lettreJointe[selected]?.pending || hasSendAttempt}
+              />
+              Joindre la lettre de motivation
+            </label>
+            <p className="approval-note">
+              {lettreIncluse
+                ? 'CV et lettre partiront en pièces jointes.'
+                : 'Seul le CV partira. La lettre reste dans le dossier, elle n’est pas supprimée.'}
+            </p>
+            {lettreJointe[selected]?.error && (
+              <p className="approval-note" style={{ color: '#fb7185' }}>{lettreJointe[selected].error}</p>
+            )}
+
             {approval?.approved ? (
               <>
                 <span className="badge-approved"><ShieldCheck /> Envoi approuvé</span>
@@ -856,7 +898,7 @@ function CandidaturesView({ mission = 'annonce' }) {
                   <button
                     type="button"
                     className="approve-btn"
-                    onClick={() => handleSendBrevo(selected, recipientItems)}
+                    onClick={() => handleSendBrevo(selected, recipientItems, lettreIncluse)}
                     disabled={sendBrevo[selected]?.pending || !approval?.approved || !recipientSaved || cvBlocksSending || hasSendAttempt}
                   >
                     {sendBrevo[selected]?.pending ? 'Envoi…' : <><Mail /> Envoyer par email</>}

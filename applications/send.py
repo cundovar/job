@@ -94,6 +94,24 @@ def _selected_recipients(job: Dict[str, Any], metadata: Dict[str, Any]) -> list[
     return [{"email": contact[0].lower(), "role": "to", "source": contact[1]}]
 
 
+def include_lettre(metadata: Dict[str, Any]) -> bool:
+    """La lettre part-elle avec le mail ? Oui, sauf choix explicite du candidat.
+
+    Une clé absente vaut « oui » : c'est ce que faisaient tous les dossiers
+    existants, et un défaut inversé retirerait une pièce jointe sans que
+    personne ne l'ait demandé.
+    """
+    return metadata.get("send_include_lettre", True) is not False
+
+
+def attachment_paths(dossier: Path, metadata: Dict[str, Any]) -> List[Path]:
+    """Les pièces jointes réellement présentes, lettre comprise si elle est voulue."""
+    candidates = [dossier / "cv" / "cv_final.pdf"]
+    if include_lettre(metadata):
+        candidates.append(dossier / "lettre_motivation.pdf")
+    return [path for path in candidates if path.exists()]
+
+
 def recipient_fingerprint(recipients: list[dict[str, str]]) -> str:
     canonical = [
         {"email": item["email"].lower(), "role": item["role"].lower()}
@@ -259,14 +277,8 @@ def send_dossier(
 
     # Pièces jointes du dossier : CV validé + lettre en PDF. Absents = envoi
     # texte seul ; le contrôle CV amont reste maître du refus.
-    attachments = [
-        path
-        for path in (
-            dossier_path / "cv" / "cv_final.pdf",
-            dossier_path / "lettre_motivation.pdf",
-        )
-        if path.exists()
-    ]
+    attachments = attachment_paths(dossier_path, payload["metadata"])
+    result["would_send"]["attachments"] = [path.name for path in attachments]
 
     if not commit:
         # Défaut sec : on s'arrête ici, le fournisseur n'est jamais touché.
@@ -341,6 +353,9 @@ def _print_report(result: Dict[str, Any]) -> None:
         print(f"  Cc            : {', '.join(would.get('cc') or []) or 'aucun'}")
         print(f"  Source adresse : {would['contact_source']}")
         print(f"  Objet          : {would['subject']}")
+        # Dire ce qui part évite de découvrir après coup qu'une lettre écartée
+        # l'était, ou qu'une lettre voulue manquait au dossier.
+        print(f"  Pièces jointes : {', '.join(would.get('attachments') or []) or 'aucune'}")
     print()
     if result["refused"]:
         print(f"REFUSÉ — {result['refusal']}")

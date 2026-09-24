@@ -428,3 +428,62 @@ def test_cli_without_send_flag_establishes_no_connection(tmp_path, capsys):
     assert "DRY-RUN" in output
     assert "statut APPROVED" in output and "DO_NOT_CONTACT" in output
     assert "déduplication" in output and "quota du jour" in output
+
+
+def _pdfs(dossier):
+    """Pose un CV validé et une lettre, comme un dossier prêt à partir."""
+    (dossier / "cv").mkdir(exist_ok=True)
+    (dossier / "cv" / "cv_final.pdf").write_bytes(b"%PDF-1.4 cv")
+    (dossier / "lettre_motivation.pdf").write_bytes(b"%PDF-1.4 lettre")
+
+
+def test_la_lettre_part_avec_le_cv_par_defaut(tmp_path):
+    dossier = make_dossier(tmp_path)
+    _pdfs(dossier)
+    sender = FakeSender()
+
+    result = send_dossier(
+        dossier, sender,
+        tracker=ApplicationTracker(tmp_path / "tracker.json"),
+        companies_csv="/dev/null", commit=True,
+    )
+
+    assert result["attachments"] == ["cv_final.pdf", "lettre_motivation.pdf"]
+    assert sender.calls[0]["attachments"] == ["cv_final.pdf", "lettre_motivation.pdf"]
+
+
+def test_la_lettre_peut_etre_ecartee_de_l_envoi(tmp_path):
+    """Le candidat juge parfois la lettre inutile : seul le CV part alors."""
+    dossier = make_dossier(tmp_path)
+    _pdfs(dossier)
+    metadata_path = dossier / "metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["send_include_lettre"] = False
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    sender = FakeSender()
+
+    result = send_dossier(
+        dossier, sender,
+        tracker=ApplicationTracker(tmp_path / "tracker.json"),
+        companies_csv="/dev/null", commit=True,
+    )
+
+    assert result["sent"]
+    assert result["attachments"] == ["cv_final.pdf"]
+    assert sender.calls[0]["attachments"] == ["cv_final.pdf"]
+    # La lettre reste dans le dossier : elle n'est pas jointe, pas supprimée.
+    assert (dossier / "lettre_motivation.pdf").exists()
+
+
+def test_le_dry_run_annonce_les_pieces_jointes(tmp_path):
+    dossier = make_dossier(tmp_path)
+    _pdfs(dossier)
+
+    result = send_dossier(
+        dossier, FakeSender(),
+        tracker=ApplicationTracker(tmp_path / "tracker.json"),
+        companies_csv="/dev/null",
+    )
+
+    assert not result["refused"]
+    assert result["would_send"]["attachments"] == ["cv_final.pdf", "lettre_motivation.pdf"]

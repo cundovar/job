@@ -54,6 +54,26 @@ def test_le_filtre_par_zone_lit_le_champ_que_le_serveur_expose():
     assert "a.postal_code" in app
 
 
+def test_le_choix_de_joindre_la_lettre_traverse_les_trois_couches():
+    """Front, serveur et brique d'envoi parlent du même `send_include_lettre`.
+
+    Le choix vit dans `metadata.json`, le seul fichier que lit `applications/send.py` :
+    un drapeau écrit ailleurs ne changerait rien à ce qui part réellement.
+    """
+    server = (PROJECT_ROOT / "server/routes/applications.js").read_text(encoding="utf-8")
+    assert "/applications/:id/send-options" in server
+    assert "metadata.send_include_lettre = req.body.include_lettre" in server
+    # Changer ce qui partira retire l'approbation, comme pour les destinataires.
+    assert "include_lettre: metadata.send_include_lettre !== false" in server
+
+    envoi = (PROJECT_ROOT / "applications/send.py").read_text(encoding="utf-8")
+    assert 'metadata.get("send_include_lettre", True)' in envoi
+
+    app = (PROJECT_ROOT / "front/src/App.jsx").read_text(encoding="utf-8")
+    assert "send-options" in app
+    assert "Joindre la lettre de motivation" in app
+
+
 def test_runtime_image_contains_front_export_module():
     dockerfile = (PROJECT_ROOT / "Dockerfile").read_text(encoding="utf-8")
     copy_commands = [
