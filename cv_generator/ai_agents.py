@@ -887,6 +887,34 @@ def to_writer_schema(content: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _filter_education_by_variant(
+    proposed: Any,
+    education_catalog: Dict[str, Dict[str, Any]],
+    variant_id: str,
+) -> List[Dict[str, Any]]:
+    """N'affiche qu'un diplôme autorisé pour la variante retenue.
+
+    Décision candidate portée par `present_on_variants` (liste d'ids de
+    variantes) dans `person.education` : un diplôme peut être réservé à
+    certaines familles de CV — deug et diplômes du développement sur un CV de
+    développeur, le complet sur un CV de formateur. Sans champ, aucune
+    restriction. Un intitulé inconnu du catalogue passe tel quel : le
+    validateur le signale, Python ne l'invente pas.
+    """
+    education: List[Dict[str, Any]] = []
+    for item in proposed or []:
+        title = item.get("title") if isinstance(item, dict) else item
+        entry = education_catalog.get(normalize(title))
+        if entry is not None:
+            allowed = entry.get("present_on_variants")
+            if allowed and variant_id not in allowed:
+                continue
+            education.append(entry)
+        else:
+            education.append({"title": str(title)})
+    return education
+
+
 def _assemble_cv_content(
     proposed: Dict[str, Any],
     job: Dict[str, Any],
@@ -1026,19 +1054,17 @@ def _assemble_cv_content(
             }
         )
 
-    education_catalog = {
-        normalize(entry.get("title")): entry
-        for entry in master.get("person", {}).get("education", [])
-        if isinstance(entry, dict) and normalize(entry.get("title"))
-    }
-    education: List[Dict[str, Any]] = []
-    for item in proposed.get("education") or []:
-        title = item.get("title") if isinstance(item, dict) else item
-        entry = education_catalog.get(normalize(title))
-        education.append(entry if entry is not None else {"title": str(title)})
-
     person = master.get("person", {})
     variant_id = str(plan.get("selected_base_variant") or "")
+    education_catalog = {
+        normalize(entry.get("title")): entry
+        for entry in person.get("education", [])
+        if isinstance(entry, dict) and normalize(entry.get("title"))
+    }
+    education = _filter_education_by_variant(
+        proposed.get("education"), education_catalog, variant_id
+    )
+
     cv = {
         "title": re.sub(r"\s+", " ", str(proposed.get("title") or "")).strip(),
         "profile": re.sub(r"\s+", " ", str(proposed.get("profile") or "")).strip(),

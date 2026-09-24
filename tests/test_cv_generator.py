@@ -2072,3 +2072,35 @@ def test_unconfirmed_end_date_stops_publication_without_burning_a_round(tmp_path
     periodes = [exp["period"] for exp in contenu["cv"]["experiences"]]
     assert "Aujourd'hui" not in " ".join(periodes)
     assert "2026-03 – (fin à confirmer)" in periodes
+
+
+# ── Diplômes : la variante décide de ce qui paraît ────────────────────────
+
+def test_education_filtree_par_variante_dev_contre_formateur():
+    from cv_generator.ai_agents import _filter_education_by_variant
+    from cv_generator.utils import normalize
+
+    catalog = {
+        normalize(t): {"title": t, "present_on_variants": variants}
+        for t, variants in {
+            "CAP Petite Enfance": ["formateur_developpement_web", "formateur_generaliste", "formateur_ia"],
+            "DEUG Cinéma audiovisuel": ["fullstack", "webmaster", "formateur_developpement_web"],
+            "Développeur Web et Web Mobile": None,  # sans champ : partout
+        }.items()
+    }
+    proposed = [{"title": t} for t in
+                ("CAP Petite Enfance", "deug cinéma audiovisuel", "Développeur Web et Web Mobile")]
+
+    # CV dev : le CAP est retiré, le deug (normalisé sans accents) reste.
+    assert [e["title"] for e in _filter_education_by_variant(proposed, catalog, "fullstack")] == [
+        "DEUG Cinéma audiovisuel", "Développeur Web et Web Mobile",
+    ]
+    # CV formateur : tout reste.
+    assert len(_filter_education_by_variant(proposed, catalog, "formateur_developpement_web")) == 3
+
+
+def test_education_inconnue_passe_au_validateur_sans_etre_inventee():
+    from cv_generator.ai_agents import _filter_education_by_variant
+
+    out = _filter_education_by_variant([{"title": "Diplôme imaginaire"}], {}, "fullstack")
+    assert out == [{"title": "Diplôme imaginaire"}]
