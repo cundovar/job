@@ -2104,3 +2104,60 @@ def test_education_inconnue_passe_au_validateur_sans_etre_inventee():
 
     out = _filter_education_by_variant([{"title": "Diplôme imaginaire"}], {}, "fullstack")
     assert out == [{"title": "Diplôme imaginaire"}]
+
+
+# ── Le vérificateur juge le texte rédigé, pas la recopie de Python ────────
+
+def test_le_verificateur_recoit_les_coordonnees_du_profil():
+    """Sans elles, il refusait le bloc contact « faute de source »."""
+    from cv_generator.ai_agents import _truth_context
+
+    master = {"person": {"display_name": "X", "contact": {"email": "x@example.invalid"}}}
+    for role in ("creator", "reviewer", "analyzer", "reviser"):
+        assert _truth_context(master, role)["person"]["contact"] == {
+            "email": "x@example.invalid"
+        }
+
+
+def test_un_contact_declare_sans_preuve_ne_bloque_plus_la_publication():
+    """Python recopie le contact depuis le profil : l'agent n'a rien à y juger."""
+    from cv_generator.ai_agents import AgentResult, _merge_truth_check
+
+    proposed = {
+        "claims": [
+            {"path": "contact", "status": "unsupported", "reason": "Aucune source fournie."},
+            {"path": "experiences[0].bullets[0]", "status": "supported", "reason": ""},
+        ]
+    }
+    validation = {"truth_issues": [], "format_issues": [], "source_issues": [], "ok": True, "truthful": True, "issues": []}
+
+    merged = _merge_truth_check(
+        proposed, validation, AgentResult({}, "injected", "test", 0.0)
+    )
+
+    assert merged["verdict"] == "accepted"
+    assert merged["truth_issues"] == []
+    assert merged["unsupported_count"] == 0
+    assert [item["path"] for item in merged["ignored_claims"]] == ["contact"]
+    # Le constat n'est pas effacé pour autant.
+    assert any(item["path"] == "contact" for item in merged["claims"])
+
+
+def test_une_puce_sans_preuve_bloque_toujours():
+    """Le garde-fou ne s'assouplit que sur les chemins recopiés par Python."""
+    from cv_generator.ai_agents import AgentResult, _merge_truth_check
+
+    proposed = {
+        "claims": [
+            {"path": "experiences[0].bullets[0]", "status": "unsupported", "reason": "Inventé."}
+        ]
+    }
+    validation = {"truth_issues": [], "format_issues": [], "source_issues": [], "ok": True, "truthful": True, "issues": []}
+
+    merged = _merge_truth_check(
+        proposed, validation, AgentResult({}, "injected", "test", 0.0)
+    )
+
+    assert merged["verdict"] == "refused"
+    assert [item["code"] for item in merged["truth_issues"]] == ["CLAIM_NOT_SUPPORTED_BY_SOURCE"]
+    assert merged["ignored_claims"] == []

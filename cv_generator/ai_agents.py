@@ -530,6 +530,10 @@ def _truth_context(master: Dict[str, Any], role: str) -> Dict[str, Any]:
     common = {
         "person": {
             "display_name": person.get("display_name"),
+            # Sans les coordonnées, le vérificateur refusait le bloc contact du
+            # CV faute de source — alors que Python l'y recopie depuis ce même
+            # profil. Le CV soumis les porte déjà : rien n'est exposé de plus.
+            "contact": person.get("contact", {}),
             "location": person.get("location"),
             "languages": person.get("languages", []),
             "education": person.get("education", []),
@@ -1219,6 +1223,18 @@ def _cv_diff_paths(previous: Any, current: Any, prefix: str = "") -> List[str]:
     return [] if previous == current else [prefix or "<racine>"]
 
 
+#: Blocs que Python recopie mot pour mot depuis le profil maître. Le
+#: vérificateur juge le texte rédigé, pas le travail de recopie : une
+#: coordonnée qu'il déclare « sans preuve » bloquerait un CV que personne n'a
+#: inventé, et le blocage tomberait au hasard d'un tour à l'autre.
+_PYTHON_OWNED_PATHS = ("contact",)
+
+
+def _is_python_owned(path: Any) -> bool:
+    head = str(path or "").split(".")[0].split("[")[0].strip()
+    return head in _PYTHON_OWNED_PATHS
+
+
 def _merge_truth_check(
     proposed: Dict[str, Any],
     validation: Dict[str, Any],
@@ -1269,6 +1285,10 @@ def _merge_truth_check(
             "reused_claims": len(kept),
         }
     unsupported = [item for item in claims if item["status"] == "unsupported"]
+    # Écartés du verdict, jamais effacés : le constat reste lisible dans le
+    # fichier, il ne décide simplement pas de la publication.
+    ignored_claims = [item for item in unsupported if _is_python_owned(item["path"])]
+    unsupported = [item for item in unsupported if not _is_python_owned(item["path"])]
     issues = list(validation["truth_issues"])
     for item in unsupported:
         issues.append(
@@ -1286,6 +1306,7 @@ def _merge_truth_check(
         "verdict": "refused" if issues else "accepted",
         "claims": claims,
         "unsupported_count": len(unsupported),
+        "ignored_claims": ignored_claims,
         "truth_issues": issues,
         "format_issues": validation["format_issues"],
         # Une source incomplète n'entre pas dans le contrat de correction : le
