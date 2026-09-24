@@ -519,6 +519,23 @@ def _agent_call(
     raise CVAgentError(f"Réponse invalide de l'agent {agent_name}")
 
 
+def visible_experience_catalog(master: Dict[str, Any]) -> Dict[str, Any]:
+    """Le catalogue sans les expériences retirées du parcours.
+
+    `retired` est une décision du candidat, pas un jugement éditorial : une
+    expérience retirée n'est pas proposée aux agents, qui ne peuvent donc pas
+    la choisir. Elle reste dans le profil maître — l'effacer perdrait un
+    morceau de parcours réel, et le validateur doit encore savoir la
+    reconnaître si un ancien CV la cite.
+    """
+    catalog = master.get("experience_catalog", {})
+    return {
+        identifier: entry
+        for identifier, entry in catalog.items()
+        if not (isinstance(entry, dict) and entry.get("retired") is True)
+    }
+
+
 def _truth_context(master: Dict[str, Any], role: str) -> Dict[str, Any]:
     """Return only the source-of-truth fields useful to a given AI role.
 
@@ -540,7 +557,7 @@ def _truth_context(master: Dict[str, Any], role: str) -> Dict[str, Any]:
             "eligibility": person.get("eligibility", {}),
         },
         "skills_confidence": master.get("skills_confidence", {}),
-        "experience_catalog": master.get("experience_catalog", {}),
+        "experience_catalog": visible_experience_catalog(master),
         "project_catalog": master.get("project_catalog", {}),
         "evidence_catalog": master.get("evidence_catalog", {}),
         "experience_groups": master.get("experience_groups", {}),

@@ -100,7 +100,12 @@ def _experience_plan(job: Dict[str, Any], selected: Dict[str, Any], master: Dict
     expérience et l'annonce, puis laisse l'agent retenir ce qu'il juge utile.
     """
     text = job_text(job)
-    catalog = master.get("experience_catalog", {})
+    # Une expérience retirée ne se suggère pas plus qu'elle ne se propose.
+    catalog = {
+        identifier: entry
+        for identifier, entry in master.get("experience_catalog", {}).items()
+        if not (isinstance(entry, dict) and entry.get("retired") is True)
+    }
     variant_id = selected.get("id", "")
     preferred = master.get("adaptation_rules", {}).get("experience_priority_by_variant", {}).get(variant_id, [])
     excluded = set(

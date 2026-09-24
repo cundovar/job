@@ -2161,3 +2161,40 @@ def test_une_puce_sans_preuve_bloque_toujours():
     assert merged["verdict"] == "refused"
     assert [item["code"] for item in merged["truth_issues"]] == ["CLAIM_NOT_SUPPORTED_BY_SOURCE"]
     assert merged["ignored_claims"] == []
+
+
+# ── Une expérience retirée n'est plus proposée à personne ─────────────────
+
+def test_une_experience_retiree_sort_du_catalogue_offert_aux_agents():
+    """Retirer, c'est ne plus proposer — pas effacer du profil maître."""
+    from cv_generator.ai_agents import _truth_context, visible_experience_catalog
+
+    master = {
+        "experience_catalog": {
+            "gardee": {"organization": "A", "highlights": ["x"]},
+            "retiree": {"organization": "B", "highlights": ["y"], "retired": True},
+        }
+    }
+
+    assert list(visible_experience_catalog(master)) == ["gardee"]
+    for role in ("analyzer", "creator", "reviewer", "reviser"):
+        assert list(_truth_context(master, role)["experience_catalog"]) == ["gardee"]
+    # Le profil maître, lui, la garde.
+    assert "retiree" in master["experience_catalog"]
+
+
+def test_une_experience_retiree_nest_plus_suggeree_par_python():
+    from cv_generator.job_analyzer import _experience_plan
+
+    master = {
+        "experience_catalog": {
+            "gardee": {"organization": "A", "tags": ["wordpress"], "highlights": ["x"]},
+            "retiree": {"organization": "B", "tags": ["wordpress"], "highlights": ["y"], "retired": True},
+        },
+        "adaptation_rules": {},
+        "layout_constraints": {},
+    }
+    job = {"title": "Webmaster WordPress", "description": "WordPress"}
+
+    suggeres = [item["experience_id"] for item in _experience_plan(job, {"id": "webmaster"}, master)]
+    assert suggeres == ["gardee"]
