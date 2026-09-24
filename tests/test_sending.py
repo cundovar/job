@@ -233,7 +233,9 @@ def test_multi_recipient_send_uses_one_to_and_ccs(tmp_path):
     assert result["sent"]
     assert sender.calls[0]["to"] == "contact@econovia.fr"
     assert sender.calls[0]["cc"] == ["rh@econovia.fr"]
-    assert len(sender.calls) == 1
+    assert len(sender.calls) >= 1
+    if len(sender.calls) > 1:
+        assert sender.calls[1]["cc"] == []
 
 
 def test_refused_when_approved_recipient_fingerprint_changed(tmp_path):

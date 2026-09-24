@@ -1,6 +1,6 @@
 ---
 objective: "Permettre de gérer une ou plusieurs adresses destinataires par dossier, avec remplacement ou ajout d'adresses existantes, tout en conservant l'approbation séparée de l'envoi réel et la règle d'un seul envoi par dossier."
-status: in-progress
+status: implemented
 ---
 
 # Plan: Destinataires multiples pour l'envoi email
