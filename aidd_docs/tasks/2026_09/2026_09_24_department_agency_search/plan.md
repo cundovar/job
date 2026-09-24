@@ -1,6 +1,6 @@
 ---
 objective: "Permettre une prospection vérifiable par département partout en France, sans coder une liste de départements et sans dégrader le mode commune existant."
-status: in-progress
+status: implemented
 ---
 
 # Plan: Recherche d'agences par département
