@@ -40,6 +40,7 @@ def test_brevo_sender_posts_payload_with_attachments(monkeypatch, tmp_path):
     sender = BrevoEmailSender()
     result = sender.send(
         to="agence@yotta.paris",
+        cc=["rh@yotta.paris"],
         subject="Candidature spontanée",
         body="Bonjour,",
         attachments=[cv, lettre],
@@ -51,6 +52,7 @@ def test_brevo_sender_posts_payload_with_attachments(monkeypatch, tmp_path):
     assert result.message_id == "msg-123"
     assert captured["url"].startswith("https://api.brevo.com/v3/smtp/email")
     assert captured["payload"]["to"] == [{"email": "agence@yotta.paris"}]
+    assert captured["payload"]["cc"] == [{"email": "rh@yotta.paris"}]
     assert captured["payload"]["sender"]["email"] == "me@varascundo.com"
     assert captured["payload"]["textContent"] == "Bonjour,"
     assert captured["payload"]["htmlContent"].startswith("<div>")

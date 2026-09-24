@@ -72,6 +72,7 @@ class EmailSender(ABC):
         attachment: Path | None = None,
         attachments: Sequence[Path] = (),
         html: str | None = None,
+        cc: Sequence[str] = (),
     ) -> SendResult:
         raise NotImplementedError
 
@@ -98,10 +99,13 @@ class SMTPEmailSender(EmailSender):
             )
 
     def send(self, to: str, subject: str, body: str, attachment: Path | None = None,
-             attachments: Sequence[Path] = (), html: str | None = None) -> SendResult:
+             attachments: Sequence[Path] = (), html: str | None = None,
+             cc: Sequence[str] = ()) -> SendResult:
         message = EmailMessage()
         message["From"] = self.sender
         message["To"] = to
+        if cc:
+            message["Cc"] = ", ".join(cc)
         message["Subject"] = subject
         message.set_content(body)
         if html:
@@ -146,7 +150,8 @@ class BrevoEmailSender(EmailSender):
             )
 
     def send(self, to: str, subject: str, body: str, attachment: Path | None = None,
-             attachments: Sequence[Path] = (), html: str | None = None) -> SendResult:
+             attachments: Sequence[Path] = (), html: str | None = None,
+             cc: Sequence[str] = ()) -> SendResult:
         files = []
         for path in ([attachment] if attachment else []) + list(attachments):
             files.append({
@@ -159,6 +164,8 @@ class BrevoEmailSender(EmailSender):
             "subject": subject,
             "textContent": body,
         }
+        if cc:
+            payload["cc"] = [{"email": address} for address in cc]
         if html:
             payload["htmlContent"] = html
         if self.reply_to:
