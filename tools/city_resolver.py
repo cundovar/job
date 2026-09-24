@@ -47,6 +47,7 @@ DEFAULT_TIMEOUT_SECONDS = 12
 DEFAULT_LIMIT = 15
 
 COMMUNE_FIELDS = "nom,code,codesPostaux,codeDepartement,codeRegion,centre,population"
+DEPARTMENT_FIELDS = "nom,code"
 
 
 class CityResolutionError(RuntimeError):
@@ -268,6 +269,107 @@ def resolve_city(
     return commune
 
 
+def _department_candidates(
+    query: str, opener: Callable[[str, int], str], timeout: int
+) -> list[dict[str, Any]]:
+    """Résout un code ou un nom sans maintenir de catalogue local."""
+    normalized = normalize_departement(query)
+    if normalized and (normalized.isdigit() or normalized in {"2A", "2B"}):
+        payload = _fetch_json(
+            f"{DEPARTEMENTS_URL}/{urllib.parse.quote(normalized)}?fields={DEPARTMENT_FIELDS}",
+            opener,
+            timeout,
+        )
+        return [payload] if isinstance(payload, dict) and payload.get("code") else []
+
+    params = {
+        "nom": str(query or "").strip(),
+        "fields": DEPARTMENT_FIELDS,
+        "limit": DEFAULT_LIMIT,
+    }
+    payload = _fetch_json(
+        f"{DEPARTEMENTS_URL}?{urllib.parse.urlencode(params)}", opener, timeout
+    )
+    return [row for row in payload if isinstance(row, dict)] if isinstance(payload, list) else []
+
+
+def _department_communes(
+    code: str, opener: Callable[[str, int], str], timeout: int
+) -> list[dict[str, Any]]:
+    payload = _fetch_json(
+        f"{DEPARTEMENTS_URL}/{urllib.parse.quote(code)}/communes"
+        f"?fields={COMMUNE_FIELDS}",
+        opener,
+        timeout,
+    )
+    if not isinstance(payload, list):
+        raise CityResolutionError(
+            f"résolution de département : communes absentes pour {code}"
+        )
+    return [row for row in payload if isinstance(row, dict)]
+
+
+def resolve_department(
+    value: str,
+    *,
+    opener: Callable[[str, int], str] = _default_opener,
+    timeout: int = DEFAULT_TIMEOUT_SECONDS,
+) -> Dict[str, Any]:
+    """Transforme un code ou nom de département en périmètre complet."""
+    query = str(value or "").strip()
+    if not query:
+        raise CityResolutionError(
+            "Aucun département demandé : passe --departement 93 ou un nom officiel."
+        )
+
+    candidates = _department_candidates(query, opener, timeout)
+    target = normalize_name(query)
+    exact = [
+        row for row in candidates
+        if normalize_departement(row.get("code")) == normalize_departement(query)
+        or normalize_name(row.get("nom")) == target
+    ]
+    if len(exact) != 1:
+        if not exact:
+            raise CityResolutionError(
+                f"Département inconnu : « {query} » d'après {SOURCE_LABEL}. "
+                "Aucune recherche de repli n'a été lancée."
+            )
+        labels = ", ".join(
+            f"{row.get('nom', '?')} ({normalize_departement(row.get('code'))})"
+            for row in exact
+        )
+        raise CityResolutionError(
+            f"Département ambigu : « {query} » correspond à {labels}."
+        )
+
+    raw = exact[0]
+    code = normalize_departement(raw.get("code"))
+    name = str(raw.get("nom") or "").strip()
+    if not code or not name:
+        raise CityResolutionError(
+            f"Département « {query} » incomplet dans {SOURCE_LABEL} : périmètre non vérifiable."
+        )
+    raw_communes = _department_communes(code, opener, timeout)
+    communes = [_commune_from_raw(row, name) for row in raw_communes]
+    communes = [row for row in communes if row["insee"] and row["name"]]
+    if not communes:
+        raise CityResolutionError(
+            f"Département « {name} ({code}) » sans communes vérifiables dans {SOURCE_LABEL}."
+        )
+    postal_codes = sorted({postal for commune in communes for postal in commune["postal_codes"]})
+    return {
+        "code": code,
+        "name": name,
+        "slug": slugify(name),
+        "label": f"{name} ({code})",
+        "communes": communes,
+        "commune_codes": [commune["insee"] for commune in communes],
+        "postal_codes": postal_codes,
+        "source": SOURCE_LABEL,
+    }
+
+
 # ── Périmètre : ce qui fait qu'un candidat appartient à la ville ─────────────
 
 # Le nom seul ne prouve rien : « nous intervenons à Montreuil » se lit dans une
@@ -323,6 +425,68 @@ def locate_in_city(agency: Dict[str, Any], commune: Dict[str, Any]) -> tuple[str
 def in_perimeter(agency: Dict[str, Any], commune: Dict[str, Any]) -> bool:
     """Vrai seulement sur preuve d'adresse ou de registre — jamais sur une mention."""
     return locate_in_city(agency, commune)[0] in PERIMETER_VERIFIED
+
+
+def locate_in_department(agency: Dict[str, Any], department: Dict[str, Any]) -> tuple[str, str]:
+    """Établit l'appartenance au département sans déduire depuis une mention."""
+    postal_codes = set(department.get("postal_codes") or ())
+    postal = str(agency.get("postal_code") or "").strip()
+    how = str(agency.get("how") or "")
+    department_code = normalize_departement(
+        agency.get("departement") or agency.get("department_code")
+    )
+    if postal and postal in postal_codes and how in ADDRESS_HOW_READ:
+        return PERIMETER_ADDRESS, f"code postal {postal} lu dans une adresse ({how})"
+    if department_code and department_code == department.get("code") and how == REGISTRY_HOW:
+        return PERIMETER_REGISTRY, f"siège dans le département {department['code']} au registre"
+    if str(agency.get("commune_code") or "") in set(department.get("commune_codes") or ()):
+        return PERIMETER_REGISTRY, f"code commune {agency['commune_code']} rattaché au département"
+    if agency.get("zone_match") in ("tier1", "tier2"):
+        return PERIMETER_MENTION, f"mention « {agency.get('zone_term') or department.get('name')} » en page"
+    return PERIMETER_NONE, ""
+
+
+def department_zone_key(department: Dict[str, Any]) -> str:
+    return f"departement-{department['code']}-{department['slug']}".strip("-")
+
+
+def department_zone(department: Dict[str, Any]) -> Dict[str, Any]:
+    terms = [department["code"], department["name"], department["slug"]]
+    return {
+        "label": department["label"],
+        "tier1": sorted(set(terms + department.get("postal_codes", []))),
+        "tier2": [],
+        "department": department["name"],
+        "departement": department["code"],
+        "commune_codes": department.get("commune_codes", []),
+        "postal_codes": department.get("postal_codes", []),
+        "source": department["source"],
+    }
+
+
+DEPARTMENT_AGENCY_QUERY_TEMPLATES = (
+    "agence web {department}",
+    "agence digitale développement web {department}",
+    "studio développement web {department}",
+)
+DEPARTMENT_FORMATION_QUERY_TEMPLATES = (
+    "organisme de formation numérique {department}",
+    "formation développeur web {department}",
+    "formation accessibilité RGAA {department}",
+)
+
+
+def department_query_families(department: Dict[str, Any]) -> Dict[str, List[str]]:
+    context = {"department": department["name"]}
+    return {
+        FAMILY_AGENCY: [template.format(**context) for template in DEPARTMENT_AGENCY_QUERY_TEMPLATES],
+        FAMILY_FORMATION: [template.format(**context) for template in DEPARTMENT_FORMATION_QUERY_TEMPLATES],
+    }
+
+
+def department_queries(department: Dict[str, Any]) -> List[str]:
+    families = department_query_families(department)
+    return families[FAMILY_AGENCY] + families[FAMILY_FORMATION]
 
 
 # ── Périmètre de recherche dérivé de la commune ──────────────────────────────

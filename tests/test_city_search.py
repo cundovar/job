@@ -53,8 +53,27 @@ def fake_opener(geo):
         calls.append(url)
         parsed = urllib.parse.urlparse(url)
         if parsed.path.startswith("/departements/"):
-            code = parsed.path.rsplit("/", 1)[-1]
-            return json.dumps(geo["departements"].get(code, {}))
+            parts = parsed.path.strip("/").split("/")
+            code = parts[1] if len(parts) > 1 else ""
+            department = geo["departements"].get(code, {})
+            if parts[-1] == "communes":
+                rows = department.get("communes")
+                if rows is None:
+                    rows = [
+                        row for rows in geo["communes"].values()
+                        for row in rows
+                        if row.get("codeDepartement") == code
+                    ]
+                return json.dumps(rows)
+            return json.dumps({key: department.get(key) for key in ("code", "nom")})
+        if parsed.path == "/departements":
+            params = urllib.parse.parse_qs(parsed.query)
+            wanted = (params.get("nom", [""])[0]).strip().casefold()
+            rows = [
+                row for row in geo["departements"].values()
+                if not wanted or row.get("nom", "").casefold() == wanted
+            ]
+            return json.dumps(rows)
         params = urllib.parse.parse_qs(parsed.query)
         key = (params.get("nom", [""])[0]).strip().lower()
         rows = geo["communes"].get(key, [])
@@ -102,6 +121,32 @@ def test_lille_resolves_to_its_own_perimeter_and_all_its_postal_codes(fake_opene
     # lilloises parfaitement lisibles.
     assert set(commune["postal_codes"]) == {"59000", "59160", "59260", "59777", "59800"}
     assert resolver.city_zone_key(commune) == "ville-lille-59"
+
+
+def test_department_resolves_by_code_and_name_without_static_catalogue(fake_opener):
+    resolver = load_module("city_resolver")
+
+    by_code = resolver.resolve_department("93", opener=fake_opener)
+    by_name = resolver.resolve_department("Seine-Saint-Denis", opener=fake_opener)
+
+    assert by_code["code"] == "93"
+    assert by_code["name"] == "Seine-Saint-Denis"
+    assert by_code["commune_codes"] == ["93048"]
+    assert by_name["code"] == by_code["code"]
+    assert resolver.department_zone_key(by_code) == "departement-93-seine-saint-denis"
+
+
+@pytest.mark.parametrize(
+    "value,code",
+    [("2A", "2A"), ("971", "971")],
+)
+def test_department_codes_special_and_overseas_are_not_forced_to_numeric(fake_opener, value, code):
+    resolver = load_module("city_resolver")
+
+    department = resolver.resolve_department(value, opener=fake_opener)
+
+    assert department["code"] == code
+    assert department["communes"]
 
 
 def test_a_city_search_adds_nothing_to_the_static_zones(fake_opener):
@@ -325,6 +370,24 @@ def test_city_and_zone_together_are_refused_never_arbitrated():
 
     with pytest.raises(SystemExit) as excinfo:
         v2.parse_cli(["--ville", "Lille", "--zone", "paris-20"])
+
+    assert excinfo.value.code == 2
+
+
+def test_department_only_mode_has_no_historical_zone_fallback():
+    v2 = load_module("agency_prospecting_v2")
+
+    options = v2.parse_cli(["--departement", "93"])
+
+    assert options["departement"] == "93"
+    assert options["zone"] == ""
+
+
+def test_zone_and_department_together_are_refused_never_arbitrated():
+    v2 = load_module("agency_prospecting_v2")
+
+    with pytest.raises(SystemExit) as excinfo:
+        v2.parse_cli(["--zone", "paris-20", "--departement", "93"])
 
     assert excinfo.value.code == 2
 
