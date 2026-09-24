@@ -47,7 +47,7 @@
       "boutique_fictive": {
         "organization": "Boutique Fictive",
         "title": "Webmaster e-commerce",
-        "period": {"start": "2026-03", "end": null},
+        "period": {"start": "2026-03", "end": null, "ongoing": true},
         "tags": ["woocommerce", "ecommerce", "wordpress"],
         "visibility": "public",
         "highlights": [
@@ -60,7 +60,7 @@
       "atelier_imaginaire": {
         "organization": "Atelier Imaginaire",
         "title": "Developpeur web",
-        "period": {"start": "2026-03", "end": null},
+        "period": {"start": "2026-03", "end": null, "ongoing": true},
         "tags": ["twig", "bootstrap", "git"],
         "visibility": "public",
         "highlights": [
@@ -97,7 +97,7 @@
     "experience_groups": {
       "missions_techniques_2026": {
         "title": "Missions et projets professionnels",
-        "period": {"start": "2026-03", "end": null},
+        "period": {"start": "2026-03", "end": null, "ongoing": true},
         "member_ids": ["boutique_fictive", "atelier_imaginaire"],
         "mutually_exclusive_sets": [],
         "allowed_variants": ["webmaster"],

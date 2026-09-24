@@ -6,7 +6,13 @@ from .utils import compact_items, contains_any, flatten_skills, job_text, normal
 
 
 def _period_sort_key(period: Dict[str, Any] | None) -> Tuple[str, str]:
-    """Return a sortable (end, start) key, with ongoing work first."""
+    """Return a sortable (end, start) key, with declared ongoing work first.
+
+    « En cours » se déclare (``ongoing``) : une fin simplement absente est une
+    inconnue, pas un présent. La traiter comme un présent faisait remonter une
+    expérience ancienne au-dessus des missions récentes — c'est ce qui plaçait
+    un freelance commencé en 2023 en première ligne du CV.
+    """
     if not isinstance(period, dict):
         return ("0000-00", "0000-00")
 
@@ -17,7 +23,13 @@ def _period_sort_key(period: Dict[str, Any] | None) -> Tuple[str, str]:
         return raw if "-" in raw else f"{raw}-{month}"
 
     start = normalized(period.get("start"), "01")
-    end = "9999-12" if period.get("end") is None and period.get("start") else normalized(period.get("end"), "12")
+    if period.get("end"):
+        end = normalized(period.get("end"), "12")
+    elif period.get("ongoing") is True and period.get("start"):
+        end = "9999-12"
+    else:
+        # Fin inconnue : on ne promeut rien, la date de début fait foi.
+        end = start
     return (end, start)
 
 

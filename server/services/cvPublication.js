@@ -44,7 +44,12 @@ export function isFinalCvFile(file) {
   return FINAL_SET.has(file);
 }
 
-function reviewReason(review, formatIssues) {
+function reviewReason(review, formatIssues, sourceIssues) {
+  // Une source incomplète passe devant : aucune relecture éditoriale ne la
+  // réparera, c'est le profil maître qu'il faut compléter.
+  if (sourceIssues.length) {
+    return sourceIssues[0].detail || 'Le profil maître est incomplet sur une date.';
+  }
   if (review?.status === 'needs_revision' || review?.status === 'needs_minor_revision') {
     return review.verdict || 'Le juge IA demande une correction.';
   }
@@ -75,6 +80,7 @@ export function resolveCvPublication(files = {}, assessment = null, review = nul
       reason: "Aucun CV n'a encore été généré.",
       blocking_issues: [],
       format_issues: [],
+      source_issues: [],
       revision_rounds: null,
     };
   }
@@ -82,10 +88,12 @@ export function resolveCvPublication(files = {}, assessment = null, review = nul
   const publication = assessment?.publication || null;
   const blockingIssues = Array.isArray(publication?.blocking_issues) ? publication.blocking_issues : [];
   const formatIssues = Array.isArray(publication?.format_issues) ? publication.format_issues : [];
+  const sourceIssues = Array.isArray(publication?.source_issues) ? publication.source_issues : [];
   const revisionRounds = Number.isInteger(publication?.revision_rounds) ? publication.revision_rounds : null;
   const base = {
     blocking_issues: blockingIssues,
     format_issues: formatIssues,
+    source_issues: sourceIssues,
     revision_rounds: revisionRounds,
   };
 
@@ -109,7 +117,7 @@ export function resolveCvPublication(files = {}, assessment = null, review = nul
     };
   }
   if (assessment.overall_status !== 'ready') {
-    return { status: 'review', reason: reviewReason(review, formatIssues), ...base };
+    return { status: 'review', reason: reviewReason(review, formatIssues, sourceIssues), ...base };
   }
   if (!finalFilesPresent) {
     // L'évaluation dit « prêt » mais les fichiers finaux manquent : on ne

@@ -2034,3 +2034,41 @@ def test_filter_skills_whitelist_sans_liste_ne_rien_invente():
 
     assert _filter_skills_whitelist([{"title": "T", "items": ["WordPress"]}], {}) == []
     assert _filter_skills_whitelist("pas une liste", {"skills_confidence": {}}) == []
+
+
+def test_unconfirmed_end_date_stops_publication_without_burning_a_round(tmp_path):
+    """Une source incomplète met le CV en révision sans appeler le réviseur.
+
+    Le cas L'Atelier Digital : la période du bloc n'a pas de fin et ne se
+    déclare pas en cours. Aucun agent ne peut réparer ça — trois tours de
+    révision s'y consumeraient pour rien, et le CV sortirait quand même en
+    affirmant « Aujourd'hui ».
+    """
+    master = json.loads(json.dumps(CARECO["master"]))
+    del master["experience_groups"]["missions_techniques_2026"]["period"]["ongoing"]
+    chemin = tmp_path / "master_sans_fin.json"
+    chemin.write_text(json.dumps(master, ensure_ascii=False), encoding="utf-8")
+
+    result = prepare_custom_cv(
+        CARECO["job"],
+        application_dir=tmp_path,
+        master_path=chemin,
+        llm_client=CarecoAgentClient(),
+    )
+
+    publication = result["assessment"]["publication"]
+    assert result["status"] == "review"
+    assert result["published"] is False
+    assert publication["revision_rounds"] == 0
+    assert publication["blocking_issues"] == []
+    assert [item["code"] for item in publication["source_issues"]] == [
+        "SOURCE_END_DATE_UNCONFIRMED"
+    ]
+    assert not (tmp_path / "cv" / "cv_final.pdf").exists()
+    assert not (tmp_path / "cv" / "cv_final.json").exists()
+    assert (tmp_path / "cv" / "cv_review_preview.pdf").exists()
+
+    contenu = json.loads((tmp_path / "cv" / "cv_content.json").read_text(encoding="utf-8"))
+    periodes = [exp["period"] for exp in contenu["cv"]["experiences"]]
+    assert "Aujourd'hui" not in " ".join(periodes)
+    assert "2026-03 – (fin à confirmer)" in periodes

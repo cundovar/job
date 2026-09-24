@@ -13,6 +13,11 @@ Deux familles d'erreurs cohabitent :
 ``format``
     Une contrainte de gabarit (longueur, nombre d'éléments, ordre). Corrigeable
     par une révision, mais interdit l'export final tant qu'elle subsiste.
+``source``
+    Le profil maître ne dit pas ce qu'il faudrait pour publier — une fin de
+    période absente, une preuve qui se contredit. Aucun agent ne peut la
+    réparer : le CV passe en ``review`` et l'utilisateur tranche, sans qu'un
+    tour de révision soit consommé pour rien.
 """
 
 from __future__ import annotations
@@ -26,6 +31,11 @@ from .utils import flatten_skills, normalize
 
 TRUTH = "truth"
 FORMAT = "format"
+SOURCE = "source"
+
+#: Formulations qui affirment une activité toujours en cours. Dans une
+#: expérience à période fermée, elles contredisent ses propres dates.
+_ONGOING_CLAIM = re.compile(r"\bdepuis\b|aujourd['’]?hui|\bactuellement\b", re.IGNORECASE)
 
 #: Sections acceptées dans ``section_order``.
 ALLOWED_SECTIONS = ("profile", "skills", "experiences", "projects", "education")
@@ -558,6 +568,83 @@ def _validate_education(
     return issues
 
 
+def _validate_source_dates(
+    views: Sequence[ExperienceView],
+    master: Dict[str, Any],
+) -> List[TruthIssue]:
+    """Confronte chaque bloc affiché aux dates que la source porte vraiment.
+
+    Deux angles morts se ferment ici. Une période sans fin ni ``ongoing`` était
+    rendue « Aujourd'hui » et triée comme la plus récente : le profil ne le
+    disait nulle part. Et une puce qui affirme « depuis 2023 » sur une période
+    fermée fait mentir le bloc par son propre texte — selon qu'elle vienne du
+    highlight cité ou de la plume de l'agent, ce n'est pas la même faute, donc
+    pas le même code.
+    """
+    issues: List[TruthIssue] = []
+    for view in views:
+        if not view.id:
+            continue
+        period = experience_period(master, view.id)
+        if not isinstance(period, dict):
+            continue
+        if not period.get("end"):
+            if period.get("ongoing") is not True:
+                issues.append(
+                    TruthIssue(
+                        "SOURCE_END_DATE_UNCONFIRMED",
+                        SOURCE,
+                        view.path,
+                        f"La période de « {view.id} » n'a pas de fin et ne se déclare pas "
+                        "en cours (\"ongoing\": true) : le CV ne peut affirmer ni l'une ni "
+                        "l'autre. À trancher dans le profil maître.",
+                        view.id,
+                    )
+                )
+            continue
+
+        for bullet in view.bullets:
+            if not _ONGOING_CLAIM.search(bullet.text):
+                continue
+            cites = False
+            for raw in bullet.sources:
+                parsed = parse_source_reference(raw)
+                if parsed is None or parsed[0] != "experience":
+                    continue
+                highlights = _highlights(master, parsed[1])
+                index = parsed[2]
+                if index is None or index >= len(highlights):
+                    continue
+                if _ONGOING_CLAIM.search(highlights[index]):
+                    cites = True
+                    break
+            if cites:
+                issues.append(
+                    TruthIssue(
+                        "SOURCE_TEMPORAL_CLAIM_CONFLICT",
+                        SOURCE,
+                        bullet.path,
+                        f"Cette puce dit l'activité toujours en cours alors que « {view.id} » "
+                        f"se termine en {period.get('end')} — et la preuve citée le dit aussi : "
+                        "c'est le profil maître qui se contredit.",
+                        view.id,
+                    )
+                )
+            else:
+                issues.append(
+                    TruthIssue(
+                        "TEMPORAL_CLAIM_NOT_IN_SOURCE",
+                        TRUTH,
+                        bullet.path,
+                        f"Cette puce affirme une activité en cours que « {view.id} » "
+                        f"(fin {period.get('end')}) ne soutient pas, et aucune preuve citée "
+                        "ne la porte.",
+                        view.id,
+                    )
+                )
+    return issues
+
+
 def _validate_order(
     views: Sequence[ExperienceView],
     master: Dict[str, Any],
@@ -683,6 +770,7 @@ def validate_cv_content(
             )
         issues.extend(_validate_bullets(view, allowed_sources, master, constraints))
 
+    issues.extend(_validate_source_dates(views, master))
     issues.extend(_validate_order(views, master))
     issues.extend(_validate_skills(cv, master, variant_id, constraints))
     issues.extend(_validate_projects(cv, master, constraints))
@@ -730,12 +818,14 @@ def validate_cv_content(
     payload = [issue.as_dict() for issue in issues]
     truth_issues = [item for item in payload if item["kind"] == TRUTH]
     format_issues = [item for item in payload if item["kind"] == FORMAT]
+    source_issues = [item for item in payload if item["kind"] == SOURCE]
     return {
         "ok": not payload,
         "truthful": not truth_issues,
         "issues": payload,
         "truth_issues": truth_issues,
         "format_issues": format_issues,
+        "source_issues": source_issues,
         "content": content,
     }
 

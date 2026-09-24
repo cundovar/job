@@ -373,3 +373,91 @@ def test_overloaded_skills_and_projects_are_format_errors(master):
     report = validate_cv_content(content, master)
 
     assert any(item["code"] == "TOO_MANY_SKILL_SECTIONS" for item in report["format_issues"])
+
+
+# --------------------------------------------------------------------------- #
+# Dates : ce que la source ne dit pas, le CV ne l'affirme pas
+# --------------------------------------------------------------------------- #
+
+
+def test_open_period_without_ongoing_is_a_source_issue(master):
+    """Une fin absente est une inconnue, pas un « Aujourd'hui ».
+
+    C'est le défaut du CV L'Atelier Digital : un freelance 2023-2024 rendu
+    « 2023 – Aujourd'hui » et hissé en tête, parce que la source n'avait pas
+    de fin et que personne ne le remarquait.
+    """
+    profil = copy.deepcopy(master)
+    del profil["experience_groups"]["missions_techniques_2026"]["period"]["ongoing"]
+    content = _grouped_cv()
+    before = copy.deepcopy(content)
+
+    report = validate_cv_content(content, profil)
+
+    codes = [item["code"] for item in report["source_issues"]]
+    assert codes == ["SOURCE_END_DATE_UNCONFIRMED"]
+    assert report["source_issues"][0]["path"] == "experiences[0]"
+    assert report["truth_issues"] == []
+    assert report["format_issues"] == []
+    assert content == before
+
+
+def test_declared_ongoing_period_is_rendered_and_sorted_as_current(master):
+    """« ongoing » déclaré : rendu « Aujourd'hui » et trié en tête, sans erreur."""
+    from cv_generator.job_analyzer import _period_sort_key
+    from cv_generator.utils import period_to_text
+
+    en_cours = master["experience_groups"]["missions_techniques_2026"]["period"]
+    fermee = master["experience_catalog"]["permanence_test"]["period"]
+
+    assert period_to_text(en_cours) == "2026-03 – Aujourd'hui"
+    assert period_to_text(fermee) == "2024-01 – 2025-12"
+    assert _period_sort_key(en_cours) > _period_sort_key(fermee)
+    assert validate_cv_content(_grouped_cv(), master)["source_issues"] == []
+
+
+def test_unknown_end_never_outranks_a_more_recent_experience():
+    """Une fin inconnue ne promeut plus l'expérience en première ligne."""
+    from cv_generator.job_analyzer import _period_sort_key
+    from cv_generator.utils import period_to_text
+
+    inconnue = {"start": "2023", "end": None}
+    recente = {"start": "2026-03", "end": "2026-08"}
+
+    assert _period_sort_key(inconnue) < _period_sort_key(recente)
+    assert period_to_text(inconnue) == "2023 – (fin à confirmer)"
+
+
+def test_ongoing_claim_backed_by_the_cited_proof_blames_the_source(master):
+    """Puce et preuve disent « depuis » sur une période fermée : c'est la source."""
+    profil = copy.deepcopy(master)
+    profil["experience_catalog"]["permanence_test"]["highlights"][0] = (
+        "Accompagnement d'usagers fictifs depuis 2024."
+    )
+    content = _grouped_cv()
+    content["cv"]["experiences"][1]["bullets"][0]["text"] = (
+        "Accompagnement d'usagers fictifs depuis 2024."
+    )
+
+    report = validate_cv_content(content, profil)
+
+    assert [item["code"] for item in report["source_issues"]] == [
+        "SOURCE_TEMPORAL_CLAIM_CONFLICT"
+    ]
+    assert report["source_issues"][0]["path"] == "experiences[1].bullets[0]"
+    assert report["truth_issues"] == []
+
+
+def test_ongoing_claim_invented_by_the_agent_is_a_truth_error(master):
+    """La même phrase sans preuve qui la porte est une date ajoutée : bloquant."""
+    content = _grouped_cv()
+    content["cv"]["experiences"][1]["bullets"][0]["text"] = (
+        "Accompagnement d'usagers fictifs, toujours actuellement en poste."
+    )
+
+    report = validate_cv_content(content, master)
+
+    assert [item["code"] for item in report["truth_issues"]] == [
+        "TEMPORAL_CLAIM_NOT_IN_SOURCE"
+    ]
+    assert report["source_issues"] == []
