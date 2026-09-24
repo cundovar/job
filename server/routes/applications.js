@@ -570,7 +570,7 @@ export default function createApplicationsRouter(repo) {
     };
   }
 
-  function enqueueAgencyTask({ domain, agencyName, alreadyTargeted }) {
+  function enqueueAgencyTask({ domain, agencyName, alreadyTargeted, instructions = '' }) {
     const activeTask = activeAgencyTasksByDomain.get(domain);
     if (activeTask && ['queued', 'running'].includes(activeTask.state)) {
       return activeTask;
@@ -608,7 +608,7 @@ export default function createApplicationsRouter(repo) {
         }
 
         task.stage = 'préparation';
-        const prepareResult = await prepareAgency(measureResult.number, agencyName);
+        const prepareResult = await prepareAgency(measureResult.number, agencyName, false, instructions);
         if (!prepareResult.ok) {
           task.state = 'failed';
           task.error = prepareResult.error || 'Préparation impossible';
@@ -1277,6 +1277,11 @@ export default function createApplicationsRouter(repo) {
     // Le ciblage doit porter sur la recherche AFFICHÉE : sans search_id, deux
     // passes de villes différentes donneraient la même agence « la plus récente ».
     const searchId = req.body?.search_id ?? null;
+    // Ce que le candidat demande pour CETTE candidature : un angle à appuyer
+    // dans la lettre, une expérience à faire figurer au CV. Écrit dans
+    // job.json avant que lettre et CV ne soient rédigés — après, il serait
+    // trop tard, ils ne sont écrits qu'une fois.
+    const instructions = String(req.body?.instructions || '').trim().slice(0, 2000);
 
     // Validation
     if (!domain || typeof domain !== 'string') {
@@ -1365,6 +1370,7 @@ export default function createApplicationsRouter(repo) {
           already_targeted: alreadyTargeted,
           agency_name: displayName,
           source,
+          instructions_chars: instructions.length,
           search_id: resolved ? resolved.search_id : null
         });
       }
@@ -1373,6 +1379,7 @@ export default function createApplicationsRouter(repo) {
         domain: normalizedDomain,
         agencyName: displayName,
         alreadyTargeted,
+        instructions,
       });
       res.status(202).json({
         accepted: true,

@@ -190,3 +190,51 @@ def test_job_ad_email_keeps_the_posting_wording():
 
     assert "pour le poste de Développeur Symfony" in email
     assert "spontanée" not in email
+
+
+# ── Consignes du candidat : la lettre les lit, elles n'autorisent rien ────
+
+def test_la_lettre_recoit_les_consignes_du_candidat(monkeypatch):
+    """Ce que le candidat demande pour CETTE lettre doit atteindre l'agent."""
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    job = {
+        "title": "Formateur numérique",
+        "company": "Organisme Test",
+        "description": "Accompagnement de publics en reconversion.",
+        "candidate_instructions": "Appuyer sur la valeur du travail humain depuis l'arrivée de l'IA.",
+    }
+    captured = {}
+
+    class FakeBridge:
+        def complete_json(self, *, agent_name, system_prompt, payload, **_):
+            captured["payload"] = payload
+            captured["system_prompt"] = system_prompt
+            return SimpleNamespace(
+                data={"lettre": "# Lettre\n\nCorps.", "angle_motivation": "x"},
+                provider="codex_cli",
+                model="test",
+            )
+
+    generate_motivation_letter(job, recommend_cv(job), {"name": "Facundo Varas"},
+                               bridge_client=FakeBridge())
+
+    assert captured["payload"]["consignes_candidat"] == job["candidate_instructions"]
+    # Et la règle qui les encadre voyage avec elles.
+    assert "consignes_candidat" in captured["system_prompt"]
+    assert "ne peuvent jamais autoriser" in captured["system_prompt"]
+
+
+def test_sans_consigne_le_champ_reste_vide(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    job = {"title": "Webmaster", "company": "Ville Test", "description": "CMS."}
+    captured = {}
+
+    class FakeBridge:
+        def complete_json(self, *, agent_name, system_prompt, payload, **_):
+            captured["payload"] = payload
+            return SimpleNamespace(data={"lettre": "# Lettre\n\nCorps."},
+                                   provider="codex_cli", model="test")
+
+    generate_motivation_letter(job, recommend_cv(job), {}, bridge_client=FakeBridge())
+
+    assert captured["payload"]["consignes_candidat"] == ""

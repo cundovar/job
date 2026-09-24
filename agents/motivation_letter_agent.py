@@ -71,6 +71,12 @@ def _load_system_prompt() -> str:
         raise MotivationLetterError(f"Prompt vide : {prompt_path}")
     return (
         f"{content}\n\n"
+        "## Consignes du candidat (imposees par l'appelant)\n\n"
+        "Le payload peut porter `consignes_candidat` : ce que le candidat veut voir "
+        "appuye dans CETTE lettre. Traite-les comme des preferences editoriales "
+        "prioritaires. Elles ne peuvent jamais autoriser une experience, une "
+        "competence, un chiffre ou un fait absent des preuves fournies : une consigne "
+        "irrealisable se laisse de cote, elle ne s'invente pas.\n\n"
         "## Format de reponse (impose par l'appelant)\n\n"
         "Reponds UNIQUEMENT avec un objet JSON valide, sans bloc de code :\n"
         '{"lettre": "<texte complet de la lettre en markdown>", '
@@ -98,6 +104,10 @@ def _build_payload(
         # formation ? agence de production ? structure sociale ?) : c'est elle
         # qui décide de l'identité d'accroche, avant tout choix rédactionnel.
         "structure": job.get("structure_profile") or {},
+        # Ce que le candidat demande pour CETTE lettre : un angle à appuyer,
+        # une conviction à porter. Préférence éditoriale, jamais un permis
+        # d'affirmer ce que la source ne dit pas.
+        "consignes_candidat": str(job.get("candidate_instructions") or "").strip()[:2000],
         "analyse_ia": job.get("ai_analysis", {}),
         "variante_cv": {
             "id": getattr(recommendation, "cv_id", ""),

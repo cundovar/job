@@ -376,12 +376,14 @@ async function measureAgency(agencyName, dry = false) {
   }
 }
 
-async function prepareAgency(number, agencyName, dry = false) {
+async function prepareAgency(number, agencyName, dry = false, instructions = '') {
   try {
-    const output = await runPython(
-      ['-m', 'hermes_commands.company_prepare', String(number)],
-      COMPANY_PREPARE_TIMEOUT
-    );
+    const args = ['-m', 'hermes_commands.company_prepare', String(number)];
+    // Les consignes voyagent en argument d'execFile, jamais par un shell. Elles
+    // atterrissent dans job.json, d'où la lettre et la chaîne CV les lisent.
+    const consignes = String(instructions || '').trim().slice(0, 2000);
+    if (consignes) args.push('--consignes', consignes);
+    const output = await runPython(args, COMPANY_PREPARE_TIMEOUT);
 
     // Vérifie que candidatures.json contient une entrée correspondante
     const candidaturesPath = path.join(PROJECT_ROOT, 'front/public/data/candidatures.json');

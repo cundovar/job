@@ -927,6 +927,24 @@ h3 > .lucide {
   background: var(--warn);
 }
 
+/* Consignes IA d'une agence : posées avant le ciblage, puisque lettre et CV
+   ne sont rédigés qu'une fois. */
+.agency-consignes {
+  display: block;
+  width: 100%;
+  margin-top: var(--sp-3);
+  padding: var(--sp-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  resize: vertical;
+}
+.agency-consignes::placeholder { color: var(--text-muted); }
+.agency-consignes:disabled { opacity: 0.6; }
+
 /* --- Actions de carte --------------------------------------- */
 .prepare-actions,
 .postule-actions,

@@ -67,7 +67,9 @@ def test_company_prepare_makes_the_dossier_visible_in_the_front(monkeypatch):
         hermes_mcp_server, "load_cached_companies", lambda: [{"opportunity": {"title": "Dev"}}]
     )
     monkeypatch.setattr(
-        company_prepare, "prepare_application", lambda company, with_cv=True: PREPARED_PAYLOAD
+        company_prepare,
+        "prepare_application",
+        lambda company, with_cv=True, instructions=None: PREPARED_PAYLOAD,
     )
     monkeypatch.setattr(
         company_prepare,

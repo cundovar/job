@@ -20,6 +20,18 @@ def test_agency_scout_view_carries_target_button_and_task_resume():
     assert "findScoutAgencyByDomain" in server
     assert "'-m', 'agency_scout', 'list'" in server
 
+    # Le scout porte lui aussi le champ de consignes, et la route les
+    # transporte jusqu'à la préparation — sans quoi le champ ne serait qu'un
+    # rectangle de texte sans effet.
+    scout = (PROJECT_ROOT / "front/src/AgencyScout.jsx").read_text(encoding="utf-8")
+    assert "scout-consignes" in scout
+    assert "instructions: consignes[domain].trim()" in scout
+    assert "req.body?.instructions" in server
+    assert "instructions," in server
+
+    service = (PROJECT_ROOT / "server/services/agenciesService.js").read_text(encoding="utf-8")
+    assert "'--consignes'" in service
+
 
 def test_runtime_image_contains_front_export_module():
     dockerfile = (PROJECT_ROOT / "Dockerfile").read_text(encoding="utf-8")
@@ -155,7 +167,12 @@ def test_agencies_view_carries_the_search_context():
     assert "agency-search-picker" in app
     assert "AGENCY_SEARCH_STORAGE_KEY" in app
     # Le ciblage envoie l'identifiant de la recherche consultée.
-    assert "JSON.stringify({ domain, search_id: selectedId })" in app
+    assert "search_id: selectedId" in app
+    # ... et les consignes IA saisies pour cette agence, avant que lettre et CV
+    # ne soient rédigés — après, il serait trop tard.
+    assert "agency-consignes" in app
+    assert "instructions: agencyConsignes[domain].trim()" in app
+    assert ".agency-consignes" in css
     # Repli de compatibilité : une installation sans index reste utilisable.
     assert "/agencies/latest.json" in app
     # Les agences vérifiées restent l'affichage par défaut ; les candidats registre

@@ -42,6 +42,9 @@ export default function AgencyScout() {
   // Ciblage par domaine : { pending, done, error, taskId }. Le task_id vit dans
   // le localStorage : changer de page pendant une préparation ne perd rien.
   const [targeting, setTargeting] = useState({})
+  // Consignes par domaine : ce que l'IA doit appuyer pour CETTE candidature.
+  // Elles partent avec le ciblage, avant que lettre et CV ne soient rédigés.
+  const [consignes, setConsignes] = useState({})
 
   const setTargetState = (domain, patch) =>
     setTargeting((s) => ({ ...s, [domain]: { ...(s[domain] || {}), ...patch } }))
@@ -179,7 +182,11 @@ export default function AgencyScout() {
       const r = await fetch('/api/agencies/target', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: 'scout', domain }),
+        body: JSON.stringify({
+          source: 'scout',
+          domain,
+          ...(consignes[domain]?.trim() ? { instructions: consignes[domain].trim() } : {}),
+        }),
       })
       const json = await r.json()
       if (!r.ok) throw new Error(json.error || `HTTP ${r.status}`)
@@ -345,6 +352,17 @@ export default function AgencyScout() {
                   {!a.resume && <span className="scout-sub">{a.error || (a.website ? 'Pas encore analysé' : 'Pas de site web sur Google')}</span>}
                 </td>
                 <td className="scout-action">
+                  {a.domain && (
+                    <textarea
+                      className="scout-consignes"
+                      rows={2}
+                      maxLength={2000}
+                      value={consignes[a.domain] || ''}
+                      onChange={(e) => setConsignes((c) => ({ ...c, [a.domain]: e.target.value }))}
+                      disabled={targeting[a.domain]?.pending || targeting[a.domain]?.done}
+                      placeholder="Consignes IA : ce qu'il faut appuyer dans la lettre, une expérience à faire figurer au CV…"
+                    />
+                  )}
                   {a.domain && (
                     <button
                       type="button"

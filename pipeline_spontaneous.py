@@ -196,13 +196,24 @@ def prepare_application(
     result: Dict[str, Any],
     user_profile: Dict[str, Any] | None = None,
     with_cv: bool = True,
+    instructions: str | None = None,
 ) -> Dict[str, Any]:
-    """Produit le dossier local. Réutilise la chaîne de la voie annonce telle quelle."""
+    """Produit le dossier local. Réutilise la chaîne de la voie annonce telle quelle.
+
+    ``instructions`` est ce que le candidat demande pour CETTE candidature —
+    un angle à appuyer dans la lettre, une expérience à faire figurer au CV.
+    Posé sur l'opportunité avant la construction du dossier, il atteint la
+    lettre et la chaîne CV par le même chemin : `job.json`.
+    """
     opportunity = result.get("opportunity")
     if not opportunity:
         raise ValueError(
             f"{result.get('company') or 'Cette structure'} : {result.get('refusal') or 'rien de vérifié'}"
         )
+
+    consignes = str(instructions or "").strip()[:2000]
+    if consignes:
+        opportunity = {**opportunity, "candidate_instructions": consignes}
 
     package = build_application_package(
         opportunity,

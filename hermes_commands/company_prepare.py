@@ -15,7 +15,8 @@ def usable_companies(results):
     return [result for result in results if result.get("opportunity")]
 
 
-def prepare_numbered_application(number, results, with_cv: bool = True):
+def prepare_numbered_application(number, results, with_cv: bool = True,
+                                 instructions: str | None = None):
     """Prépare le dossier N et le rend visible du front de validation.
 
     Point d'entrée unique de la CLI et de l'outil MCP. Les deux passaient
@@ -27,7 +28,7 @@ def prepare_numbered_application(number, results, with_cv: bool = True):
     if number < 1 or number > len(usable):
         raise ValueError(f"Entreprise {number} introuvable. Exploitables : {len(usable)}")
 
-    payload = prepare_application(usable[number - 1], with_cv=with_cv)
+    payload = prepare_application(usable[number - 1], with_cv=with_cv, instructions=instructions)
     rebuild_candidatures_index(
         PROJECT / "output" / "applications",
         PROJECT / "front" / "public" / "data" / "candidatures.json",
@@ -83,6 +84,13 @@ def main() -> None:
     )
     parser.add_argument("--no-ai", action="store_true")
     parser.add_argument("--no-cv", action="store_true", help="Ne pas generer le CV adapte.")
+    parser.add_argument(
+        "--consignes",
+        default=None,
+        help="Ce que le candidat demande pour cette candidature : angle a appuyer dans la "
+             "lettre, experience a faire figurer au CV. Preference editoriale, jamais un "
+             "permis d'affirmer ce que la source ne dit pas.",
+    )
     args = parser.parse_args()
 
     results = load_cached_companies(args.cache)
@@ -90,7 +98,9 @@ def main() -> None:
         results = run_spontaneous_search(use_ai=not args.no_ai)
 
     try:
-        payload = prepare_numbered_application(args.number, results, with_cv=not args.no_cv)
+        payload = prepare_numbered_application(
+            args.number, results, with_cv=not args.no_cv, instructions=args.consignes
+        )
     except ValueError as exc:
         raise SystemExit(str(exc))
 

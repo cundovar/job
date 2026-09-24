@@ -1581,6 +1581,9 @@ function AgenciesView() {
   const [launchError, setLaunchError] = useState(null)
   const [categoryFilter, setCategoryFilter] = useState('agence') // toutes | agence | formation | incertain | ecarte
   const [targetingState, setTargetingState] = useState({}) // { [domain]: { pending, done, error } }
+  // Consignes IA par domaine : ce qu'il faut appuyer pour CETTE candidature.
+  // Elles partent avec le ciblage — lettre et CV ne sont rédigés qu'une fois.
+  const [agencyConsignes, setAgencyConsignes] = useState({})
   const latestSearchRef = useRef(null)
 
   // 1) L'index d'abord : c'est lui qui dit quelles recherches existent.
@@ -1824,7 +1827,11 @@ function AgenciesView() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // Le serveur relit l'agence dans CETTE recherche, pas dans « la dernière ».
-        body: JSON.stringify({ domain, search_id: selectedId })
+        body: JSON.stringify({
+          domain,
+          search_id: selectedId,
+          ...(agencyConsignes[domain]?.trim() ? { instructions: agencyConsignes[domain].trim() } : {}),
+        })
       })
       const payload = await res.json().catch(() => ({}))
 
@@ -2172,6 +2179,18 @@ function AgenciesView() {
                 <div className="agency-targeting-status error-status">
                   <span><TriangleAlert /> {error}</span>
                 </div>
+              )}
+
+              {domain && !isDone && (
+                <textarea
+                  className="agency-consignes"
+                  rows={2}
+                  maxLength={2000}
+                  value={agencyConsignes[domain] || ''}
+                  onChange={(e) => setAgencyConsignes(c => ({ ...c, [domain]: e.target.value }))}
+                  disabled={isPending}
+                  placeholder="Consignes IA : ce qu'il faut appuyer dans la lettre, une expérience à faire figurer au CV…"
+                />
               )}
 
               <div className="agency-actions">

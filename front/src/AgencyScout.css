@@ -23,6 +23,12 @@
   color: var(--text-muted); font-size: 0.7rem; vertical-align: middle; }
 .scout-emails { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; font-size: 0.8rem; }
 .scout-emails a { color: var(--text-muted); }
+.scout-consignes { display: block; width: 100%; min-width: 14rem; margin-bottom: 0.35rem;
+  padding: 0.35rem 0.5rem; border: 1px solid var(--border-strong); border-radius: 6px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: 0.78rem;
+  resize: vertical; }
+.scout-consignes::placeholder { color: var(--text-muted); }
+.scout-consignes:disabled { opacity: 0.6; }
 .btn-scout-target { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.6rem; border: 1px solid var(--accent-border); border-radius: 6px; background: var(--surface); color: var(--text-strong); font: inherit; font-size: 0.82rem; cursor: pointer; white-space: nowrap; }
 .btn-scout-target:disabled { opacity: 0.6; cursor: default; }
 .scout-target-error { color: var(--danger, #b3261e); font-size: 0.78rem; margin-top: 0.25rem; max-width: 16rem; }

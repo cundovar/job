@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import requests
@@ -449,3 +450,63 @@ def test_numero_affiche_par_la_liste_reste_celui_du_cache(tmp_path, monkeypatch)
     # Alpha (opportunity) est exploitables n°1 ; Beta (refus) apparaît en REFUS.
     assert "1. Alpha" in output
     assert "-. Beta : REFUS" in output
+
+
+# ── Consignes du candidat : posées avant que le dossier ne s'écrive ───────
+
+def test_les_consignes_atteignent_le_dossier_avant_lettre_et_cv(monkeypatch):
+    """Lettre et CV ne sont rédigés qu'une fois : la consigne doit arriver avant.
+
+    On ne vérifie pas le texte produit mais le passage de relais : ce que
+    l'utilisateur écrit dans l'interface doit se retrouver sur l'opportunité,
+    d'où `job.json` le sert ensuite aux deux chaînes.
+    """
+    import pipeline_spontaneous
+
+    recu = {}
+
+    def fake_package(opportunity, user_profile=None):
+        recu["opportunity"] = opportunity
+        return SimpleNamespace(
+            directory="/tmp/dossier-test",
+            recommended_cv=SimpleNamespace(cv_id="webmaster"),
+            resume_path="r", motivation_letter_path="l",
+            application_email_path="m", metadata_path="meta",
+        )
+
+    monkeypatch.setattr(pipeline_spontaneous, "build_application_package", fake_package)
+    monkeypatch.setattr(pipeline_spontaneous, "load_user_profile", lambda: {})
+
+    consigne = "Appuyer sur la valeur du travail humain depuis l'arrivée de l'IA."
+    pipeline_spontaneous.prepare_application(
+        {"opportunity": {"company": "Organisme Test", "title": "Formateur", "findings": []}},
+        with_cv=False,
+        instructions=consigne,
+    )
+
+    assert recu["opportunity"]["candidate_instructions"] == consigne
+
+
+def test_sans_consigne_rien_n_est_ajoute_a_l_opportunite(monkeypatch):
+    import pipeline_spontaneous
+
+    recu = {}
+
+    def fake_package(opportunity, user_profile=None):
+        recu["opportunity"] = opportunity
+        return SimpleNamespace(
+            directory="/tmp/dossier-test",
+            recommended_cv=SimpleNamespace(cv_id="webmaster"),
+            resume_path="r", motivation_letter_path="l",
+            application_email_path="m", metadata_path="meta",
+        )
+
+    monkeypatch.setattr(pipeline_spontaneous, "build_application_package", fake_package)
+    monkeypatch.setattr(pipeline_spontaneous, "load_user_profile", lambda: {})
+
+    pipeline_spontaneous.prepare_application(
+        {"opportunity": {"company": "Organisme Test", "title": "Formateur", "findings": []}},
+        with_cv=False,
+    )
+
+    assert "candidate_instructions" not in recu["opportunity"]
