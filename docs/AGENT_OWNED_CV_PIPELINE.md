@@ -29,7 +29,15 @@ chose ne va pas, il produit une **erreur localisée** que le réviseur traite.
 Le routage provider/modèle de chaque rôle vit dans `config/ai_role_routing.json`.
 
 Le vérificateur de vérité ne reçoit **ni l'annonce ni les consignes candidat** :
-il ne doit pas pouvoir être influencé par ce que le poste attend.
+il ne doit pas pouvoir être influencé par ce que le poste attend. Il reçoit en
+revanche `person.contact` : sans lui, il refusait un bloc que Python recopie
+depuis ce même profil. Une affirmation qu'il porte sur un chemin recopié par
+Python ne bloque pas la publication, elle est consignée dans `ignored_claims`.
+
+Une expérience marquée `"retired": true` dans le catalogue **n'est proposée à
+aucun rôle**, ni dans les suggestions notées par Python : un agent ne peut donc
+pas la retenir. Elle reste dans le profil maître, pour ne pas perdre un morceau
+de parcours réel et pour que le validateur sache encore la reconnaître.
 
 ## Ce que Python valide
 
