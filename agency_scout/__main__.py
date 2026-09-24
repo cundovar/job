@@ -1,7 +1,9 @@
-"""CLI : python3 -m agency_scout {scan,list}
+"""CLI : python3 -m agency_scout {scan,add,list}
 
   scan  [--lat 48.85 --lng 2.39] [--rayon 3000] [--cp 75020 ...] [--requete "agence web" ...] [--reanalyse] [--background]
         --cp impose le code postal de l'adresse Google : le rayon ne filtre plus (mode arrondissement).
+  add   --url <site> [--nom "Nom"] [--reanalyse]   → une structure repérée à la main
+        Même analyse qu'un scan, sans la découverte Places. Sans --nom, le nom est lu sur la page.
   list  [--categorie agence|formation|autre] [--min-score 0]   → JSON sur stdout
 """
 
@@ -21,7 +23,14 @@ try:  # le .env racine ne remplace jamais une variable déjà posée (Docker/Coo
 except ImportError:
     pass
 
-from agency_scout.core import DEFAULT_CENTER, DEFAULT_RADIUS_M, list_agencies, scan, start_background  # noqa: E402
+from agency_scout.core import (  # noqa: E402
+    DEFAULT_CENTER,
+    DEFAULT_RADIUS_M,
+    add_agency,
+    list_agencies,
+    scan,
+    start_background,
+)
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="agency_scout")
@@ -34,6 +43,10 @@ def main(argv: list[str]) -> int:
     s.add_argument("--requete", action="append", help="répétable ; défaut : 4 requêtes agence/formation")
     s.add_argument("--reanalyse", action="store_true", help="refaire l'IA même si le site n'a pas changé")
     s.add_argument("--background", action="store_true")
+    a = sub.add_parser("add")
+    a.add_argument("--url", required=True, help="URL du site de la structure")
+    a.add_argument("--nom", help="nom affiché ; sans lui, il est lu sur la page")
+    a.add_argument("--reanalyse", action="store_true", help="refaire l'analyse d'un domaine déjà connu")
     l = sub.add_parser("list")
     l.add_argument("--categorie")
     l.add_argument("--min-score", type=int, default=0)
@@ -41,6 +54,14 @@ def main(argv: list[str]) -> int:
 
     if args.cmd == "list":
         print(json.dumps(list_agencies(args.categorie, args.min_score), ensure_ascii=False))
+        return 0
+    if args.cmd == "add":
+        try:
+            result = add_agency(args.url, args.nom, args.reanalyse)
+        except Exception as exc:  # noqa: BLE001 — une URL refusée se dit, elle ne trace pas
+            print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
+            return 1
+        print(json.dumps(result, ensure_ascii=False))
         return 0
     if args.background:
         print(json.dumps(start_background([a for a in argv if a != "--background"])))

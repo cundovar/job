@@ -1,7 +1,7 @@
 // Agency Scout (V3) — tableau triable qui lit /api/scout/agencies.
 // Le bouton lance un scan détaché ; la page se relit seule tant que la base dit « running ».
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ExternalLink, LoaderCircle, RotateCw, Search, TriangleAlert } from 'lucide-react'
+import { ExternalLink, LoaderCircle, Plus, RotateCw, Search, TriangleAlert } from 'lucide-react'
 import './AgencyScout.css'
 
 const SCOUT_TARGET_TASKS_KEY = 'scout_target_tasks'
@@ -34,6 +34,11 @@ export default function AgencyScout() {
   const [rayon, setRayon] = useState(3000)
   const [cp, setCp] = useState('')
   const [launching, setLaunching] = useState(false)
+  // Ajout manuel : une URL, un nom facultatif, et le retour du serveur à afficher.
+  const [addUrl, setAddUrl] = useState('')
+  const [addNom, setAddNom] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [added, setAdded] = useState(null)
   // Ciblage par domaine : { pending, done, error, taskId }. Le task_id vit dans
   // le localStorage : changer de page pendant une préparation ne perd rien.
   const [targeting, setTargeting] = useState({})
@@ -130,6 +135,34 @@ export default function AgencyScout() {
     }
   }
 
+  // Ajout manuel : l'URL suffit. Le serveur lit le site, l'IA rend le même
+  // verdict que pour un scan, et la fiche rejoint la liste — d'où part
+  // « Retenir & préparer », sans rien de spécifique à la saisie manuelle.
+  const addBySite = async () => {
+    const url = addUrl.trim()
+    if (!url || adding) return
+    setAdding(true)
+    setError('')
+    setAdded(null)
+    try {
+      const r = await fetch('/api/scout/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, ...(addNom.trim() ? { nom: addNom.trim() } : {}) }),
+      })
+      const json = await r.json()
+      if (!r.ok) throw new Error(json.error || `HTTP ${r.status}`)
+      setAdded(json)
+      setAddUrl('')
+      setAddNom('')
+      await load()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setAdding(false)
+    }
+  }
+
   const rows = useMemo(() => {
     const list = (data?.agencies || []).filter((a) => !categorie || a.categorie === categorie)
     return [...list].sort((a, b) => sort.dir * compare(a, b, sort.key))
@@ -220,6 +253,43 @@ export default function AgencyScout() {
         </div>
       </header>
 
+      <div className="scout-add">
+        <label className="scout-add-url">
+          Ajouter une structure repérée
+          <input
+            type="url"
+            value={addUrl}
+            onChange={(e) => setAddUrl(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') addBySite() }}
+            placeholder="https://agence-ou-organisme.fr"
+            inputMode="url"
+          />
+        </label>
+        <label className="scout-add-nom">
+          Nom (facultatif)
+          <input
+            type="text"
+            value={addNom}
+            onChange={(e) => setAddNom(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') addBySite() }}
+            placeholder="lu sur le site si vide"
+          />
+        </label>
+        <button type="button" className="btn-primary" onClick={addBySite} disabled={adding || !addUrl.trim()}>
+          {adding ? <LoaderCircle size={16} className="spin" /> : <Plus size={16} />}
+          {adding ? 'Analyse du site…' : 'Analyser & ajouter'}
+        </button>
+      </div>
+
+      {added && (
+        <p className="scout-added">
+          {added.already_known
+            ? `${added.domain} était déjà dans la base (source : ${added.source}).`
+            : `${added.name || added.domain} ajoutée — ${added.categorie || 'non classée'}${added.score != null ? ` · ${added.score}/10` : ''}.`}
+          {added.error && <em> {added.error}</em>}
+        </p>
+      )}
+
       {error && <p className="scout-error"><TriangleAlert size={16} /> {error}</p>}
 
       <div className="scout-filters">
@@ -246,7 +316,8 @@ export default function AgencyScout() {
             {rows.map((a) => (
               <tr key={a.place_id}>
                 <td>
-                  <strong>{a.name}</strong>
+                  <strong>{a.name || a.domain}</strong>
+                  {a.source === 'manuel' && <span className="scout-origin">saisie manuelle</span>}
                   <div className="scout-sub">{a.address}</div>
                   {a.website && (
                     <a href={a.website} target="_blank" rel="noreferrer" className="scout-link">

@@ -64,7 +64,7 @@ def test_monthly_cap_is_a_hard_stop(db, monkeypatch):
 
 def test_invalid_llm_output_is_stored_as_error(monkeypatch):
     monkeypatch.setattr(core, "fetch_site_text",
-                        lambda url: ("Nous créons des sites web pour nos clients. " * 5, [url], []))
+                        lambda url: ("Nous créons des sites web pour nos clients. " * 5, [url], [], ""))
     monkeypatch.setattr(core, "llm_complete", lambda s, u: ({"categorie": "boulangerie", "score": 42}, "fake"))
     result = core.analyze("x.fr", "https://x.fr", None, "sys")
     assert result["error"].startswith("analyse IA invalide")
@@ -72,7 +72,7 @@ def test_invalid_llm_output_is_stored_as_error(monkeypatch):
 
 def test_invented_proof_is_flagged(monkeypatch):
     monkeypatch.setattr(core, "fetch_site_text",
-                        lambda url: ("Nous créons des sites web pour nos clients. " * 5, [url], []))
+                        lambda url: ("Nous créons des sites web pour nos clients. " * 5, [url], [], ""))
     monkeypatch.setattr(core, "llm_complete", lambda s, u: (
         {"categorie": "agence", "score": 7, "resume": "ok", "preuve": "Leader européen du WordPress headless"}, "fake"))
     assert core.analyze("x.fr", "https://x.fr", None, "sys")["preuve_ok"] == 0
@@ -80,8 +80,107 @@ def test_invented_proof_is_flagged(monkeypatch):
 
 def test_emails_from_site_fetch_are_stored(monkeypatch):
     monkeypatch.setattr(core, "fetch_site_text",
-                        lambda url: ("Nous créons des sites web pour nos clients. " * 5, [url], ["contact@agence.fr"]))
+                        lambda url: ("Nous créons des sites web pour nos clients. " * 5, [url], ["contact@agence.fr"], ""))
     monkeypatch.setattr(core, "llm_complete", lambda s, u: (
         {"categorie": "agence", "score": 6, "resume": "ok", "preuve": "Nous créons des sites web pour nos clients"}, "fake"))
     result = core.analyze("y.fr", "https://y.fr", None, "sys")
     assert result["emails"] == ["contact@agence.fr"]
+
+
+# ── Ajout manuel : une URL, la même analyse, la même base ─────────────────
+
+TEXTE_SITE = "Nous formons des adultes au numérique et au développement web. " * 4
+
+VERDICT = {"categorie": "formation", "score": 8, "resume": "Organisme de formation.",
+           "preuve": "Nous formons des adultes au numérique"}
+
+
+@pytest.fixture
+def base(tmp_path, monkeypatch):
+    """Base vide + IA simulée : l'ajout manuel ne touche jamais le réseau ici."""
+    monkeypatch.setattr(core, "llm_complete", lambda s, u: (dict(VERDICT), "fake"))
+    monkeypatch.setattr(core, "_profile_summary", lambda: "profil de test")
+    return tmp_path / "scout.db"
+
+
+def _fetch(texte=TEXTE_SITE, nom="Organisme Test", url_finale=None):
+    return lambda url: (texte, [url_finale or url], ["contact@organisme.fr"], nom)
+
+
+def test_ajout_manuel_cree_la_fiche_et_son_analyse(base, monkeypatch):
+    monkeypatch.setattr(core, "fetch_site_text", _fetch())
+
+    result = core.add_agency("organisme-test.fr", path=base)
+
+    assert result["ok"] and result["already_known"] is False
+    assert result["domain"] == "organisme-test.fr"
+    assert (result["categorie"], result["score"]) == ("formation", 8)
+
+    listing = core.list_agencies(path=base)["agencies"]
+    assert len(listing) == 1
+    fiche = listing[0]
+    assert fiche["source"] == "manuel"
+    assert fiche["place_id"] == "manuel:organisme-test.fr"
+    assert fiche["name"] == "Organisme Test"
+    # Aucune adresse inventée : la saisie manuelle n'en fournit pas.
+    assert fiche["address"] is None and fiche["distance_m"] is None
+
+
+def test_le_nom_saisi_prime_sur_celui_lu_sur_le_site(base, monkeypatch):
+    monkeypatch.setattr(core, "fetch_site_text", _fetch(nom="Titre SEO à rallonge"))
+
+    result = core.add_agency("https://organisme-test.fr", name="Organisme Test", path=base)
+
+    assert result["name"] == "Organisme Test"
+
+
+def test_le_site_retenu_est_l_url_finale_pas_le_domaine(base, monkeypatch):
+    """Un certificat peut ne couvrir que www : on garde l'URL réellement lue."""
+    monkeypatch.setattr(core, "fetch_site_text", _fetch(url_finale="https://www.organisme-test.fr/accueil"))
+
+    core.add_agency("organisme-test.fr", path=base)
+
+    assert core.list_agencies(path=base)["agencies"][0]["website"] == "https://www.organisme-test.fr/accueil"
+
+
+def test_un_site_injoignable_cree_la_fiche_avec_son_erreur(base, monkeypatch):
+    def boom(url):
+        raise RuntimeError("Connection refused")
+
+    monkeypatch.setattr(core, "fetch_site_text", boom)
+
+    result = core.add_agency("injoignable-test.fr", path=base)
+
+    # Pas d'exception, pas de faux échec : la fiche existe, l'erreur est dite.
+    assert result["ok"] and result["error"].startswith("site illisible")
+    fiche = core.list_agencies(path=base)["agencies"][0]
+    assert fiche["domain"] == "injoignable-test.fr"
+    assert fiche["categorie"] is None
+
+
+def test_un_domaine_deja_connu_n_est_pas_duplique(base, monkeypatch):
+    monkeypatch.setattr(core, "fetch_site_text", _fetch())
+    db = core.connect(base)
+    db.execute(
+        """INSERT INTO agencies (place_id, name, address, lat, lng, distance_m, website, domain,
+                                 types, query, first_seen, last_seen, source)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        ("places-42", "Vu par Google", "10 rue X, 75020 Paris", 48.85, 2.39, 120,
+         "https://organisme-test.fr", "organisme-test.fr", "", "agence web",
+         core.now(), core.now(), "places"),
+    )
+    db.commit()
+    db.close()
+
+    result = core.add_agency("organisme-test.fr", path=base)
+
+    assert result["already_known"] is True and result["source"] == "places"
+    listing = core.list_agencies(path=base)["agencies"]
+    assert len(listing) == 1 and listing[0]["name"] == "Vu par Google"
+
+
+@pytest.mark.parametrize("url", ["", "ftp://organisme.fr", "http://localhost:8000",
+                                 "http://192.168.1.10", "pas-une-url"])
+def test_une_url_non_publique_est_refusee(base, url):
+    with pytest.raises(ValueError):
+        core.add_agency(url, path=base)

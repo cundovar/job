@@ -66,7 +66,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS agencies (
   place_id TEXT PRIMARY KEY, name TEXT, address TEXT, lat REAL, lng REAL,
   distance_m INTEGER, website TEXT, domain TEXT, types TEXT, query TEXT,
-  first_seen TEXT, last_seen TEXT
+  first_seen TEXT, last_seen TEXT, source TEXT DEFAULT 'places'
 );
 CREATE TABLE IF NOT EXISTS analyses (
   domain TEXT PRIMARY KEY, categorie TEXT, score INTEGER, resume TEXT, preuve TEXT,
@@ -92,6 +92,13 @@ def connect(path: Path = DB_PATH) -> sqlite3.Connection:
     cols = {row[1] for row in db.execute("PRAGMA table_info(analyses)")}
     if "emails" not in cols:
         db.execute("ALTER TABLE analyses ADD COLUMN emails TEXT")
+        db.commit()
+    # Migration des bases créées avant la saisie manuelle : tout ce qui s'y
+    # trouve déjà vient de Google Places.
+    cols = {row[1] for row in db.execute("PRAGMA table_info(agencies)")}
+    if "source" not in cols:
+        db.execute("ALTER TABLE agencies ADD COLUMN source TEXT DEFAULT 'places'")
+        db.execute("UPDATE agencies SET source = 'places' WHERE source IS NULL")
         db.commit()
     return db
 
@@ -213,14 +220,16 @@ def discover(db, queries: list[str], center, radius_m: int, api_key: str,
                 continue
             website = p.get("websiteUri")
             db.execute(
-                """INSERT INTO agencies VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                """INSERT INTO agencies (place_id, name, address, lat, lng, distance_m, website,
+                                         domain, types, query, first_seen, last_seen, source)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(place_id) DO UPDATE SET name=excluded.name, address=excluded.address,
                      lat=excluded.lat, lng=excluded.lng, distance_m=excluded.distance_m,
                      website=excluded.website, domain=excluded.domain, types=excluded.types,
                      last_seen=excluded.last_seen""",
                 (p["id"], (p.get("displayName") or {}).get("text"), p.get("formattedAddress"),
                  loc["latitude"], loc["longitude"], dist, website, domain_of(website),
-                 ",".join(p.get("types", [])), query, now(), now()),
+                 ",".join(p.get("types", [])), query, now(), now(), "places"),
             )
             kept.append(p["id"])
         db.commit()
@@ -237,9 +246,25 @@ def _clean(html: bytes) -> tuple[str, BeautifulSoup]:
     return re.sub(r"\s+", " ", soup.get_text(" ")).strip(), soup
 
 
-def fetch_site_text(url: str) -> tuple[str, list[str], list[str]]:
-    """Texte de l'accueil + d'une page secondaire, les URLs lues, et les emails
-    masqués décodés depuis le HTML brut (Cloudflare cfemail, mailto)."""
+def _site_name(soup: BeautifulSoup) -> str:
+    """Nom tel que le site se nomme lui-même — jamais déduit du domaine.
+
+    `og:site_name` d'abord, sinon le `<title>`, dont on ne garde que ce qui
+    précède le séparateur : « Studio Machin | Agence web à Paris » se lit
+    « Studio Machin ».
+    """
+    tag = soup.find("meta", attrs={"property": "og:site_name"})
+    candidate = str((tag.get("content") if tag else "") or "")
+    if not candidate.strip() and soup.title and soup.title.string:
+        candidate = str(soup.title.string)
+    name = re.split(r"[|\u2013\u2014\u00b7\u00bb]", candidate)[0]
+    return re.sub(r"\s+", " ", name).strip()[:80]
+
+
+def fetch_site_text(url: str) -> tuple[str, list[str], list[str], str]:
+    """Texte de l'accueil + d'une page secondaire, les URLs lues, les emails
+    masqués décodés depuis le HTML brut (Cloudflare cfemail, mailto), et le nom
+    que le site se donne."""
     with requests.Session() as client:
         client.headers["User-Agent"] = UA
         home = client.get(url, timeout=8)
@@ -264,7 +289,7 @@ def fetch_site_text(url: str) -> tuple[str, list[str], list[str]]:
                 break
     text = home_text[:1800] + ("\n---\n" + second_text[:1200] if second_text else "")
     emails = sorted({e for html in html_pages for e in decode_protected_emails(html)})
-    return text[:TEXT_BUDGET], pages, emails
+    return text[:TEXT_BUDGET], pages, emails, _site_name(soup)
 
 
 # ── 3. Analyse LLM ───────────────────────────────────────────────────────────
@@ -341,11 +366,21 @@ def llm_complete(system: str, user: str) -> tuple[dict, str]:
 
 def analyze(domain: str, website: str, cached: sqlite3.Row | None, system: str) -> dict:
     """Fetch + LLM pour un domaine. Ne lève jamais : l'erreur est stockée."""
-    base = {"domain": domain, "analyzed_at": now()}
     try:
-        text, pages, emails = fetch_site_text(website)
+        text, pages, emails, _ = fetch_site_text(website)
     except Exception as exc:  # noqa: BLE001
-        return {**base, "error": f"site illisible : {str(exc)[:150]}"}
+        return {"domain": domain, "analyzed_at": now(), "error": f"site illisible : {str(exc)[:150]}"}
+    return analyze_text(domain, text, pages, emails, cached, system)
+
+
+def analyze_text(domain: str, text: str, pages: list[str], emails: list[str],
+                 cached: sqlite3.Row | None, system: str) -> dict:
+    """Le verdict IA sur un texte déjà lu. Aucune entrée/sortie réseau ici.
+
+    Rend {} quand le texte n'a pas changé depuis la dernière analyse : le
+    verdict précédent reste valable, aucun appel IA n'est dépensé.
+    """
+    base = {"domain": domain, "analyzed_at": now()}
     if len(text) < 80:
         return {**base, "error": "site sans texte exploitable (probablement tout en JavaScript)"}
     text_hash = hashlib.sha256(text.encode()).hexdigest()[:16]
@@ -369,6 +404,106 @@ def save_analysis(db, a: dict) -> None:
            for c in cols]
     db.execute(f"INSERT OR REPLACE INTO analyses ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})", row)
     db.commit()
+
+
+# ── Ajout manuel ─────────────────────────────────────────────────────────────
+
+#: Hôtes que le serveur ne va pas chercher : l'URL vient du navigateur, et
+#: c'est le serveur qui ouvre la connexion.
+_PRIVATE_HOST = re.compile(
+    r"^(localhost$|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?$)",
+    re.IGNORECASE,
+)
+
+
+def normalize_site_url(raw: str) -> str:
+    """URL utilisable, ou une erreur qui dit ce qui cloche."""
+    url = str(raw or "").strip()
+    if not url:
+        raise ValueError("URL vide.")
+    if "://" not in url:
+        url = "https://" + url
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Schéma non accepté : « {parsed.scheme} » — http ou https uniquement.")
+    host = parsed.hostname or ""
+    if not host or "." not in host or _PRIVATE_HOST.match(host):
+        raise ValueError(f"Hôte non accepté : « {host or url} ».")
+    return url
+
+
+def add_agency(url: str, name: str | None = None, reanalyze: bool = False,
+               path: Path = DB_PATH) -> dict:
+    """Ajoute une structure à la main, à partir de l'URL de son site.
+
+    Même trajet qu'un scan, moins la découverte Places : le site est lu une
+    fois, l'IA rend le même verdict, la fiche rejoint la même base — et le
+    bouton « Retenir & préparer » la trouve sans rien changer.
+
+    Un site illisible ne fait pas échouer l'ajout : la fiche existe avec son
+    erreur, et c'est l'utilisateur qui tranche.
+    """
+    site = normalize_site_url(url)
+    domain = domain_of(site)
+    if not domain:
+        raise ValueError(f"Domaine illisible dans « {url} ».")
+
+    db = connect(path)
+    try:
+        known = db.execute(
+            "SELECT place_id, name, source FROM agencies WHERE domain = ?", (domain,)
+        ).fetchone()
+        if known and not reanalyze:
+            # Déjà là : on ne crée pas un doublon et on ne réécrit pas une fiche
+            # dont les données viennent peut-être de Google.
+            return {"ok": True, "domain": domain, "name": known["name"], "already_known": True,
+                    "source": known["source"] or "places", "analyzed": False,
+                    "message": f"{domain} est déjà dans la base (source : {known['source'] or 'places'})."}
+
+        try:
+            text, pages, emails, site_name = fetch_site_text(site)
+            fetch_error = None
+        except Exception as exc:  # noqa: BLE001
+            text, pages, emails, site_name = "", [site], [], ""
+            fetch_error = f"site illisible : {str(exc)[:150]}"
+
+        final_url = pages[0] if pages else site
+        retenu = (name or "").strip() or site_name
+        if not known:
+            db.execute(
+                """INSERT INTO agencies (place_id, name, address, lat, lng, distance_m, website,
+                                         domain, types, query, first_seen, last_seen, source)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (f"manuel:{domain}", retenu, None, None, None, None, final_url, domain,
+                 "", "saisie manuelle", now(), now(), "manuel"),
+            )
+        else:
+            db.execute("UPDATE agencies SET last_seen = ? WHERE place_id = ?", (now(), known["place_id"]))
+        db.commit()
+
+        if fetch_error:
+            save_analysis(db, {"domain": domain, "analyzed_at": now(), "error": fetch_error})
+        else:
+            cached = db.execute("SELECT * FROM analyses WHERE domain = ?", (domain,)).fetchone()
+            verdict = analyze_text(domain, text, pages, emails,
+                                   None if reanalyze else cached,
+                                   SYSTEM_PROMPT.format(profile=_profile_summary()))
+            if verdict:
+                save_analysis(db, verdict)
+
+        row = db.execute(
+            "SELECT categorie, score, resume, error FROM analyses WHERE domain = ?", (domain,)
+        ).fetchone()
+        return {"ok": True, "domain": domain, "name": known["name"] if known else retenu,
+                "website": final_url, "already_known": bool(known),
+                "source": (known["source"] or "places") if known else "manuel",
+                "analyzed": True,
+                "categorie": row["categorie"] if row else None,
+                "score": row["score"] if row else None,
+                "resume": row["resume"] if row else None,
+                "error": row["error"] if row else None}
+    finally:
+        db.close()
 
 
 # ── Orchestration ────────────────────────────────────────────────────────────
@@ -415,10 +550,10 @@ def scan(queries: list[str] | None = None, center=DEFAULT_CENTER, radius_m: int 
         db.close()
 
 
-def list_agencies(categorie: str | None = None, min_score: int = 0) -> dict:
-    db = connect()
+def list_agencies(categorie: str | None = None, min_score: int = 0, path: Path = DB_PATH) -> dict:
+    db = connect(path)
     sql = """SELECT a.place_id, a.name, a.address, a.distance_m, a.website, a.domain, a.lat, a.lng,
-                    a.last_seen, n.categorie, n.score, n.resume, n.preuve, n.preuve_ok, n.error, n.analyzed_at,
+                    a.last_seen, COALESCE(a.source, 'places') AS source, n.categorie, n.score, n.resume, n.preuve, n.preuve_ok, n.error, n.analyzed_at,
                     n.emails
              FROM agencies a LEFT JOIN analyses n ON n.domain = a.domain
              WHERE COALESCE(n.score, 0) >= ?"""
