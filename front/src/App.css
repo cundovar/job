@@ -1965,6 +1965,26 @@ h3 > .lucide {
   color: var(--text);
 }
 
+/* Filtre par arrondissement ou commune. Il ne propose que les zones
+   présentes dans la recherche affichée. */
+.agency-zone-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.agency-zone-filter select {
+  min-height: 36px;
+  padding: 0 var(--sp-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+}
+
 /* Les deux catégories restent visibles par défaut : masquer « formation »
    reviendrait à écarter un formateur pour n'être pas une agence. */
 .agency-category-filter {

@@ -2,6 +2,7 @@
 // Le bouton lance un scan détaché ; la page se relit seule tant que la base dit « running ».
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ExternalLink, LoaderCircle, Plus, RotateCw, Search, TriangleAlert } from 'lucide-react'
+import { zoneOptions } from './zones'
 import './AgencyScout.css'
 
 const SCOUT_TARGET_TASKS_KEY = 'scout_target_tasks'
@@ -12,18 +13,6 @@ const COLUMNS = [
   { key: 'score', label: 'Score' },
   { key: 'distance_m', label: 'Distance' },
 ]
-
-// 75020 → « Paris 20e », 69003 → « Lyon 3e », 13008 → « Marseille 8e ».
-// Ailleurs, la commune lue dans l'adresse suffit.
-const ARRONDISSEMENTS = { 75: 'Paris', 69: 'Lyon', 13: 'Marseille' }
-
-function fmtZone(cp, ville) {
-  if (!cp) return 'Sans adresse'
-  const base = ARRONDISSEMENTS[cp.slice(0, 2)]
-  const rang = Number(cp.slice(2))
-  if (base && rang >= 1 && rang <= 20) return `${base} ${rang}${rang === 1 ? 'er' : 'e'}`
-  return ville ? `${ville} (${cp})` : cp
-}
 
 function fmtDistance(m) {
   if (m == null) return '—'
@@ -181,18 +170,10 @@ export default function AgencyScout() {
     }
   }
 
-  const zones = useMemo(() => {
-    const counts = new Map()
-    for (const a of data?.agencies || []) {
-      const cle = a.code_postal || ''
-      const entry = counts.get(cle) || { value: cle, label: fmtZone(a.code_postal, a.ville), count: 0 }
-      entry.count += 1
-      counts.set(cle, entry)
-    }
-    // Les vraies zones d'abord, par code postal ; « Sans adresse » en dernier.
-    return [...counts.values()].sort((a, b) =>
-      a.value === '' ? 1 : b.value === '' ? -1 : a.value.localeCompare(b.value))
-  }, [data])
+  const zones = useMemo(
+    () => zoneOptions(data?.agencies || [], a => [a.code_postal, a.ville]),
+    [data],
+  )
 
   // Un scan peut faire disparaître la zone filtrée. Rester dessus afficherait
   // une liste vide sans dire pourquoi : on retombe sur « Toutes ».

@@ -46,6 +46,13 @@ def test_le_filtre_par_zone_lit_le_champ_que_le_serveur_expose():
     assert "a.code_postal" in jsx
     assert "scout-zone" in jsx
 
+    # L'onglet « Agences » (prospection hors annonces) a le même filtre, sur le
+    # champ que produit `agency_prospecting_v2` — un autre nom, la même règle :
+    # un code postal lu dans une adresse, jamais déduit.
+    app = (PROJECT_ROOT / "front/src/App.jsx").read_text(encoding="utf-8")
+    assert "agency-zone-filter" in app
+    assert "a.postal_code" in app
+
 
 def test_runtime_image_contains_front_export_module():
     dockerfile = (PROJECT_ROOT / "Dockerfile").read_text(encoding="utf-8")

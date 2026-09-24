@@ -15,6 +15,7 @@ import CvAssessment from './CvAssessment'
 import HermesChat from './HermesChat'
 import RecipientEditor from './RecipientEditor'
 import { setRecipientRole, withPrimaryRecipient } from './recipients'
+import { zoneOptions } from './zones'
 
 const DATA_URL = '/data'
 
@@ -1593,6 +1594,10 @@ function AgenciesView() {
   const [launchTask, setLaunchTask] = useState(null)
   const [launchError, setLaunchError] = useState(null)
   const [categoryFilter, setCategoryFilter] = useState('agence') // toutes | agence | formation | incertain | ecarte
+  // Filtre d'affichage par arrondissement ou commune. Sans rapport avec le
+  // périmètre de la recherche : celui-ci décide de ce qu'on va chercher,
+  // celui-là de ce qu'on regarde dans ce qui a été trouvé.
+  const [zoneFilter, setZoneFilter] = useState('')
   const [targetingState, setTargetingState] = useState({}) // { [domain]: { pending, done, error } }
   // Consignes IA par domaine : ce qu'il faut appuyer pour CETTE candidature.
   // Elles partent avec le ciblage — lettre et CV ne sont rédigés qu'une fois.
@@ -1791,9 +1796,18 @@ function AgenciesView() {
     const origins = agency.origins || [agency.origin].filter(Boolean)
     return !(origins.length === 1 && origins[0] === 'csv')
   })
-  const agencies = categoryFilter === 'toutes'
-    ? allAgencies
-    : allAgencies.filter(a => (a.category || 'agence') === categoryFilter)
+  // Le code postal vient de l'adresse posée sur la fiche ; sa provenance reste
+  // dite par `how` sur chaque ligne — un siège déclaré n'est pas une implantation.
+  // `city` n'entre pas dans le libellé : c'est la commune **demandée**, pas
+  // celle de l'agence. Une fiche en 93170 trouvée en cherchant Montreuil se
+  // lirait « Montreuil (93170) » alors qu'elle est à Bagnolet.
+  const zones = zoneOptions(allAgencies, a => [a.postal_code, null], 'Sans code postal lu')
+  // Changer de recherche peut faire disparaître la zone filtrée : y rester
+  // afficherait une liste vide sans dire pourquoi.
+  const zoneActive = zones.some(z => z.value === zoneFilter) ? zoneFilter : ''
+  const agencies = allAgencies.filter(a =>
+    (categoryFilter === 'toutes' || (a.category || 'agence') === categoryFilter)
+    && (zoneActive === '' || (a.postal_code || '') === zoneActive))
   const counts = {
     agence: allAgencies.filter(a => (a.category || 'agence') === 'agence').length,
     formation: allAgencies.filter(a => a.category === 'formation').length,
@@ -2088,6 +2102,17 @@ function AgenciesView() {
               <span>{fit.analyzed ?? 0} analyses · {fit.cache_hits ?? 0} cache · {fit.review ?? 0} à revoir</span>
             )}
           </div>
+          {zones.length > 1 && (
+            <label className="agency-zone-filter">
+              Zone
+              <select value={zoneActive} onChange={e => setZoneFilter(e.target.value)}>
+                <option value="">Toutes ({allAgencies.length})</option>
+                {zones.map(z => (
+                  <option key={z.value || 'sans-zone'} value={z.value}>{z.label} ({z.count})</option>
+                ))}
+              </select>
+            </label>
+          )}
           <div className="agency-category-filter">
             {[['agence', `Agences (${counts.agence})`],
               ['formation', `Formations (${counts.formation})`],
