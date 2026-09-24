@@ -439,7 +439,7 @@ const ZONE_PATTERN = /^[a-z0-9-]{1,40}$/;
 // apostrophes et traits d'union. Ce qui n'entre pas ici n'a pas à devenir un
 // argument de ligne de commande.
 const CITY_PATTERN = /^[\p{L}][\p{L}\s'’.-]{1,59}$/u;
-const DEPARTEMENT_PATTERN = /^(2[AB]|\d{2,3})$/i;
+const DEPARTEMENT_PATTERN = /^[\p{L}\p{M}\d][\p{L}\p{M}\d\s'’.-]{1,79}$/u;
 
 function sameProspectingRequest(task, { zone, city, departement, radiusM }) {
   const requestedRadius = radiusM == null ? null : Number(radiusM);
@@ -468,6 +468,11 @@ async function runProspecting({ zone = null, city = null, departement = null, ra
       }
       args.push('--departement', String(departement).toUpperCase());
     }
+  } else if (departement) {
+    if (!DEPARTEMENT_PATTERN.test(departement)) {
+      throw new Error(`Département invalide : ${departement}`);
+    }
+    args.push('--departement', String(departement).trim());
   } else {
     // `zone` reste accepté pour les préréglages historiques, mais ce n'est plus
     // la voie recommandée : une ville se demande par son nom.

@@ -1191,6 +1191,49 @@ h3 > .lucide {
 .approval-note code {
   overflow-wrap: anywhere;
 }
+.recipient-editor {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--accent-border);
+}
+.recipient-editor-head,
+.recipient-row,
+.recipient-add-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.recipient-editor-head {
+  justify-content: space-between;
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+.recipient-editor input,
+.recipient-editor select {
+  min-height: 2.2rem;
+  min-width: 0;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.recipient-row input,
+.recipient-add-row input {
+  flex: 1;
+}
+.recipient-editor select {
+  width: 4.5rem;
+}
+.recipient-editor .annuler-btn {
+  min-height: 2.2rem;
+  white-space: nowrap;
+}
 
 .lettre-content {
   max-height: 65svh;
@@ -1823,6 +1866,48 @@ h3 > .lucide {
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   box-shadow: var(--shadow-sm);
+}
+
+.agency-search-launcher {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-4);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+.agency-search-launcher-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--sp-3);
+}
+.agency-search-launcher label {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 180px;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.agency-search-launcher input,
+.agency-search-launcher select {
+  min-height: 38px;
+  padding: 0 var(--sp-2);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font: inherit;
+}
+.agency-search-task,
+.agency-search-launch-error {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.agency-search-launch-error {
+  color: var(--danger, #b42318);
 }
 .agency-search-picker label {
   display: inline-flex;

@@ -41,7 +41,7 @@ Elles existent parce qu'un agent, faute de trouver des agences, en a inventé de
    n'est jamais écarté pour n'être pas une agence : `agence` et `formation` sont
    deux catégories de premier rang, toutes deux visibles par défaut dans le front.
 
-## 3. Désigner un périmètre : `--ville`, et pourquoi `ZONES` n'est pas la liste des villes
+## 3. Désigner un périmètre : commune, département ou préréglage
 
 `ZONES`, dans `tools/agency_prospecting_v2.py`, contient **quatre préréglages
 historiques** — `ile-de-france`, `ouest-paris`, `paris-19`, `paris-20` — chacun
@@ -57,8 +57,25 @@ python3 tools/agency_prospecting_v2.py --ville Lille
 python3 tools/agency_prospecting_v2.py --ville Quimper --radius 3000
 ```
 
+Le mode département couvre tout le département, résolu dynamiquement par
+`geo.api.gouv.fr` :
+
+```bash
+python3 tools/agency_prospecting_v2.py --departement 93
+python3 tools/agency_prospecting_v2.py --departement "Seine-Saint-Denis"
+```
+
+`--departement` seul n'est pas une commune et ne lance pas une passe commune par
+commune. L'API géographique fournit le nom officiel, la liste des communes et
+les codes postaux ; le registre est ensuite filtré directement par département.
+Les codes `2A`, `2B` et les départements d'outre-mer sont conservés tels quels.
+
 - `--ville` et `--zone` sont **exclusifs**. Donner les deux est refusé, pas
   arbitré.
+- `--zone`, `--ville` seul et `--departement` seul sont des modes distincts.
+  `--ville` peut être accompagné de `--departement` pour lever un homonyme ;
+  `--zone` ne peut être accompagné ni de l'un ni de l'autre. Un rayon n'est pas
+  accepté avec un département seul.
 - **Aucun périmètre par défaut.** Un appel API/MCP sans `city` ni `zone` reçoit
   une erreur (400 côté Express, `ValueError` côté MCP) au lieu de retomber sur
   `ile-de-france` : le défaut historique a déjà lancé une passe non demandée
@@ -87,6 +104,12 @@ python3 tools/agency_prospecting_v2.py --ville Quimper --radius 3000
 
   Un `mention` n'est pas filtré mais il est classé en dernier et dit pourquoi :
   un nom de ville dans un texte de page n'établit aucune implantation.
+
+En mode département, le champ équivalent est `department_match`. Une mention du
+code ou du nom du département ne suffit jamais : seules une adresse lue dans le
+département ou un siège de registre rattaché à une commune du département sont
+publiés. Les mentions et les candidats sans preuve restent comptés dans le
+diagnostic du snapshot, mais ne deviennent pas des cartes.
 
 ## 4. Les catégories
 
@@ -204,6 +227,10 @@ une suppression est annoncée, jamais silencieuse.
 python3 tools/agency_prospecting_v2.py --ville Lille
 python3 tools/agency_prospecting_v2.py --ville Montreuil --departement 93
 
+# Tout un département, par code ou par nom officiel
+python3 tools/agency_prospecting_v2.py --departement 93 --no-ai
+python3 tools/agency_prospecting_v2.py --departement "Seine-Saint-Denis" --no-ai
+
 # Passe sur un préréglage historique, avec rayon, sans analyse IA
 python3 tools/agency_prospecting_v2.py --zone paris-20 --radius 2000 --no-ai
 
@@ -235,8 +262,8 @@ python3 -m hermes_commands.company_prepare <numéro affiché>
 
 | Route | Rôle |
 |---|---|
-| `POST /api/agencies/search` | Lance une passe (202, file asynchrone). Corps : `city` (+ `departement`) **ou** `zone`, jamais les deux — les donner ensemble rend `400` ; `radius_m` en option |
-| `GET /api/agencies/search/status/:taskId` | Suit la passe : ville demandée, ville résolue (nom, INSEE, codes postaux), étapes mesurées, et le `search_id` à relire |
+| `POST /api/agencies/search` | Lance une passe (202, file asynchrone). Corps : `city` (+ `departement`), `departement` seul, ou `zone` ; les mélanges ambigus rendent `400`. `radius_m` reste réservé à une commune/préréglage |
+| `GET /api/agencies/search/status/:taskId` | Suit la passe : périmètre demandé, ville ou département résolu, étapes mesurées, et le `search_id` à relire |
 | `GET /api/agencies/searches` | Index des recherches, le plus récent d'abord |
 | `GET /api/agencies/searches/:searchId` | Résultats d'une recherche. `latest` est accepté comme alias |
 | `GET /api/agencies/analyses` | Analyses persistées, **lecture seule**, aplaties par domaine |

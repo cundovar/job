@@ -284,6 +284,30 @@
     "28": {
       "code": "28",
       "nom": "Eure-et-Loir"
+    },
+    "2A": {
+      "code": "2A",
+      "nom": "Corse-du-Sud",
+      "communes": [
+        {
+          "nom": "Ajaccio",
+          "code": "2A004",
+          "codesPostaux": ["20000"],
+          "codeDepartement": "2A"
+        }
+      ]
+    },
+    "971": {
+      "code": "971",
+      "nom": "Guadeloupe",
+      "communes": [
+        {
+          "nom": "Les Abymes",
+          "code": "97101",
+          "codesPostaux": ["97139"],
+          "codeDepartement": "971"
+        }
+      ]
     }
   }
 }

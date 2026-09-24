@@ -6,7 +6,7 @@ from datetime import date
 import pytest
 
 from applications.application_tracker import ApplicationTracker
-from applications.send import _mail_parts, send_dossier
+from applications.send import _mail_parts, recipient_fingerprint, send_dossier
 from applications.sender import EmailSender, SendResult, SMTPEmailSender
 
 
@@ -17,9 +17,10 @@ class FakeSender(EmailSender):
         self.calls = []
         self.ok = ok
 
-    def send(self, to, subject, body, attachment=None, attachments=None, html=None):
+    def send(self, to, subject, body, attachment=None, attachments=None, html=None, cc=()):
         self.calls.append({
             "to": to,
+            "cc": list(cc or []),
             "subject": subject,
             "body": body,
             "attachments": [Path(a).name for a in (attachments or [])],
@@ -38,7 +39,7 @@ ECONOVIA_CONTACT = [
 ]
 
 
-def make_dossier(tmp_path, status="APPROVED", company="Econovia", contact=ECONOVIA_CONTACT):
+def make_dossier(tmp_path, status="APPROVED", company="Econovia", contact=ECONOVIA_CONTACT, recipients=None):
     dossier = tmp_path / "dossier"
     dossier.mkdir()
     job = {
@@ -48,9 +49,13 @@ def make_dossier(tmp_path, status="APPROVED", company="Econovia", contact=ECONOV
         "public_contact": contact,
     }
     (dossier / "job.json").write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
-    (dossier / "metadata.json").write_text(
-        json.dumps({"status": status}, ensure_ascii=False), encoding="utf-8"
+    selected = recipients if recipients is not None else (
+        [] if not contact else [{"email": "contact@econovia.fr", "role": "to", "source": "https://econovia.fr/"}]
     )
+    metadata = {"status": status, "send_recipients": selected}
+    if status == "APPROVED":
+        metadata["approval_recipients_hash"] = recipient_fingerprint(selected)
+    (dossier / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False), encoding="utf-8")
     (dossier / "mail_candidature.md").write_text(
         "Objet : Candidature spontanée — Développeur web / Intégrateur\n\n"
         "Bonjour,\n\nCorps du message.\n",
@@ -66,7 +71,12 @@ def test_refused_without_approved_status(tmp_path):
     """Un dossier non validé par l'humain ne part pas."""
     dossier = make_dossier(tmp_path, status="ready_to_apply")
 
-    result = send_dossier(dossier, FakeSender(), companies_csv="/dev/null")
+    result = send_dossier(
+        dossier,
+        FakeSender(),
+        tracker=ApplicationTracker(tmp_path / "tracker.json"),
+        companies_csv="/dev/null",
+    )
 
     assert result["refused"]
     assert "statut APPROVED" in result["refusal"]
@@ -175,7 +185,12 @@ def test_refused_without_verified_address(tmp_path):
     """Pas d'adresse en clair dans les constats : pas de destinataire inventé (cas RUP)."""
     dossier = make_dossier(tmp_path, contact=[])
 
-    result = send_dossier(dossier, FakeSender(), companies_csv="/dev/null")
+    result = send_dossier(
+        dossier,
+        FakeSender(),
+        tracker=ApplicationTracker(tmp_path / "tracker.json"),
+        companies_csv="/dev/null",
+    )
 
     assert result["refused"]
     assert "ne se reconstitue pas" in result["refusal"]
@@ -195,7 +210,45 @@ def test_dry_run_touches_neither_sender_nor_tracker(tmp_path):
     assert sender.calls == []
     assert not tracker_path.exists()
     assert result["would_send"]["to"] == "contact@econovia.fr"
+    assert result["would_send"]["cc"] == []
     assert result["would_send"]["subject"].startswith("Candidature spontanée")
+
+
+def test_multi_recipient_send_uses_one_to_and_ccs(tmp_path):
+    recipients = [
+        {"email": "contact@econovia.fr", "role": "to", "source": "fixture"},
+        {"email": "rh@econovia.fr", "role": "cc", "source": "fixture"},
+    ]
+    dossier = make_dossier(tmp_path, recipients=recipients)
+    sender = FakeSender()
+
+    result = send_dossier(
+        dossier,
+        sender,
+        tracker=ApplicationTracker(tmp_path / "tracker.json"),
+        companies_csv="/dev/null",
+        commit=True,
+    )
+
+    assert result["sent"]
+    assert sender.calls[0]["to"] == "contact@econovia.fr"
+    assert sender.calls[0]["cc"] == ["rh@econovia.fr"]
+    assert len(sender.calls) >= 1
+    if len(sender.calls) > 1:
+        assert sender.calls[1]["cc"] == []
+
+
+def test_refused_when_approved_recipient_fingerprint_changed(tmp_path):
+    dossier = make_dossier(tmp_path)
+    metadata_path = dossier / "metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["send_recipients"][0]["email"] = "other@econovia.fr"
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    result = send_dossier(dossier, FakeSender(), companies_csv="/dev/null")
+
+    assert result["refused"]
+    assert "approbation des destinataires" in result["refusal"]
 
 
 def test_real_send_journals_the_full_feedback_loop(tmp_path, monkeypatch):
@@ -223,6 +276,7 @@ def test_real_send_journals_the_full_feedback_loop(tmp_path, monkeypatch):
     # Et les champs de la boucle de retour sont en place dès le premier envoi.
     send_info = record["send"]
     assert send_info["to"] == "contact@econovia.fr"
+    assert send_info["cc"] == []
     assert "econovia.fr" in send_info["contact_source"]
     assert send_info["provider"] == "fake"
     assert send_info["message_id"] == "<fake-1@localhost>"

@@ -159,6 +159,8 @@ def normalize_result(raw: Dict[str, Any]) -> Dict[str, Any] | None:
         "legal_address": legal_address or None,
         "legal_address_source": LEGAL_ADDRESS_SOURCE if legal_address else None,
         "postal_code": postal_code or None,
+        "departement": _text(siege.get("departement")) or _text(siege.get("code_departement")) or None,
+        "commune_code": _text(siege.get("code_commune")) or _text(siege.get("code_commune_insee")) or None,
         "commune_label": _text(siege.get("libelle_commune")) or None,
         "latitude": _float(siege.get("latitude")),
         "longitude": _float(siege.get("longitude")),

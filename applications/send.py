@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import re
@@ -19,7 +20,7 @@ import sys
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, List
+from typing import Any, Dict, List
 
 from company_analysis.duplicate import duplicate_check
 
@@ -57,6 +58,51 @@ def extract_public_contact(job: Dict[str, Any]) -> tuple[str, str] | None:
     return None
 
 
+def extract_public_contacts(job: Dict[str, Any]) -> list[tuple[str, str]]:
+    """Return every distinct address found in verified public-contact claims."""
+    contacts: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for claim in job.get("public_contact") or []:
+        texts = [str(claim.get("claim") or "")] + [
+            str(item) for item in claim.get("evidence") or []
+        ]
+        for text in texts:
+            for match in CONTACT_RE.finditer(text):
+                address = match.group(0).strip().lower()
+                if address not in seen:
+                    seen.add(address)
+                    contacts.append((address, text.strip()))
+    return contacts
+
+
+def _selected_recipients(job: Dict[str, Any], metadata: Dict[str, Any]) -> list[dict[str, str]]:
+    """Read the explicit selection, falling back to the historical first address."""
+    raw = metadata.get("send_recipients")
+    if isinstance(raw, list) and raw:
+        return [
+            {
+                "email": str(item.get("email") or "").strip().lower(),
+                "role": str(item.get("role") or ("to" if index == 0 else "cc")).lower(),
+                "source": str(item.get("source") or "selection"),
+            }
+            for index, item in enumerate(raw)
+            if isinstance(item, dict) and str(item.get("email") or "").strip()
+        ]
+    contact = extract_public_contact(job)
+    if not contact:
+        return []
+    return [{"email": contact[0].lower(), "role": "to", "source": contact[1]}]
+
+
+def recipient_fingerprint(recipients: list[dict[str, str]]) -> str:
+    canonical = [
+        {"email": item["email"].lower(), "role": item["role"].lower()}
+        for item in recipients
+    ]
+    encoded = json.dumps(canonical, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
 def _companies_rows(csv_path: Path) -> List[Dict[str, str]]:
     with csv_path.open(encoding="utf-8", newline="") as handle:
         return [row for row in csv.DictReader(handle) if row.get("nom")]
@@ -87,7 +133,7 @@ def run_controls(
 
     job = _load_json(dossier / "job.json")
     metadata = _load_json(dossier / "metadata.json")
-    contact = extract_public_contact(job)
+    recipients = _selected_recipients(job, metadata)
 
     status = str(metadata.get("status") or "")
     verdicts = [
@@ -99,6 +145,17 @@ def run_controls(
             else "validé par l'utilisateur",
         )
     ]
+    approved_fingerprint = str(metadata.get("approval_recipients_hash") or "")
+    current_fingerprint = recipient_fingerprint(recipients) if recipients else ""
+    verdicts.append(
+        Verdict(
+            "approbation des destinataires",
+            not recipients or status != APPROVED_STATUS or bool(approved_fingerprint and approved_fingerprint == current_fingerprint),
+            "liste identique à celle approuvée"
+            if not recipients or status != APPROVED_STATUS or (approved_fingerprint and approved_fingerprint == current_fingerprint)
+            else "la liste des destinataires a changé depuis l'approbation",
+        )
+    )
 
     # Les deux contrôles suivants posent la même question — « connaît-on déjà
     # cette organisation ? » — à deux registres différents. Une seule mesure les
@@ -141,7 +198,7 @@ def run_controls(
         )
     )
 
-    return {"job": job, "metadata": metadata, "contact": contact, "dossier": dossier}, verdicts
+    return {"job": job, "metadata": metadata, "recipients": recipients, "dossier": dossier}, verdicts
 
 
 def send_dossier(
@@ -176,18 +233,29 @@ def send_dossier(
         result["refusal"] = f"{first_failure.control} : {first_failure.detail}"
         return result
 
-    contact = payload["contact"]
-    if contact is None:
+    recipients = payload["recipients"]
+    if not recipients:
         refusal = (
             "destinataire : aucune adresse publique vérifiée dans les constats du dossier — "
             "une adresse ne se reconstitue pas."
         )
         result.update({"refused": True, "refusal": refusal})
         return result
-    address, source = contact
+    primary = next((item for item in recipients if item["role"] == "to"), None)
+    if primary is None:
+        primary = recipients[0]
+    address = primary["email"]
+    cc = [item["email"] for item in recipients if item is not primary]
+    sources = [item.get("source", "") for item in recipients]
 
     subject, body = _mail_parts(dossier_path / "mail_candidature.md")
-    result["would_send"] = {"to": address, "contact_source": source, "subject": subject}
+    result["would_send"] = {
+        "to": address,
+        "cc": cc,
+        "recipients": [item["email"] for item in recipients],
+        "contact_source": sources[0] if sources else "",
+        "subject": subject,
+    }
 
     # Pièces jointes du dossier : CV validé + lettre en PDF. Absents = envoi
     # texte seul ; le contrôle CV amont reste maître du refus.
@@ -205,7 +273,7 @@ def send_dossier(
         return result
 
     send_result: SendResult = sender.send(
-        to=address, subject=subject, body=body, attachments=attachments,
+        to=address, cc=cc, subject=subject, body=body, attachments=attachments,
         html=render_mail_html(subject, body, sender_email=getattr(sender, "sender", "") or ""),
     )
     if send_result.ok:
@@ -213,7 +281,9 @@ def send_dossier(
             job,
             {
                 "to": address,
-                "contact_source": source,
+                "cc": cc,
+                "recipients": [item["email"] for item in recipients],
+                "contact_source": sources[0] if sources else "",
                 "provider": send_result.provider,
                 "message_id": send_result.message_id,
                 "dossier": str(dossier_path),
@@ -230,6 +300,7 @@ def send_dossier(
                 f"Entreprise : {job.get('company', '')}",
                 f"Poste : {job.get('title', '')}",
                 f"Destinataire : {address}",
+                f"Cc : {', '.join(cc) or 'aucun'}",
                 f"Objet : {subject}",
                 f"Pièces jointes : {', '.join(result['attachments']) or 'aucune'}",
                 f"Message : {result.get('message_id') or 'n/a'}",
@@ -239,6 +310,7 @@ def send_dossier(
             try:
                 sender.send(
                     to=confirm_to,
+                    cc=(),
                     subject=f"✓ Candidature envoyée à {job.get('company', '')}",
                     body=recap,
                     html=render_mail_html(
@@ -266,6 +338,7 @@ def _print_report(result: Dict[str, Any]) -> None:
         would = result["would_send"]
         print()
         print(f"  Partirait vers : {would['to']}")
+        print(f"  Cc            : {', '.join(would.get('cc') or []) or 'aucun'}")
         print(f"  Source adresse : {would['contact_source']}")
         print(f"  Objet          : {would['subject']}")
     print()

@@ -307,6 +307,68 @@ def test_publishable_results_exclude_registry_only_uncertain_candidates():
     assert v2.is_publishable_result({"name": "Formation vérifiée", "category": "formation"})
 
 
+def test_department_registry_uses_one_direct_department_filter():
+    v2 = load_v2()
+    zone_key = "departement-93-seine-saint-denis"
+    v2.DYNAMIC_ZONES[zone_key] = {
+        "label": "Seine-Saint-Denis (93)",
+        "tier1": ["93", "Seine-Saint-Denis", "93100"],
+        "tier2": [],
+        "departement": "93",
+        "postal_codes": ["93100"],
+        "commune_codes": ["93048"],
+    }
+
+    class FakeRegistry:
+        def __init__(self):
+            self.calls = []
+
+        def search(self, **kwargs):
+            self.calls.append(kwargs)
+            return [{
+                "name": "Entreprise 93",
+                "siren": "123456789",
+                "siret": "12345678900001",
+                "legal_address": "1 rue Test 93100 Montreuil",
+                "postal_code": "93100",
+                "departement": "93",
+                "commune_code": "93048",
+                "commune_label": "Montreuil",
+                "why_candidate": "candidate",
+                "sources": ["registre"],
+            }]
+
+    registry = FakeRegistry()
+    rows, warnings = v2.registry_candidates(zone_key, client=registry)
+
+    assert not warnings
+    assert len(rows) == 1
+    assert registry.calls[0]["departement"] == "93"
+    assert "code_postal" not in registry.calls[0]
+    assert rows[0]["departement"] == "93"
+
+
+def test_department_publishing_contract_keeps_only_verified_levels():
+    v2 = load_v2()
+    import city_resolver as resolver
+    department = {
+        "code": "93",
+        "name": "Seine-Saint-Denis",
+        "postal_codes": ["93100"],
+        "commune_codes": ["93048"],
+    }
+
+    mention, _ = resolver.locate_in_department(
+        {"postal_code": "93100", "how": "", "zone_match": "tier1"}, department
+    )
+    registry, _ = resolver.locate_in_department(
+        {"departement": "93", "how": "siège (registre)", "zone_match": "tier1"}, department
+    )
+
+    assert mention not in resolver.PERIMETER_VERIFIED
+    assert registry in resolver.PERIMETER_VERIFIED
+
+
 def test_the_hand_written_csv_obeys_the_same_rule():
     """Même règle à la source qu'à la publication, sinon elle se perd en route.
 

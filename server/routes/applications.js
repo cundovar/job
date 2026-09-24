@@ -8,6 +8,7 @@
  */
 import { Router } from 'express';
 import fs from 'fs';
+import crypto from 'crypto';
 import path from 'path';
 import { execFile, spawn } from 'child_process';
 import { PROJECT_ROOT } from '../config.js';
@@ -130,6 +131,80 @@ function readApplicationMetadata(id) {
   }
 }
 
+const CONTACT_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+const MAX_SEND_RECIPIENTS = 5;
+
+function normalizeRecipients(raw) {
+  if (!Array.isArray(raw)) throw new Error('La liste des destinataires doit être un tableau.');
+  if (raw.length < 1 || raw.length > MAX_SEND_RECIPIENTS) {
+    throw new Error(`La liste doit contenir entre 1 et ${MAX_SEND_RECIPIENTS} destinataires.`);
+  }
+  const recipients = raw.map((item, index) => {
+    const email = String(typeof item === 'string' ? item : item?.email || '').trim().toLowerCase();
+    const role = String(typeof item === 'string' ? (index === 0 ? 'to' : 'cc') : item?.role || (index === 0 ? 'to' : 'cc')).toLowerCase();
+    if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(email)) {
+      throw new Error(`Adresse email invalide : ${email || '(vide)'}`);
+    }
+    if (!['to', 'cc'].includes(role)) throw new Error('Le rôle destinataire doit être « to » ou « cc ».');
+    return { email, role, source: String(typeof item === 'object' ? item?.source || 'selection' : 'ajout_manuel') };
+  });
+  if (recipients.filter(item => item.role === 'to').length !== 1) {
+    throw new Error('La liste doit contenir exactement un destinataire principal « to ».');
+  }
+  if (new Set(recipients.map(item => item.email)).size !== recipients.length) {
+    throw new Error('Une même adresse ne peut apparaître qu’une seule fois.');
+  }
+  return recipients;
+}
+
+function recipientFingerprint(recipients) {
+  const canonical = recipients.map(({ email, role }) => ({ email, role }));
+  return crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+function publicContactRecipients(id) {
+  try {
+    const job = JSON.parse(fs.readFileSync(path.join(applicationDir(id), 'job.json'), 'utf-8'));
+    const seen = new Set();
+    const contacts = [];
+    for (const claim of Array.isArray(job.public_contact) ? job.public_contact : []) {
+      const texts = [claim?.claim, ...(Array.isArray(claim?.evidence) ? claim.evidence : [])].map(String);
+      for (const text of texts) {
+        for (const match of text.matchAll(CONTACT_RE)) {
+          const email = match[0].toLowerCase();
+          if (!seen.has(email)) {
+            seen.add(email);
+            contacts.push({ email, role: contacts.length === 0 ? 'to' : 'cc', source: text });
+          }
+        }
+      }
+    }
+    return contacts.slice(0, 1);
+  } catch {
+    return [];
+  }
+}
+
+function effectiveRecipients(id, metadata = readApplicationMetadata(id)) {
+  const raw = Array.isArray(metadata.send_recipients) && metadata.send_recipients.length
+    ? metadata.send_recipients
+    : publicContactRecipients(id);
+  return normalizeRecipients(raw);
+}
+
+function hasSendRecord(id) {
+  const trackerPath = path.resolve(PROJECT_ROOT, 'data/applications_tracker.json');
+  try {
+    const records = JSON.parse(fs.readFileSync(trackerPath, 'utf-8'));
+    return Object.values(records || {}).some(record =>
+      path.resolve(String(record.application_dir || '')) === applicationDir(id)
+      && ['applied', 'send_failed'].includes(record.status)
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Écrit le statut d'approbation dans metadata.json du dossier.
  *
@@ -147,6 +222,12 @@ function writeApprovalStatus(id, approved) {
   const metadata = readApplicationMetadata(id);
   metadata.status = approved ? APPROVED_STATUS : READY_STATUS;
   metadata.approval_updated_at = new Date().toISOString();
+  if (approved) {
+    const recipients = effectiveRecipients(id, metadata);
+    metadata.approval_recipients_hash = recipientFingerprint(recipients);
+  } else {
+    delete metadata.approval_recipients_hash;
+  }
   const temporaryPath = `${metadataPath}.${process.pid}.tmp`;
   fs.writeFileSync(temporaryPath, `${JSON.stringify(metadata, null, 2)}\n`, 'utf-8');
   fs.renameSync(temporaryPath, metadataPath);
@@ -155,11 +236,15 @@ function writeApprovalStatus(id, approved) {
 
 function approvalState(id) {
   const metadata = readApplicationMetadata(id);
+  let recipients = [];
+  try { recipients = effectiveRecipients(id, metadata); } catch { recipients = []; }
   return {
     id,
     status: metadata.status || '',
     approved: metadata.status === APPROVED_STATUS,
     approval_updated_at: metadata.approval_updated_at || null,
+    recipients,
+    recipients_hash: metadata.approval_recipients_hash || null,
   };
 }
 
@@ -566,6 +651,7 @@ export default function createApplicationsRouter(repo) {
       city: task.city,
       departement: task.departement,
       resolved_city: task.result?.city || null,
+      resolved_department: task.result?.department || null,
       radius_m: task.radius_m,
       // Identifiant de la recherche produite : le front sait quoi sélectionner
       // au retour, sans deviner « la plus récente ».
@@ -961,6 +1047,40 @@ export default function createApplicationsRouter(repo) {
     }
   });
 
+  // GET /api/applications/:id/recipients — Liste effective To/Cc du dossier.
+  router.get('/applications/:id/recipients', (req, res) => {
+    try {
+      const dir = applicationDir(req.params.id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      const metadata = readApplicationMetadata(req.params.id);
+      res.json({ recipients: effectiveRecipients(req.params.id, metadata), max: MAX_SEND_RECIPIENTS });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // PUT /api/applications/:id/recipients — Remplace atomiquement la sélection To/Cc.
+  router.put('/applications/:id/recipients', (req, res) => {
+    try {
+      const dir = applicationDir(req.params.id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      if (hasSendRecord(req.params.id)) return res.status(409).json({ error: 'Ce dossier possède déjà une tentative d’envoi ; ses destinataires sont verrouillés.' });
+      const recipients = normalizeRecipients(req.body?.recipients);
+      const metadataPath = path.join(dir, 'metadata.json');
+      const metadata = readApplicationMetadata(req.params.id);
+      metadata.send_recipients = recipients;
+      metadata.status = READY_STATUS;
+      metadata.approval_updated_at = new Date().toISOString();
+      delete metadata.approval_recipients_hash;
+      const temporaryPath = `${metadataPath}.${process.pid}.tmp`;
+      fs.writeFileSync(temporaryPath, `${JSON.stringify(metadata, null, 2)}\n`, 'utf-8');
+      fs.renameSync(temporaryPath, metadataPath);
+      res.json({ ok: true, recipients, approved: false });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
   // POST /api/applications/:id/approval — Pose ou retire l'autorisation d'envoi.
   // N'envoie rien : seul l'utilisateur lance `python -m applications.send`.
   router.post('/applications/:id/approval', (req, res) => {
@@ -971,6 +1091,9 @@ export default function createApplicationsRouter(repo) {
       }
       const dir = applicationDir(req.params.id);
       if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      if (approved && hasSendRecord(req.params.id)) {
+        return res.status(409).json({ error: 'Ce dossier possède déjà une tentative d’envoi.' });
+      }
       // Le CV reste optionnel : sans CV généré, rien ne change. Mais un CV
       // généré et refusé ne doit pas partir avec la candidature.
       const blocked = approved ? cvBlocksSending(req.params.id) : null;
@@ -1023,16 +1146,25 @@ export default function createApplicationsRouter(repo) {
           + 'city résout une commune réelle. Envoie l’un des deux.',
       });
     }
+    if (rawZone && departement) {
+      return res.status(400).json({
+        error: 'zone et departement sont exclusifs : choisis un préréglage ou un département.',
+      });
+    }
     // Sans ville ni zone, on refuse : le défaut historique « ile-de-france » a
     // déjà lancé une passe non demandée quand un transport perdait les
     // arguments (incident du 23/09/2026). Le client doit nommer son périmètre.
-    if (!city && !rawZone) {
+    if (!city && !rawZone && !departement) {
       return res.status(400).json({
-        error: 'Périmètre manquant : envoie city (ex. "Pantin") ou zone '
-          + '(ile-de-france | paris-20 | paris-19 | ouest-paris).',
+        error: 'Périmètre manquant : envoie city, departement ou zone.',
       });
     }
-    const zone = city ? null : rawZone;
+    if (departement && radiusM != null) {
+      return res.status(400).json({
+        error: 'radius_m n’est pas disponible avec un département seul.',
+      });
+    }
+    const zone = city || departement ? null : rawZone;
 
     if (radiusM != null && (!Number.isInteger(Number(radiusM)) || Number(radiusM) <= 0)) {
       return res.status(400).json({ error: 'radius_m doit être un nombre de mètres positif' });

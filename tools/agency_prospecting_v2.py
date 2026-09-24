@@ -90,9 +90,15 @@ from city_resolver import (  # noqa: E402
     city_queries,
     city_zone,
     city_zone_key,
+    department_queries,
+    department_query_families,
+    department_zone,
+    department_zone_key,
+    locate_in_department,
     locate_in_city,
     query_families,
     resolve_city,
+    resolve_department,
 )
 from official_site import (  # noqa: E402
     EXCLUSION_DIRECTORY,
@@ -351,6 +357,7 @@ def has_term(blob: str, term: str) -> bool:
 # mémoire, et non dans `ZONES` : une ville n'est pas une constante du code, et
 # son périmètre appartient au run qui l'a demandée.
 DYNAMIC_ZONES: dict[str, dict] = {}
+DYNAMIC_DEPARTMENTS: dict[str, dict] = {}
 
 
 def zone_config(zone_key: str) -> dict | None:
@@ -362,6 +369,13 @@ def register_city_zone(commune: dict) -> str:
     """Enregistre le périmètre d'une commune résolue et renvoie sa clé de zone."""
     key = city_zone_key(commune)
     DYNAMIC_ZONES[key] = city_zone(commune)
+    return key
+
+
+def register_department_zone(department: dict) -> str:
+    key = department_zone_key(department)
+    DYNAMIC_DEPARTMENTS[key] = department
+    DYNAMIC_ZONES[key] = department_zone(department)
     return key
 
 
@@ -1089,6 +1103,8 @@ def registry_record(candidate: dict, zone_key: str) -> dict:
         'distance_m': None,
         'legal_address': candidate.get('legal_address'),
         'legal_address_source': candidate.get('legal_address_source'),
+        'departement': candidate.get('departement'),
+        'commune_code': candidate.get('commune_code'),
         'commune_label': candidate.get('commune_label'),
         # Le site n'est pas encore cherché : `aucun` dit « rien d'établi », pas
         # « rien à chercher ». `resolve_registry_sites` remplira ces champs.
@@ -1113,14 +1129,20 @@ def registry_candidates(zone_key: str, client: RegistryClient | None = None) -> 
     """
     zone = zone_config(zone_key) or {}
     insee = str(zone.get('insee') or '')
+    department = str(zone.get('departement') or '')
     codes = postal_codes_of(list(zone.get('tier1', [])))
-    if not insee and not codes:
+    if not insee and not codes and not department:
         return [], [
             f"registre non interrogé : la zone « {zone_key} » ne porte aucun code postal explicite"
         ]
     registry = client or RegistryClient()
     try:
-        if insee:
+        if department:
+            raw = registry.search(
+                departement=department,
+                naf_codes=NAF_AGENCE + NAF_FORMATION,
+            )
+        elif insee:
             # Une commune résolue a un code INSEE : il désigne la commune entière,
             # là où un code postal peut en couvrir plusieurs (59000 déborde de
             # Lille) ou en découper une seule.
@@ -1159,6 +1181,10 @@ def registry_candidates(zone_key: str, client: RegistryClient | None = None) -> 
         insee = ''  # le périmètre vient désormais des codes postaux, pas du code commune
 
     rows = [registry_record(candidate, zone_key) for candidate in raw]
+    if department:
+        for row, candidate in zip(rows, raw):
+            row['departement'] = candidate.get('departement') or candidate.get('department_code') or department
+            row['commune_code'] = candidate.get('commune_code') or candidate.get('code_commune')
     if insee:
         # Le code commune vient de la requête, pas d'une déduction sur l'adresse :
         # c'est ce qui permettra à `locate_in_city` de dire « registre » sans
@@ -2099,10 +2125,17 @@ def parse_cli(args: list[str]) -> dict:
 
     city = value_of('--ville')
     zone_arg = value_of('--zone')
+    departement_arg = value_of('--departement')
     if city and zone_arg:
         print(
             "--ville et --zone sont exclusifs : --zone rejoue un préréglage historique, "
             "--ville résout une commune réelle. Choisis l'un des deux.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    if zone_arg and departement_arg:
+        print(
+            "--zone et --departement sont exclusifs : choisis un préréglage ou un département.",
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -2131,12 +2164,20 @@ def parse_cli(args: list[str]) -> dict:
             raise SystemExit(2)
 
     out = value_of('--out')
+    radius_value = radius_m
+    if departement_arg and not city and radius_value is not None:
+        print(
+            "--radius n'est pas disponible avec --departement seul : le périmètre départemental "
+            "n'est pas une distance autour d'une adresse.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
     return {
         'out_dir': Path(out).expanduser().resolve() if out else DEFAULT_OUT_DIR,
         'city': (city or '').strip(),
-        'departement': (value_of('--departement') or '').strip(),
-        'zone': zone_arg if (zone_arg and not city) else ('' if city else 'ile-de-france'),
-        'radius_m': radius_m,
+        'departement': (departement_arg or '').strip(),
+        'zone': zone_arg if (zone_arg and not city) else ('' if city or departement_arg else 'ile-de-france'),
+        'radius_m': radius_value,
         'no_distance': '--no-distance' in args,
         'no_ai': '--no-ai' in args,
         'no_registry': '--no-registry' in args,
@@ -2144,7 +2185,7 @@ def parse_cli(args: list[str]) -> dict:
 
 
 def resolve_perimeter(options: dict, **resolver_kwargs) -> tuple[str, dict, dict | None]:
-    """Périmètre de la passe : commune résolue (`--ville`) ou préréglage (`--zone`).
+    """Périmètre : commune, département ou préréglage historique.
 
     En mode ville, l'échec de résolution est fatal et nommé. Retomber sur
     l'Île-de-France parce que « Montreuil » n'a pas été compris produirait une
@@ -2156,13 +2197,17 @@ def resolve_perimeter(options: dict, **resolver_kwargs) -> tuple[str, dict, dict
         )
         zone_key = register_city_zone(commune)
         return zone_key, DYNAMIC_ZONES[zone_key], commune
+    if options.get('departement'):
+        department = resolve_department(options['departement'], **resolver_kwargs)
+        zone_key = register_department_zone(department)
+        return zone_key, DYNAMIC_ZONES[zone_key], None
     zone_key = options.get('zone') or 'ile-de-france'
     return zone_key, ZONES[zone_key], None
 
 
 def run():
-    # Périmètre : --ville "Montreuil" [--departement 93] (recommandé) ou
-    # --zone ile-de-france | paris-20 | paris-19 | ouest-paris (préréglages).
+    # Périmètre : --ville "Montreuil" [--departement 93], --departement 93,
+    # ou --zone ile-de-france | paris-20 | paris-19 | ouest-paris.
     args = sys.argv[1:]
     options = parse_cli(args)
     out_dir = options['out_dir']
@@ -2181,9 +2226,15 @@ def run():
             raise SystemExit(2) from exc
         measures['postal_codes'] = len(zone.get('postal_codes') or [])
 
+    department = None
+    if options.get('departement') and not options.get('city'):
+        department = DYNAMIC_DEPARTMENTS.get(zone_key)
     if commune:
         families = query_families(commune)
         queries = city_queries(commune)
+    elif department:
+        families = department_query_families(department)
+        queries = department_queries(department)
     else:
         families, queries = queries_for_zone(zone_key)
 
@@ -2445,6 +2496,43 @@ def run():
         results.sort(key=lambda a: (
             PERIMETER_RANK.get(a.get('city_match') or PERIMETER_NONE, 3), -(a.get('score') or 0)
         ))
+    elif department:
+        for agency in results:
+            level, evidence = locate_in_department(agency, department)
+            agency['department'] = department['name']
+            agency['department_code'] = department['code']
+            agency['department_match'] = level
+            agency['department_match_evidence'] = evidence
+        department_rejected = [
+            agency for agency in results
+            if agency.get('department_match') not in PERIMETER_VERIFIED
+        ]
+        unpublished_results.extend(department_rejected)
+        results = [
+            agency for agency in results
+            if agency.get('department_match') in PERIMETER_VERIFIED
+        ]
+        perimeter_stats = {
+            'department': department['name'],
+            'code': department['code'],
+            'communes': len(department.get('communes') or []),
+            'verifie': len(results),
+            'mention_seule': sum(1 for a in department_rejected if a.get('department_match') == PERIMETER_MENTION),
+            'sans_lien': sum(1 for a in department_rejected if a.get('department_match') == PERIMETER_NONE),
+            'sans_lien_details': [
+                {
+                    'name': a['name'],
+                    'website': a.get('website'),
+                    'match': a.get('department_match'),
+                    'how': a.get('how') or 'aucune position',
+                }
+                for a in department_rejected
+            ],
+        }
+        results.sort(key=lambda a: (
+            PERIMETER_RANK.get(a.get('department_match') or PERIMETER_NONE, 3),
+            -(a.get('score') or 0),
+        ))
     radius_report = None
     if radius_m is not None:
         buckets = partition_by_radius(results, radius_m)
@@ -2547,6 +2635,13 @@ def run():
             'longitude': commune['longitude'],
             'source': commune['source'],
         } if commune else None,
+        'department': {
+            'code': department['code'],
+            'name': department['name'],
+            'communes': len(department.get('communes') or []),
+            'postal_codes': department.get('postal_codes', []),
+            'source': department['source'],
+        } if department else None,
         'perimeter': perimeter_stats,
         # Ce que la passe a fait, dans l'ordre, avec ses durées et ses volumes.
         # Aucun nom ni adresse : ces étapes sont recopiées telles quelles dans le
