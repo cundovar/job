@@ -383,6 +383,21 @@ def test_department_only_mode_has_no_historical_zone_fallback():
     assert options["zone"] == ""
 
 
+def test_department_mention_is_not_an_implantation_proof(fake_opener):
+    resolver = load_module("city_resolver")
+    department = resolver.resolve_department("93", opener=fake_opener)
+
+    mention, _ = resolver.locate_in_department(
+        {"postal_code": "93100", "how": "", "zone_match": "tier1"}, department
+    )
+    address, _ = resolver.locate_in_department(
+        {"postal_code": "93100", "how": "adresse", "zone_match": "tier1"}, department
+    )
+
+    assert mention == resolver.PERIMETER_MENTION
+    assert address == resolver.PERIMETER_ADDRESS
+
+
 def test_zone_and_department_together_are_refused_never_arbitrated():
     v2 = load_module("agency_prospecting_v2")
 

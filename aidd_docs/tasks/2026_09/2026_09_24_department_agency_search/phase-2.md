@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 ---
 
 # Instruction: Découverte, registre et preuve départementale
@@ -81,4 +81,3 @@ journey
 | 1 | Une passe 93 ne lance pas une passe par commune, utilise le filtre registre départemental et respecte les plafonds publiés. |
 | 2 | Une mention de « 93 » seule ne produit jamais une carte ; une adresse ou un siège vérifié dans le 93 peut être publié. |
 | 3 | Le snapshot explique les candidats non publiés au lieu de présenter un vide comme une absence d'agences. |
-
