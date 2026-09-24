@@ -37,18 +37,37 @@ export function createScoutRouter() {
     try { res.json(await runScout(args)); } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // Le champ de périmètre accepte les deux écritures qu'on a en tête en le
+  // remplissant : « 75020 » et « Nanterre ». Cinq chiffres = code postal ;
+  // tout le reste est une commune, résolue par le CLI chez geo.api.gouv.fr —
+  // qui en tire aussi le **centre** de recherche, sans quoi un code postal de
+  // Nanterre cherché autour de Paris 20e ne rend rien et ne le dit pas.
   router.post('/scan', async (req, res) => {
-    const { lat, lng, rayon, reanalyse, cp } = req.body || {};
+    const { lat, lng, rayon, reanalyse, cp, ville, departement } = req.body || {};
     const args = ['scan', '--background'];
-    if (Number.isFinite(lat) && Number.isFinite(lng)) args.push('--lat', String(lat), '--lng', String(lng));
-    if (Number.isFinite(rayon)) args.push('--rayon', String(Math.min(Math.max(rayon, 200), 50000)));
-    const cps = Array.isArray(cp) ? cp : (cp ? String(cp).split(',') : []);
-    for (const c of cps) {
-      const t = String(c).trim();
-      if (t) args.push('--cp', t); // mode arrondissement : le CP décide, le rayon ne filtre plus
+    const saisies = (Array.isArray(cp) ? cp : (cp ? String(cp).split(',') : []))
+      .map(value => String(value).trim()).filter(Boolean);
+    const codes = saisies.filter(value => /^\d{5}$/.test(value));
+    const communes = saisies.filter(value => !/^\d{5}$/.test(value));
+    const commune = String(ville || '').trim() || communes[0] || '';
+    if (commune && codes.length) {
+      return res.status(400).json({ error: `Choisis un périmètre : la commune « ${commune} » ou les codes postaux ${codes.join(', ')}, pas les deux.` });
     }
+    if (communes.length > 1) {
+      return res.status(400).json({ error: `Une seule commune par scan : ${communes.join(', ')}.` });
+    }
+    // Le centre n'accompagne que le mode rayon : en mode commune il vient de
+    // la résolution, et le poser ici le contredirait.
+    if (!commune && Number.isFinite(lat) && Number.isFinite(lng)) args.push('--lat', String(lat), '--lng', String(lng));
+    if (Number.isFinite(rayon)) args.push('--rayon', String(Math.min(Math.max(rayon, 200), 50000)));
+    if (commune) {
+      args.push('--ville', commune);
+      if (departement) args.push('--departement', String(departement).trim());
+    }
+    for (const code of codes) args.push('--cp', code); // le CP décide, le rayon ne filtre plus
     if (reanalyse) args.push('--reanalyse');
-    try { res.status(202).json(await runScout(args)); } catch (e) { res.status(500).json({ error: e.message }); }
+    // 60 s : la résolution de commune est un appel réseau, fait avant de rendre la main.
+    try { res.status(202).json(await runScout(args, 60000)); } catch (e) { res.status(400).json({ error: e.message }); }
   });
 
   // Ajout manuel : une structure, un site, une analyse. Synchrone — un fetch

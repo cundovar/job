@@ -224,3 +224,66 @@ def test_list_agencies_expose_le_code_postal_et_la_commune(base, monkeypatch):
     assert (par_domaine["vingtieme.fr"]["code_postal"], par_domaine["vingtieme.fr"]["ville"]) == ("75020", "Paris")
     assert par_domaine["sans-adresse.fr"]["code_postal"] is None
     assert par_domaine["sans-adresse.fr"]["ville"] is None
+
+
+# --- Périmètre d'un scan : code postal ou commune ------------------------------
+# Un code postal fait cinq chiffres. « nanterre » dans ce champ ne filtrait rien
+# et le scan rendait « 0 lieux » sans rien dire — le silence qu'on refuse ici.
+
+import argparse  # noqa: E402
+
+from agency_scout.__main__ import resolve_perimeter  # noqa: E402
+
+
+def _args(**kwargs):
+    base = dict(ville=None, departement=None, cp=None, lat=48.86, lng=2.39, zone_label=None)
+    return argparse.Namespace(**{**base, **kwargs})
+
+
+def test_une_commune_dans_le_champ_code_postal_est_refusee_en_le_disant():
+    with pytest.raises(ValueError) as refus:
+        resolve_perimeter(_args(cp=["nanterre"]))
+
+    message = str(refus.value)
+    assert "nanterre" in message and "cinq chiffres" in message
+    assert "--ville" in message  # on nomme la sortie, on ne laisse pas deviner
+
+
+def test_une_commune_donne_ses_codes_postaux_et_son_centre(monkeypatch):
+    """Le centre vient de la commune : sinon on cherche Nanterre autour de Paris."""
+    from agency_scout import __main__ as cli
+
+    monkeypatch.setattr(cli, "resolve_city", lambda nom, dep=None: {
+        "label": "Nanterre (92)", "postal_codes": ["92000"],
+        "latitude": 48.892, "longitude": 2.207,
+    })
+
+    center, codes, label = resolve_perimeter(_args(ville="Nanterre"))
+
+    assert center == (48.892, 2.207)
+    assert codes == {"92000"}
+    assert label == "Nanterre (92)"
+
+
+def test_ville_et_cp_ensemble_sont_refuses_sans_arbitrer():
+    with pytest.raises(ValueError, match="exclusifs"):
+        resolve_perimeter(_args(ville="Nanterre", cp=["75020"]))
+
+
+def test_une_commune_sans_code_postal_publie_ne_fait_pas_un_perimetre(monkeypatch):
+    from agency_scout import __main__ as cli
+
+    monkeypatch.setattr(cli, "resolve_city", lambda nom, dep=None: {
+        "label": "Nulle part (99)", "postal_codes": [], "latitude": 1.0, "longitude": 1.0,
+    })
+
+    with pytest.raises(ValueError, match="aucun code postal"):
+        resolve_perimeter(_args(ville="Nulle part"))
+
+
+def test_des_codes_postaux_valides_gardent_le_centre_demande():
+    center, codes, label = resolve_perimeter(_args(cp=["75020", " 75011 "]))
+
+    assert center == (48.86, 2.39)
+    assert codes == {"75020", "75011"}
+    assert label == ""

@@ -54,6 +54,26 @@ def test_le_filtre_par_zone_lit_le_champ_que_le_serveur_expose():
     assert "a.postal_code" in app
 
 
+def test_le_scan_scout_accepte_une_commune_et_la_centre_dessus():
+    """« Nanterre » dans le champ périmètre part en --ville, pas en --cp.
+
+    Avec `--cp nanterre` la comparaison se faisait contre les codes postaux des
+    adresses Google : aucune ne pouvait correspondre, et le scan rendait
+    « 0 lieux » sans erreur. Le centre doit suivre la commune, sinon on cherche
+    Nanterre autour de Paris 20e.
+    """
+    route = (PROJECT_ROOT / "server/routes/scout.js").read_text(encoding="utf-8")
+    assert "'--ville'" in route
+    assert "if (!commune && Number.isFinite(lat)" in route
+
+    cli = (PROJECT_ROOT / "agency_scout/__main__.py").read_text(encoding="utf-8")
+    assert "def resolve_perimeter" in cli
+    assert "from tools.city_resolver import resolve_city" in cli
+
+    jsx = (PROJECT_ROOT / "front/src/AgencyScout.jsx").read_text(encoding="utf-8")
+    assert "Code postal ou commune" in jsx
+
+
 def test_le_choix_de_joindre_la_lettre_traverse_les_trois_couches():
     """Front, serveur et brique d'envoi parlent du même `send_include_lettre`.
 

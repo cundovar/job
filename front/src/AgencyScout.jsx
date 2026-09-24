@@ -37,6 +37,7 @@ export default function AgencyScout() {
   const [zone, setZone] = useState('')
   const [rayon, setRayon] = useState(3000)
   const [cp, setCp] = useState('')
+  const [scanInfo, setScanInfo] = useState('')
   const [launching, setLaunching] = useState(false)
   // Ajout manuel : une URL, un nom facultatif, et le retour du serveur à afficher.
   const [addUrl, setAddUrl] = useState('')
@@ -134,6 +135,12 @@ export default function AgencyScout() {
       })
       const json = await r.json()
       if (!r.ok) throw new Error(json.error || `HTTP ${r.status}`)
+      setError('')
+      // Dire sur quoi le scan part : « 0 lieux » se relit autrement quand on
+      // sait quelle commune a été comprise, et quels codes postaux en sortent.
+      setScanInfo(json.zone_label
+        ? `Scan lancé sur ${json.zone_label} — CP ${(json.postal_codes || []).join(', ')}.`
+        : '')
       setTimeout(load, 1500)
     } catch (e) {
       setError(e.message)
@@ -242,21 +249,20 @@ export default function AgencyScout() {
           <h1>Agences — Google Places + IA</h1>
           <p className="scout-meta">
             {data?.last_scan
-              ? `Dernier scan : ${new Date(data.last_scan.finished_at).toLocaleString('fr-FR')} · ${data.last_scan.places} lieux · ${data.last_scan.postal_codes?.length ? `CP ${data.last_scan.postal_codes.join(', ')}` : `rayon ${fmtDistance(data.last_scan.radius_m)}`}`
+              ? `Dernier scan : ${new Date(data.last_scan.finished_at).toLocaleString('fr-FR')} · ${data.last_scan.places} lieux · ${data.last_scan.zone_label ? `${data.last_scan.zone_label} — CP ${(data.last_scan.postal_codes || []).join(', ')}` : data.last_scan.postal_codes?.length ? `CP ${data.last_scan.postal_codes.join(', ')}` : `rayon ${fmtDistance(data.last_scan.radius_m)}`}`
               : 'Aucun scan pour l’instant.'}
             {data && ` · Quota Places : ${data.places_calls_this_month}/${data.places_monthly_cap} ce mois`}
           </p>
         </div>
         <div className="scout-actions">
           <label>
-            Code postal
+            Code postal ou commune
             <input
               className="scout-cp"
               type="text"
               value={cp}
               onChange={(e) => setCp(e.target.value)}
-              placeholder="ex. 75020"
-              inputMode="numeric"
+              placeholder="75020 ou Nanterre"
             />
           </label>
           <label>
@@ -311,6 +317,8 @@ export default function AgencyScout() {
           {added.error && <em> {added.error}</em>}
         </p>
       )}
+
+      {scanInfo && <p className="scout-added">{scanInfo}</p>}
 
       {error && <p className="scout-error"><TriangleAlert size={16} /> {error}</p>}
 

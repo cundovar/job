@@ -510,7 +510,11 @@ def add_agency(url: str, name: str | None = None, reanalyze: bool = False,
 
 
 def scan(queries: list[str] | None = None, center=DEFAULT_CENTER, radius_m: int = DEFAULT_RADIUS_M,
-         reanalyze: bool = False, postal_codes: set[str] | None = None, log=print) -> dict:
+         reanalyze: bool = False, postal_codes: set[str] | None = None, log=print,
+         zone_label: str | None = None) -> dict:
+    """``zone_label`` nomme le périmètre cherché (« Nanterre (92) ») : sans lui,
+    un scan se relit par ses seuls codes postaux, et « 0 lieux · CP 92000 » ne
+    dit pas quelle commune on croyait avoir demandée."""
     api_key = os.getenv("GOOGLE_PLACES_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("GOOGLE_PLACES_API_KEY absente de l'environnement.")
@@ -541,7 +545,8 @@ def scan(queries: list[str] | None = None, center=DEFAULT_CENTER, radius_m: int 
                     log(f"  {result['domain']}: {result.get('categorie') or result.get('error')}")
         summary = {"finished_at": now(), "places": len(ids), "sites": len(rows), "analyzed": len(todo),
                    "radius_m": radius_m, "center": list(center), "queries": queries,
-                   "postal_codes": sorted(postal_codes) if postal_codes else []}
+                   "postal_codes": sorted(postal_codes) if postal_codes else [],
+                   "zone_label": zone_label or ""}
         set_meta(db, "last_scan", summary)
         return summary
     finally:
