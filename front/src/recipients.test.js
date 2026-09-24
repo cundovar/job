@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { setRecipientRole } from './recipients'
+import { setRecipientRole, withPrimaryRecipient } from './recipients'
 
 const roles = items => items.map(item => item.role)
 
@@ -27,5 +27,32 @@ describe('setRecipientRole', () => {
 
   it('ne touche à rien quand un « cc » est remis en « cc »', () => {
     expect(setRecipientRole(trois, 1, 'cc')).toBe(trois)
+  })
+})
+
+describe('withPrimaryRecipient', () => {
+  it('rend la liste telle quelle quand elle respecte déjà la règle', () => {
+    const items = [{ email: 'a@x.fr', role: 'to' }, { email: 'b@x.fr', role: 'cc' }]
+    expect(withPrimaryRecipient(items)).toBe(items)
+  })
+
+  it('répare une liste sans destinataire principal', () => {
+    // Le cas vécu : une seule adresse laissée en Cc, impossible à enregistrer
+    // et — sélecteur verrouillé — impossible à corriger à la main.
+    expect(withPrimaryRecipient([{ email: 'epn@ageca.org', role: 'cc' }]))
+      .toEqual([{ email: 'epn@ageca.org', role: 'to' }])
+  })
+
+  it('garde le premier « to » quand plusieurs se disputent le rôle', () => {
+    const items = [
+      { email: 'a@x.fr', role: 'cc' },
+      { email: 'b@x.fr', role: 'to' },
+      { email: 'c@x.fr', role: 'to' },
+    ]
+    expect(withPrimaryRecipient(items).map(i => i.role)).toEqual(['cc', 'to', 'cc'])
+  })
+
+  it('laisse une liste vide vide', () => {
+    expect(withPrimaryRecipient([])).toEqual([])
   })
 })

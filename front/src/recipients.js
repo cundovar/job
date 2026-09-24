@@ -17,3 +17,19 @@ export function setRecipientRole(items, index, role) {
   if (releve === -1) return items
   return items.map((item, i) => ({ ...item, role: i === releve ? 'to' : 'cc' }))
 }
+
+/**
+ * Remet la règle sur une liste qui ne la respecte pas — un brouillon resté d'une
+ * version précédente, une liste relue d'ailleurs. Le premier « to » trouvé garde
+ * le rôle, sinon c'est la première adresse : sans ça, un sélecteur verrouillé
+ * sur une liste déjà fautive ne laisse aucun moyen d'en sortir.
+ * Rend la liste **telle quelle** quand elle est déjà correcte, pour ne pas
+ * fabriquer un changement à chaque rendu.
+ */
+export function withPrimaryRecipient(items) {
+  if (!Array.isArray(items) || !items.length) return items
+  const trouve = items.findIndex(item => item?.role === 'to')
+  const principal = trouve === -1 ? 0 : trouve
+  const correcte = items.every((item, i) => (item?.role === 'to') === (i === principal))
+  return correcte ? items : items.map((item, i) => ({ ...item, role: i === principal ? 'to' : 'cc' }))
+}

@@ -14,7 +14,7 @@ import AgencyScout from './AgencyScout'
 import CvAssessment from './CvAssessment'
 import HermesChat from './HermesChat'
 import RecipientEditor from './RecipientEditor'
-import { setRecipientRole } from './recipients'
+import { setRecipientRole, withPrimaryRecipient } from './recipients'
 
 const DATA_URL = '/data'
 
@@ -648,7 +648,7 @@ function CandidaturesView({ mission = 'annonce' }) {
   }
 
   const saveRecipients = async (id) => {
-    const items = recipientDrafts[id]?.items || []
+    const items = withPrimaryRecipient(recipientDrafts[id]?.items || [])
     setRecipientDrafts(prev => ({ ...prev, [id]: { ...prev[id], pending: true, error: null } }))
     try {
       const res = await fetch(`/api/applications/${id}/recipients`, {
@@ -788,7 +788,9 @@ function CandidaturesView({ mission = 'annonce' }) {
     const cvReview = cvStatus?.review
     const approval = approvals[selected]
     const approvalPending = approvalPendingId === selected
-    const recipientItems = recipientDrafts[selected]?.items || approval?.recipients || []
+    // Ce qui s'affiche — et ce qui part — porte toujours un destinataire principal,
+    // quelle que soit la provenance de la liste.
+    const recipientItems = withPrimaryRecipient(recipientDrafts[selected]?.items || approval?.recipients || [])
     const hasRecipients = recipientItems.length > 0
     const recipientSaved = recipientDrafts[selected]?.saved !== false
     const hasSendAttempt = Boolean(sendBrevo[selected]?.ok)
@@ -818,7 +820,7 @@ function CandidaturesView({ mission = 'annonce' }) {
               onUpdate={(index, field, value) => updateRecipient(selected, index, field, value)}
               onAdd={email => setRecipientDrafts(prev => ({
                 ...prev,
-                [selected]: { ...prev[selected], items: [...(prev[selected]?.items || []), { email, role: 'cc', source: 'ajout_manuel' }], saved: false },
+                [selected]: { ...prev[selected], items: [...withPrimaryRecipient(prev[selected]?.items || recipientItems), { email, role: 'cc', source: 'ajout_manuel' }], saved: false },
               }))}
               onRemove={index => removeRecipient(selected, index)}
               onSave={() => saveRecipients(selected)}
