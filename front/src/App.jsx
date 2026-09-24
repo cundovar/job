@@ -334,8 +334,8 @@ function CandidaturesView({ mission = 'annonce' }) {
   const [cvFeedback, setCvFeedback] = useState(null) // { id, type, text }
   const [approvals, setApprovals] = useState({})    // { [id]: { status, approved } }
   const [approvalPendingId, setApprovalPendingId] = useState(null)
-  const [sendBrevo, setSendBrevo] = useState({})    // { [id]: { pending, ok, to, error } }
-  const [manualContact, setManualContact] = useState({}) // { [id]: { value, pending, ok, error } }
+  const [sendBrevo, setSendBrevo] = useState({})    // { [id]: { pending, ok, to, cc, error } }
+  const [recipientDrafts, setRecipientDrafts] = useState({}) // { [id]: { items, value, pending, error } }
   const [lettreRegen, setLettreRegen] = useState({})    // { [id]: { pending, ok, error } }
   const [editLettre, setEditLettre] = useState({})      // { [id]: { editing, value, pending, saved, error } }
   const [editMail, setEditMail] = useState({})          // { [id]: { editing, value, pending, saved, error } }
@@ -585,6 +585,10 @@ function CandidaturesView({ mission = 'annonce' }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const state = await res.json()
       setApprovals(prev => ({ ...prev, [id]: state }))
+      setRecipientDrafts(prev => ({
+        ...prev,
+        [id]: { ...(prev[id] || {}), items: state.recipients || [] },
+      }))
     } catch {
       setApprovals(prev => ({ ...prev, [id]: null }))
     }
@@ -611,6 +615,9 @@ function CandidaturesView({ mission = 'annonce' }) {
       const payload = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
       setApprovals(prev => ({ ...prev, [id]: payload }))
+      if (payload.recipients) {
+        setRecipientDrafts(prev => ({ ...prev, [id]: { ...(prev[id] || {}), items: payload.recipients } }))
+      }
     } catch (err) {
       setApiError(err.message || "Impossible d'enregistrer l'approbation.")
     } finally {
@@ -620,39 +627,68 @@ function CandidaturesView({ mission = 'annonce' }) {
 
   // Envoi réel via Brevo : le clic est le verrou humain ; la chaîne Python
   // re-vérifie adresse, CV et tracker avant de partir. Un seul envoi/dossier.
-  const handleSendBrevo = async (id, to) => {
-    if (!window.confirm(`Envoyer la candidature à ${to} ? CV + lettre en pièces jointes — un seul envoi possible.`)) return
+  const handleSendBrevo = async (id, recipients) => {
+    const to = recipients.find(item => item.role === 'to')?.email || recipients[0]?.email
+    const cc = recipients.filter(item => item.role === 'cc').map(item => item.email)
+    if (!to) return
+    const destination = cc.length ? `${to} (Cc : ${cc.join(', ')})` : to
+    if (!window.confirm(`Envoyer la candidature à ${destination} ? CV + lettre en pièces jointes — un seul envoi possible.`)) return
     setSendBrevo(prev => ({ ...prev, [id]: { pending: true } }))
     setApiError(null)
     try {
       const res = await fetch(`/api/applications/${id}/send`, { method: 'POST' })
       const payload = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(payload.refusal || payload.error || `HTTP ${res.status}`)
-      setSendBrevo(prev => ({ ...prev, [id]: { pending: false, ok: true, to: payload.would_send?.to } }))
+      setSendBrevo(prev => ({ ...prev, [id]: { pending: false, ok: true, to: payload.would_send?.to, cc: payload.would_send?.cc || [] } }))
     } catch (err) {
       setSendBrevo(prev => ({ ...prev, [id]: { pending: false, error: err.message || 'Envoi impossible.' } }))
     }
   }
 
-  // Ajout manuel de l'email d'une agence qui n'en expose pas (source citée).
-  const handleAddContact = async (id) => {
-    const value = (manualContact[id]?.value || '').trim()
-    setManualContact(prev => ({ ...prev, [id]: { ...prev[id], pending: true } }))
-    setApiError(null)
+  const saveRecipients = async (id) => {
+    const items = recipientDrafts[id]?.items || []
+    setRecipientDrafts(prev => ({ ...prev, [id]: { ...prev[id], pending: true, error: null } }))
     try {
-      const res = await fetch(`/api/applications/${id}/contact`, {
-        method: 'POST',
+      const res = await fetch(`/api/applications/${id}/recipients`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: value }),
+        body: JSON.stringify({ recipients: items }),
       })
       const payload = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
-      setManualContact(prev => ({ ...prev, [id]: { pending: false, ok: true } }))
-      // L'adresse entre dans l'index : on recharge pour rouvrir les verrous.
-      setTimeout(() => window.location.reload(), 900)
+      setRecipientDrafts(prev => ({ ...prev, [id]: { ...prev[id], items: payload.recipients || items, pending: false, saved: true } }))
+      await refreshApproval(id)
     } catch (err) {
-      setManualContact(prev => ({ ...prev, [id]: { pending: false, error: err.message || 'Ajout impossible.' } }))
+      setRecipientDrafts(prev => ({ ...prev, [id]: { ...prev[id], pending: false, error: err.message || 'Enregistrement impossible.' } }))
     }
+  }
+
+  const updateRecipient = (id, index, field, value) => {
+    setRecipientDrafts(prev => {
+      const items = [...(prev[id]?.items || [])]
+      items[index] = { ...items[index], [field]: field === 'email' ? value : value }
+      return { ...prev, [id]: { ...prev[id], items, saved: false } }
+    })
+  }
+
+  const addRecipient = (id) => {
+    const draft = recipientDrafts[id] || {}
+    const value = (draft.value || '').trim().toLowerCase()
+    if (!value || (draft.items || []).length >= 5) return
+    setRecipientDrafts(prev => ({
+      ...prev,
+      [id]: { ...prev[id], items: [...(prev[id]?.items || []), { email: value, role: 'cc', source: 'ajout_manuel' }], value: '', saved: false },
+    }))
+  }
+
+  const removeRecipient = (id, index) => {
+    setRecipientDrafts(prev => {
+      const items = [...(prev[id]?.items || [])]
+      if (items.length <= 1) return prev
+      const removed = items.splice(index, 1)[0]
+      if (removed?.role === 'to' && items.length) items[0] = { ...items[0], role: 'to' }
+      return { ...prev, [id]: { ...prev[id], items, saved: false } }
+    })
   }
 
   // Régénère le PDF de la lettre depuis le markdown édité à la main.
@@ -750,7 +786,11 @@ function CandidaturesView({ mission = 'annonce' }) {
     const cvReview = cvStatus?.review
     const approval = approvals[selected]
     const approvalPending = approvalPendingId === selected
-    const preuvesSuffisantes = Boolean(c?.preuves?.adresse)
+    const recipientItems = recipientDrafts[selected]?.items || approval?.recipients || []
+    const hasRecipients = recipientItems.length > 0
+    const recipientSaved = recipientDrafts[selected]?.saved !== false
+    const hasSendAttempt = Boolean(sendBrevo[selected]?.ok)
+    const preuvesSuffisantes = Boolean(c?.preuves)
     return (
       <div className="candidature-detail">
         <button className="tab back-btn" onClick={() => setSelected(null)}><ArrowLeft /> Retour</button>
@@ -767,6 +807,46 @@ function CandidaturesView({ mission = 'annonce' }) {
             la porte, l'autre constate un envoi déjà fait. */}
         {c?.preuves && backendOk && (
           <div className="approval-zone">
+            <div className="recipient-editor">
+              <div className="recipient-editor-head">
+                <strong>Destinataires de l'envoi</strong>
+                <span>{recipientItems.length}/5</span>
+              </div>
+              {recipientItems.map((item, index) => (
+                <div className="recipient-row" key={`${item.email}-${index}`}>
+                  <select
+                    value={item.role}
+                    onChange={e => updateRecipient(selected, index, 'role', e.target.value)}
+                    aria-label={`Rôle du destinataire ${index + 1}`}
+                  >
+                    <option value="to">To</option>
+                    <option value="cc">Cc</option>
+                  </select>
+                  <input
+                    type="email"
+                    value={item.email}
+                    onChange={e => updateRecipient(selected, index, 'email', e.target.value)}
+                    aria-label={`Email du destinataire ${index + 1}`}
+                  />
+                  <button type="button" className="annuler-btn" onClick={() => removeRecipient(selected, index)} disabled={recipientItems.length <= 1 || hasSendAttempt}>Supprimer</button>
+                </div>
+              ))}
+              <div className="recipient-add-row">
+                <input
+                  type="email"
+                  placeholder="Ajouter une adresse en Cc"
+                  value={recipientDrafts[selected]?.value || ''}
+                  onChange={e => setRecipientDrafts(prev => ({ ...prev, [selected]: { ...prev[selected], value: e.target.value } }))}
+                  disabled={recipientItems.length >= 5 || hasSendAttempt}
+                />
+                <button type="button" className="annuler-btn" onClick={() => addRecipient(selected)} disabled={recipientItems.length >= 5 || hasSendAttempt}>Ajouter</button>
+              </div>
+              <button type="button" className="approve-btn" onClick={() => saveRecipients(selected)} disabled={recipientDrafts[selected]?.pending || hasSendAttempt || !hasRecipients}>
+                {recipientDrafts[selected]?.pending ? 'Enregistrement…' : 'Enregistrer les destinataires'}
+              </button>
+              {recipientDrafts[selected]?.error && <p className="approval-note" style={{ color: '#fb7185' }}>{recipientDrafts[selected].error}</p>}
+              {!recipientSaved && <p className="approval-note">La liste a changé : enregistre-la puis réapprouve l'envoi.</p>}
+            </div>
             {approval?.approved ? (
               <>
                 <span className="badge-approved"><ShieldCheck /> Envoi approuvé</span>
@@ -784,21 +864,21 @@ function CandidaturesView({ mission = 'annonce' }) {
                 type="button"
                 className="approve-btn"
                 onClick={() => handleApproval(selected, true)}
-                disabled={approvalPending || !preuvesSuffisantes || cvBlocksSending}
+                disabled={approvalPending || !preuvesSuffisantes || !hasRecipients || !recipientSaved || cvBlocksSending}
               >
                 {approvalPending ? 'Enregistrement…' : <><ShieldCheck /> Approuver l'envoi</>}
               </button>
             )}
-            {preuvesSuffisantes && backendOk && (
+            {hasRecipients && backendOk && (
               <div className="send-brevo-zone">
                 {sendBrevo[selected]?.ok ? (
-                  <span className="badge-approved"><CircleCheck /> Envoyé à {sendBrevo[selected].to}</span>
+                  <span className="badge-approved"><CircleCheck /> Envoyé à {sendBrevo[selected].to}{sendBrevo[selected].cc?.length ? ` · Cc : ${sendBrevo[selected].cc.join(', ')}` : ''}</span>
                 ) : (
                   <button
                     type="button"
                     className="approve-btn"
-                    onClick={() => handleSendBrevo(selected, c?.preuves?.adresse)}
-                    disabled={sendBrevo[selected]?.pending}
+                    onClick={() => handleSendBrevo(selected, recipientItems)}
+                    disabled={sendBrevo[selected]?.pending || !approval?.approved || !recipientSaved || cvBlocksSending || hasSendAttempt}
                   >
                     {sendBrevo[selected]?.pending ? 'Envoi…' : <><Mail /> Envoyer par email</>}
                   </button>
@@ -808,32 +888,10 @@ function CandidaturesView({ mission = 'annonce' }) {
                 )}
               </div>
             )}
-            {c?.preuves && !c?.preuves?.adresse && backendOk && (
-              <div className="send-brevo-zone">
-                <input
-                  type="email"
-                  placeholder="email de l'agence (ex. contact@agence.fr)"
-                  value={manualContact[selected]?.value || ''}
-                  onChange={e => setManualContact(prev => ({ ...prev, [selected]: { ...prev[selected], value: e.target.value } }))}
-                  style={{ padding: '0.4rem 0.6rem', border: '1px solid var(--border-strong)', borderRadius: 6, background: 'var(--surface)', font: 'inherit', fontSize: '0.85rem' }}
-                />
-                <button
-                  type="button"
-                  className="approve-btn"
-                  onClick={() => handleAddContact(selected)}
-                  disabled={manualContact[selected]?.pending || !(manualContact[selected]?.value || '').includes('@')}
-                >
-                  {manualContact[selected]?.pending ? 'Ajout…' : 'Ajouter cet email'}
-                </button>
-                {manualContact[selected]?.error && (
-                  <p className="approval-note" style={{ color: '#fb7185' }}>{manualContact[selected].error}</p>
-                )}
-              </div>
-            )}
             <p className="approval-note">
-              {preuvesSuffisantes
+              {hasRecipients
                 ? <>L'approbation n'envoie rien : l'envoi réel part du bouton « Envoyer par email » (Brevo, un seul envoi par dossier).</>
-                : "Sans adresse relevée en clair, ce dossier ne peut pas être approuvé pour un envoi email."}
+                : "Ajoute au moins une adresse, puis enregistre-la avant d'approuver l'envoi."}
             </p>
           </div>
         )}
