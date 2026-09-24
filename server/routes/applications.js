@@ -162,8 +162,15 @@ function normalizeRecipients(raw) {
     if (!['to', 'cc'].includes(role)) throw new Error('Le rôle destinataire doit être « to » ou « cc ».');
     return { email, role, source: String(typeof item === 'object' ? item?.source || 'selection' : 'ajout_manuel') };
   });
-  if (recipients.filter(item => item.role === 'to').length !== 1) {
-    throw new Error('La liste doit contenir exactement un destinataire principal « to ».');
+  // Un envoi part à une adresse, les autres sont en copie. Le message dit
+  // laquelle des deux situations on a sous les yeux : « exactement un » laissait
+  // croire qu'il manquait une adresse alors qu'il manquait un rôle.
+  const principaux = recipients.filter(item => item.role === 'to').length;
+  if (principaux === 0) {
+    throw new Error('Aucun destinataire principal : passe une des adresses en « To ».');
+  }
+  if (principaux > 1) {
+    throw new Error(`Un seul destinataire principal « To » est possible (${principaux} ici) — les autres passent en « Cc ».`);
   }
   if (new Set(recipients.map(item => item.email)).size !== recipients.length) {
     throw new Error('Une même adresse ne peut apparaître qu’une seule fois.');

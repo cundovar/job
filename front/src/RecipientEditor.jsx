@@ -26,6 +26,10 @@ export default function RecipientEditor({
             value={item.role}
             onChange={event => onUpdate(index, 'role', event.target.value)}
             aria-label={`Rôle du destinataire ${index + 1}`}
+            disabled={recipients.length <= 1 || sendAttempt}
+            title={recipients.length <= 1
+              ? 'Seule adresse de la liste : elle est le destinataire principal.'
+              : 'To : le destinataire principal. Le choisir ici passe l’autre en Cc.'}
           >
             <option value="to">To</option>
             <option value="cc">Cc</option>
@@ -61,6 +65,9 @@ export default function RecipientEditor({
       <button type="button" className="approve-btn" onClick={onSave} disabled={pending || sendAttempt || !recipients.length}>
         {pending ? 'Enregistrement…' : 'Enregistrer les destinataires'}
       </button>
+      <p className="approval-note">
+        Une adresse suffit : elle part en To. Les suivantes s’ajoutent en Cc.
+      </p>
       {error && <p className="approval-note" style={{ color: '#fb7185' }}>{error}</p>}
       {!saved && <p className="approval-note">La liste a changé : enregistre-la puis réapprouve l&apos;envoi.</p>}
     </div>

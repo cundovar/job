@@ -14,6 +14,7 @@ import AgencyScout from './AgencyScout'
 import CvAssessment from './CvAssessment'
 import HermesChat from './HermesChat'
 import RecipientEditor from './RecipientEditor'
+import { setRecipientRole } from './recipients'
 
 const DATA_URL = '/data'
 
@@ -664,11 +665,21 @@ function CandidaturesView({ mission = 'annonce' }) {
     }
   }
 
+  // Le rôle n'est pas un champ libre : un envoi a **un** destinataire principal
+  // et des copies. Choisir « To » sur une ligne y déplace donc le rôle, l'ancien
+  // To passant en Cc, plutôt que de laisser fabriquer une liste sans destinataire
+  // — que le serveur refusait d'enregistrer, sans qu'on voie d'où ça venait.
   const updateRecipient = (id, index, field, value) => {
     setRecipientDrafts(prev => {
       const items = [...(prev[id]?.items || [])]
-      items[index] = { ...items[index], [field]: field === 'email' ? value : value }
-      return { ...prev, [id]: { ...prev[id], items, saved: false } }
+      if (!items[index]) return prev
+      if (field !== 'role') {
+        items[index] = { ...items[index], [field]: value }
+        return { ...prev, [id]: { ...prev[id], items, saved: false } }
+      }
+      const roles = setRecipientRole(items, index, value)
+      if (roles === items) return prev
+      return { ...prev, [id]: { ...prev[id], items: roles, saved: false } }
     })
   }
 

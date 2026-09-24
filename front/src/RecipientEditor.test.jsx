@@ -36,6 +36,21 @@ describe('RecipientEditor', () => {
     expect(screen.getByRole('button', { name: 'Ajouter' })).toBeDisabled()
   })
 
+  it('locks the role when a single address is listed', () => {
+    // Une seule adresse : elle est forcément le destinataire principal. La
+    // passer en Cc fabriquait une liste sans « to », refusée à l'enregistrement.
+    renderEditor()
+    expect(screen.getByRole('combobox', { name: 'Rôle du destinataire 1' })).toBeDisabled()
+  })
+
+  it('leaves the role selectable as soon as there are two addresses', () => {
+    renderEditor({ recipients: [
+      { email: 'contact@example.fr', role: 'to' },
+      { email: 'rh@example.fr', role: 'cc' },
+    ] })
+    expect(screen.getByRole('combobox', { name: 'Rôle du destinataire 2' })).toBeEnabled()
+  })
+
   it('prevents removing the last recipient', () => {
     const { props } = renderEditor()
     expect(screen.getByRole('button', { name: 'Supprimer' })).toBeDisabled()
