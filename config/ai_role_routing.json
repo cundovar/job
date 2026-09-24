@@ -23,6 +23,12 @@
       "model_env": "AI_CODEX_SOL_MODEL",
       "reasoning_effort": "medium"
     },
+    "codex_terra_medium": {
+      "provider": "codex_cli",
+      "model": "gpt-5.6-terra",
+      "model_env": "AI_CODEX_TERRA_MODEL",
+      "reasoning_effort": "medium"
+    },
     "codex_high": {
       "provider": "codex_cli",
       "model": "gpt-5.6-sol",
@@ -55,7 +61,7 @@
       "codex_low"
     ],
     "cv_creator": [
-      "codex_medium",
+      "codex_terra_medium",
       "glm_cv",
       "deepseek_cv"
     ],
@@ -68,14 +74,14 @@
       "codex_medium"
     ],
     "cv_style_reviser": [
-      "codex_medium",
+      "codex_terra_medium",
       "glm_cv",
       "deepseek_cv"
     ],
     "agent_redacteur_lettres": [
+      "codex_medium",
       "glm_cv",
-      "deepseek_cv",
-      "codex_medium"
+      "deepseek_cv"
     ],
     "company_verifier": [
       "deepseek_job",

@@ -22,7 +22,7 @@ def test_role_matrix_matches_approved_provider_order():
         ("codex_cli", "gpt-5.6-sol", 'low'),
     ]
     assert _route_signature("cv_creator") == [
-        ("codex_cli", "gpt-5.6-sol", 'medium'),
+        ("codex_cli", "gpt-5.6-terra", 'medium'),
         ("glm", "glm-5.3", None),
         ("deepseek", "deepseek-v4-flash", None),
     ]
@@ -35,14 +35,14 @@ def test_role_matrix_matches_approved_provider_order():
         ("codex_cli", "gpt-5.6-sol", 'medium'),
     ]
     assert _route_signature("cv_style_reviser") == [
-        ("codex_cli", "gpt-5.6-sol", 'medium'),
+        ("codex_cli", "gpt-5.6-terra", 'medium'),
         ("glm", "glm-5.3", None),
         ("deepseek", "deepseek-v4-flash", None),
     ]
     assert _route_signature("agent_redacteur_lettres") == [
+        ("codex_cli", "gpt-5.6-sol", 'medium'),
         ("glm", "glm-5.3", None),
         ("deepseek", "deepseek-v4-flash", None),
-        ("codex_cli", "gpt-5.6-sol", 'medium'),
     ]
     assert _route_signature("company_verifier") == [
         ("deepseek", "deepseek-v4-flash", None),
