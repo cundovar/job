@@ -176,6 +176,22 @@ def test_agencies_view_carries_the_search_context():
     assert ".agency-category-filter" in css
 
 
+def test_department_search_contract_is_explicit_end_to_end():
+    resolver = (PROJECT_ROOT / "tools" / "city_resolver.py").read_text(encoding="utf-8")
+    prospecting = (PROJECT_ROOT / "tools" / "agency_prospecting_v2.py").read_text(encoding="utf-8")
+    routes = (PROJECT_ROOT / "server" / "routes" / "applications.js").read_text(encoding="utf-8")
+    service = (PROJECT_ROOT / "server" / "services" / "agenciesService.js").read_text(encoding="utf-8")
+    app = (PROJECT_ROOT / "front" / "src" / "App.jsx").read_text(encoding="utf-8")
+
+    assert "def resolve_department(" in resolver
+    assert "def locate_in_department(" in resolver
+    assert "registry.search(\n                departement=department" in prospecting
+    assert "department_match" in prospecting
+    assert "!city && !rawZone && !departement" in routes
+    assert "args.push('--departement'" in service
+    assert "launchMode" in app and "Département" in app
+
+
 def test_the_durable_conventions_name_the_agency_runbook():
     """Un nouvel agent doit trouver sources, limites et règles anti-invention."""
     runbook = PROJECT_ROOT / "docs" / "AGENCY_PROSPECTING_RUNBOOK.md"

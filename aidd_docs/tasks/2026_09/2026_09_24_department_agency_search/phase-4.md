@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 ---
 
 # Instruction: Tests de non-régression et documentation
@@ -66,4 +66,3 @@ journey
 | ---- | ------------------- |
 | 1 | Les tests échouent si un département est codé en dur, si une commune est parcourue une à une, ou si une mention seule est publiée. |
 | 2 | Le runbook permet de lancer et diagnostiquer une recherche commune ou département ; les validations passent sans appel externe non autorisé. |
-
