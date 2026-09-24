@@ -72,6 +72,20 @@ const REQUIRED_FRESH_CV_FILES = [
   'cv_assessment.json',
 ];
 
+// Le front lit les lettres et les mails dans `front/public/data/candidatures.json`,
+// pas dans le dossier de candidature : tant que cet index n'est pas reconstruit,
+// une édition enregistrée sur disque réapparaît à l'ancienne au rechargement.
+function rebuildCandidaturesIndex() {
+  return new Promise((resolve, reject) => {
+    execFile(
+      CV_PYTHON_BIN,
+      ['-c', "from applications.candidatures_index import rebuild_candidatures_index as r; print(r('output/applications', 'front/public/data/candidatures.json'))"],
+      { cwd: PROJECT_ROOT, timeout: 60000 },
+      (err, out) => (err ? reject(err) : resolve(out))
+    );
+  });
+}
+
 function applicationDir(id) {
   const base = path.resolve(PROJECT_ROOT, 'output/applications');
   const dir = path.resolve(base, id);
@@ -901,14 +915,7 @@ export default function createApplicationsRouter(repo) {
       job.public_contact = contacts;
       fs.writeFileSync(jobPath, JSON.stringify(job, null, 2), 'utf-8');
       // L'adresse lue par le front vient de l'index : on le reconstruit.
-      await new Promise((resolve, reject) => {
-        execFile(
-          CV_PYTHON_BIN,
-          ['-c', "from applications.candidatures_index import rebuild_candidatures_index as r; print(r('output/applications', 'front/public/data/candidatures.json'))"],
-          { cwd: PROJECT_ROOT, timeout: 60000 },
-          (err, out) => (err ? reject(err) : resolve(out))
-        );
-      });
+      await rebuildCandidaturesIndex();
       res.json({ ok: true, adresse: email });
     } catch (err) {
       console.error('[POST /applications/:id/contact]', err.message);
@@ -954,7 +961,26 @@ export default function createApplicationsRouter(repo) {
         });
         pdf = 'lettre_motivation.pdf';
       }
-      res.json({ ok: true, file: fileName, bytes: Buffer.byteLength(contenu, 'utf-8'), pdf });
+      // Le fichier est écrit : l'enregistrement a réussi quoi qu'il arrive
+      // ensuite. Un index qu'on n'a pas su reconstruire se dit, il ne
+      // transforme pas une sauvegarde réussie en erreur.
+      let indexed = true;
+      let indexError = null;
+      try {
+        await rebuildCandidaturesIndex();
+      } catch (err) {
+        indexed = false;
+        indexError = err.message;
+        console.error('[PUT /applications/:id/doc/:kind] index', err.message);
+      }
+      res.json({
+        ok: true,
+        file: fileName,
+        bytes: Buffer.byteLength(contenu, 'utf-8'),
+        pdf,
+        indexed,
+        index_error: indexError,
+      });
     } catch (err) {
       console.error('[PUT /applications/:id/doc/:kind]', err.message);
       res.status(500).json({ error: err.message });
@@ -976,7 +1002,15 @@ export default function createApplicationsRouter(repo) {
           (err, out) => (err ? reject(err) : resolve(out))
         );
       });
-      res.json({ ok: true, regenerated_at: new Date().toISOString() });
+      // Le markdown a pu être édité hors interface : l'index doit suivre.
+      let indexed = true;
+      try {
+        await rebuildCandidaturesIndex();
+      } catch (err) {
+        indexed = false;
+        console.error('[POST /applications/:id/lettre/regenerate] index', err.message);
+      }
+      res.json({ ok: true, regenerated_at: new Date().toISOString(), indexed });
     } catch (err) {
       console.error('[POST /applications/:id/lettre/regenerate]', err.message);
       res.status(500).json({ error: err.message });

@@ -224,3 +224,29 @@ def test_prepare_payload_rebuilds_index_without_external_hermes_script(
     assert json.loads(index_path.read_text(encoding="utf-8"))["candidatures"][0][
         "poste"
     ] == "Automation Specialist"
+
+
+def test_toute_route_qui_ecrit_lettre_ou_mail_reconstruit_lindex():
+    """Le front lit les textes dans l'index, pas dans le dossier.
+
+    Une route qui écrit `lettre_motivation.md` ou `mail_candidature.md` sans
+    reconstruire `candidatures.json` donne une édition qui « revient à l'état
+    d'origine » au premier rechargement : le fichier est bien enregistré, mais
+    l'écran relit l'ancien instantané.
+    """
+    import re
+
+    source = (
+        Path(__file__).resolve().parents[1] / "server/routes/applications.js"
+    ).read_text(encoding="utf-8")
+
+    routes = (
+        "router.put('/applications/:id/doc/:kind'",
+        "router.post('/applications/:id/lettre/regenerate'",
+        "router.post('/applications/:id/contact'",
+    )
+    for route in routes:
+        debut = source.index(route)
+        suivant = re.search(r"\n  router\.", source[debut + len(route):])
+        fin = debut + len(route) + (suivant.start() if suivant else len(source))
+        assert "rebuildCandidaturesIndex()" in source[debut:fin], route
