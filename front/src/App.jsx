@@ -13,6 +13,7 @@ import ManualCvView from './ManualCvView'
 import AgencyScout from './AgencyScout'
 import CvAssessment from './CvAssessment'
 import HermesChat from './HermesChat'
+import RecipientEditor from './RecipientEditor'
 
 const DATA_URL = '/data'
 
@@ -671,16 +672,6 @@ function CandidaturesView({ mission = 'annonce' }) {
     })
   }
 
-  const addRecipient = (id) => {
-    const draft = recipientDrafts[id] || {}
-    const value = (draft.value || '').trim().toLowerCase()
-    if (!value || (draft.items || []).length >= 5) return
-    setRecipientDrafts(prev => ({
-      ...prev,
-      [id]: { ...prev[id], items: [...(prev[id]?.items || []), { email: value, role: 'cc', source: 'ajout_manuel' }], value: '', saved: false },
-    }))
-  }
-
   const removeRecipient = (id, index) => {
     setRecipientDrafts(prev => {
       const items = [...(prev[id]?.items || [])]
@@ -807,46 +798,20 @@ function CandidaturesView({ mission = 'annonce' }) {
             la porte, l'autre constate un envoi déjà fait. */}
         {c?.preuves && backendOk && (
           <div className="approval-zone">
-            <div className="recipient-editor">
-              <div className="recipient-editor-head">
-                <strong>Destinataires de l'envoi</strong>
-                <span>{recipientItems.length}/5</span>
-              </div>
-              {recipientItems.map((item, index) => (
-                <div className="recipient-row" key={`${item.email}-${index}`}>
-                  <select
-                    value={item.role}
-                    onChange={e => updateRecipient(selected, index, 'role', e.target.value)}
-                    aria-label={`Rôle du destinataire ${index + 1}`}
-                  >
-                    <option value="to">To</option>
-                    <option value="cc">Cc</option>
-                  </select>
-                  <input
-                    type="email"
-                    value={item.email}
-                    onChange={e => updateRecipient(selected, index, 'email', e.target.value)}
-                    aria-label={`Email du destinataire ${index + 1}`}
-                  />
-                  <button type="button" className="annuler-btn" onClick={() => removeRecipient(selected, index)} disabled={recipientItems.length <= 1 || hasSendAttempt}>Supprimer</button>
-                </div>
-              ))}
-              <div className="recipient-add-row">
-                <input
-                  type="email"
-                  placeholder="Ajouter une adresse en Cc"
-                  value={recipientDrafts[selected]?.value || ''}
-                  onChange={e => setRecipientDrafts(prev => ({ ...prev, [selected]: { ...prev[selected], value: e.target.value } }))}
-                  disabled={recipientItems.length >= 5 || hasSendAttempt}
-                />
-                <button type="button" className="annuler-btn" onClick={() => addRecipient(selected)} disabled={recipientItems.length >= 5 || hasSendAttempt}>Ajouter</button>
-              </div>
-              <button type="button" className="approve-btn" onClick={() => saveRecipients(selected)} disabled={recipientDrafts[selected]?.pending || hasSendAttempt || !hasRecipients}>
-                {recipientDrafts[selected]?.pending ? 'Enregistrement…' : 'Enregistrer les destinataires'}
-              </button>
-              {recipientDrafts[selected]?.error && <p className="approval-note" style={{ color: '#fb7185' }}>{recipientDrafts[selected].error}</p>}
-              {!recipientSaved && <p className="approval-note">La liste a changé : enregistre-la puis réapprouve l'envoi.</p>}
-            </div>
+            <RecipientEditor
+              recipients={recipientItems}
+              pending={recipientDrafts[selected]?.pending}
+              saved={recipientSaved}
+              sendAttempt={hasSendAttempt}
+              error={recipientDrafts[selected]?.error}
+              onUpdate={(index, field, value) => updateRecipient(selected, index, field, value)}
+              onAdd={email => setRecipientDrafts(prev => ({
+                ...prev,
+                [selected]: { ...prev[selected], items: [...(prev[selected]?.items || []), { email, role: 'cc', source: 'ajout_manuel' }], saved: false },
+              }))}
+              onRemove={index => removeRecipient(selected, index)}
+              onSave={() => saveRecipients(selected)}
+            />
             {approval?.approved ? (
               <>
                 <span className="badge-approved"><ShieldCheck /> Envoi approuvé</span>
