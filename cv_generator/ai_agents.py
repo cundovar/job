@@ -341,7 +341,13 @@ JSON attendu:
 
 
 def _standing_preference_clause(master, plan, role: str) -> str:
-    """Consigne injectee uniquement si la variante retenue a une preference permanente."""
+    """Consigne injectee uniquement si la variante retenue a une preference permanente.
+
+    Deux formes de preference, portees par les donnees :
+    - une chaine simple : preuve humaine, placee en fin de parcours ;
+    - un dict {"id": ..., "placement": "tete"} : experience parapluie placee en
+      tete du parcours, periode complete affichee (debut - aujourd'hui).
+    """
     variant = (plan or {}).get("selected_base_variant")
     preferences = (
         (master or {})
@@ -350,19 +356,50 @@ def _standing_preference_clause(master, plan, role: str) -> str:
         .get(variant)
         or []
     )
-    if not preferences:
+    head: List[str] = []
+    tail: List[str] = []
+    for item in preferences:
+        if isinstance(item, dict):
+            entry_id = str(item.get("id") or "").strip()
+            if not entry_id:
+                continue
+            if str(item.get("placement") or "tete") == "tete":
+                head.append(entry_id)
+            else:
+                tail.append(entry_id)
+        elif str(item).strip():
+            tail.append(str(item))
+    if not head and not tail:
         return ""
-    ids = ", ".join(str(item) for item in preferences)
-    if role == "creator":
-        return (
-            f"\nPour cette variante, respecte la preference permanente d'inclure {ids} en fin de "
-            "parcours comme preuve humaine complementaire, sans lui faire remplacer une preuve "
-            "metier centrale."
-        )
-    return (
-        f"\nPour cette variante, human_group_facilitation doit etre couvert par {ids}, "
-        "conformement a la preference permanente du candidat."
-    )
+    clauses: List[str] = []
+    if head:
+        ids = ", ".join(head)
+        if role == "creator":
+            clauses.append(
+                f"\nPour cette variante, respecte la preference permanente d'inclure {ids} en tete "
+                "du parcours : c'est le parapluie de l'activite independante du candidat. Affiche sa "
+                "periode complete (debut - aujourd'hui) et rattache les missions detaillees a cette "
+                "activite."
+            )
+        else:
+            clauses.append(
+                f"\nPour cette variante, {ids} reste en tete du parcours avec sa periode complete "
+                "affichee, conformement a la preference permanente du candidat."
+            )
+    if tail:
+        ids = ", ".join(tail)
+        if role == "creator":
+            clauses.append(
+                f"\nPour cette variante, respecte la preference permanente d'inclure {ids} en fin de "
+                "parcours comme preuve humaine complementaire, sans lui faire remplacer une preuve "
+                "metier centrale."
+            )
+        else:
+            clauses.append(
+                f"\nPour cette variante, human_group_facilitation doit etre couvert par {ids}, "
+                "conformement a la preference permanente du candidat."
+            )
+    return "\n".join(clauses)
 
 
 CREATOR_PROMPT = """
@@ -887,6 +924,34 @@ def to_writer_schema(content: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _filter_education_by_variant(
+    proposed: Any,
+    education_catalog: Dict[str, Dict[str, Any]],
+    variant_id: str,
+) -> List[Dict[str, Any]]:
+    """N'affiche qu'un diplôme autorisé pour la variante retenue.
+
+    Décision candidate portée par `present_on_variants` (liste d'ids de
+    variantes) dans `person.education` : un diplôme peut être réservé à
+    certaines familles de CV — deug et diplômes du développement sur un CV de
+    développeur, le complet sur un CV de formateur. Sans champ, aucune
+    restriction. Un intitulé inconnu du catalogue passe tel quel : le
+    validateur le signale, Python ne l'invente pas.
+    """
+    education: List[Dict[str, Any]] = []
+    for item in proposed or []:
+        title = item.get("title") if isinstance(item, dict) else item
+        entry = education_catalog.get(normalize(title))
+        if entry is not None:
+            allowed = entry.get("present_on_variants")
+            if allowed and variant_id not in allowed:
+                continue
+            education.append(entry)
+        else:
+            education.append({"title": str(title)})
+    return education
+
+
 def _assemble_cv_content(
     proposed: Dict[str, Any],
     job: Dict[str, Any],
@@ -1026,19 +1091,17 @@ def _assemble_cv_content(
             }
         )
 
+    person = master.get("person", {})
+    variant_id = str(plan.get("selected_base_variant") or "")
     education_catalog = {
         normalize(entry.get("title")): entry
         for entry in master.get("person", {}).get("education", [])
         if isinstance(entry, dict) and normalize(entry.get("title"))
     }
-    education: List[Dict[str, Any]] = []
-    for item in proposed.get("education") or []:
-        title = item.get("title") if isinstance(item, dict) else item
-        entry = education_catalog.get(normalize(title))
-        education.append(entry if entry is not None else {"title": str(title)})
+    education = _filter_education_by_variant(
+        proposed.get("education"), education_catalog, variant_id
+    )
 
-    person = master.get("person", {})
-    variant_id = str(plan.get("selected_base_variant") or "")
     cv = {
         "title": re.sub(r"\s+", " ", str(proposed.get("title") or "")).strip(),
         "profile": re.sub(r"\s+", " ", str(proposed.get("profile") or "")).strip(),

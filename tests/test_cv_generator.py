@@ -2034,3 +2034,73 @@ def test_filter_skills_whitelist_sans_liste_ne_rien_invente():
 
     assert _filter_skills_whitelist([{"title": "T", "items": ["WordPress"]}], {}) == []
     assert _filter_skills_whitelist("pas une liste", {"skills_confidence": {}}) == []
+
+
+# ── Décisions candidat : diplômes par famille + parapluie freelance ────────
+
+def test_education_filtree_par_variante_dev_contre_formateur():
+    from cv_generator.ai_agents import _filter_education_by_variant
+    from cv_generator.utils import normalize
+
+    catalog = {
+        normalize(t): {"title": t, "present_on_variants": variants}
+        for t, variants in {
+            "CAP Petite Enfance": ["formateur_developpement_web", "formateur_generaliste", "formateur_ia"],
+            "DEUG Cinéma audiovisuel": ["fullstack", "webmaster", "formateur_developpement_web"],
+            "Développeur Web et Web Mobile": None,  # sans champ : partout
+        }.items()
+    }
+    proposed = [{"title": t} for t in
+                ("CAP Petite Enfance", "deug cinéma audiovisuel", "Développeur Web et Web Mobile")]
+
+    # CV dev : le CAP est retiré, le deug (normalisé sans accents) reste.
+    assert [e["title"] for e in _filter_education_by_variant(proposed, catalog, "fullstack")] == [
+        "DEUG Cinéma audiovisuel", "Développeur Web et Web Mobile",
+    ]
+    # CV formateur : tout reste.
+    assert len(_filter_education_by_variant(proposed, catalog, "formateur_developpement_web")) == 3
+
+
+def test_education_inconnue_passe_au_validateur_sans_etre_inventee():
+    from cv_generator.ai_agents import _filter_education_by_variant
+
+    out = _filter_education_by_variant([{"title": "Diplôme imaginaire"}], {}, "fullstack")
+    assert out == [{"title": "Diplôme imaginaire"}]
+
+
+def test_preference_permutante_parapluie_en_tete_et_preuve_humaine_en_fin():
+    from cv_generator.ai_agents import _standing_preference_clause
+
+    master = {"adaptation_rules": {"standing_experience_preferences_by_variant": {
+        "formateur_developpement_web": [
+            "mairie_chelles",
+            {"id": "freelance_wordpress", "placement": "tete"},
+        ],
+        "fullstack": [{"id": "freelance_wordpress", "placement": "tete"}],
+    }}}
+
+    clause = _standing_preference_clause(
+        master, {"selected_base_variant": "formateur_developpement_web"}, "creator"
+    )
+    # Le parapluie freelance est annoncé en tête ; mairie_chelles reste en fin.
+    assert "freelance_wordpress en tete" in clause
+    assert "periode complete" in clause
+    assert "mairie_chelles en fin de parcours" in clause
+
+    # Variante fullstack : uniquement le parapluie, pas de clause preuve humaine.
+    clause_full = _standing_preference_clause(
+        master, {"selected_base_variant": "fullstack"}, "creator"
+    )
+    assert "freelance_wordpress en tete" in clause_full
+    assert "en fin de parcours" not in clause_full
+
+
+def test_preference_permutante_rien_si_variante_sans_preference():
+    from cv_generator.ai_agents import _standing_preference_clause
+
+    master = {"adaptation_rules": {"standing_experience_preferences_by_variant": {
+        "formateur_generaliste": ["mairie_chelles"],
+    }}}
+    assert _standing_preference_clause(
+        master, {"selected_base_variant": "fullstack"}, "creator"
+    ) == ""
