@@ -651,6 +651,7 @@ export default function createApplicationsRouter(repo) {
       city: task.city,
       departement: task.departement,
       resolved_city: task.result?.city || null,
+      resolved_department: task.result?.department || null,
       radius_m: task.radius_m,
       // Identifiant de la recherche produite : le front sait quoi sélectionner
       // au retour, sans deviner « la plus récente ».
@@ -1145,16 +1146,25 @@ export default function createApplicationsRouter(repo) {
           + 'city résout une commune réelle. Envoie l’un des deux.',
       });
     }
+    if (rawZone && departement) {
+      return res.status(400).json({
+        error: 'zone et departement sont exclusifs : choisis un préréglage ou un département.',
+      });
+    }
     // Sans ville ni zone, on refuse : le défaut historique « ile-de-france » a
     // déjà lancé une passe non demandée quand un transport perdait les
     // arguments (incident du 23/09/2026). Le client doit nommer son périmètre.
-    if (!city && !rawZone) {
+    if (!city && !rawZone && !departement) {
       return res.status(400).json({
-        error: 'Périmètre manquant : envoie city (ex. "Pantin") ou zone '
-          + '(ile-de-france | paris-20 | paris-19 | ouest-paris).',
+        error: 'Périmètre manquant : envoie city, departement ou zone.',
       });
     }
-    const zone = city ? null : rawZone;
+    if (departement && radiusM != null) {
+      return res.status(400).json({
+        error: 'radius_m n’est pas disponible avec un département seul.',
+      });
+    }
+    const zone = city || departement ? null : rawZone;
 
     if (radiusM != null && (!Number.isInteger(Number(radiusM)) || Number(radiusM) <= 0)) {
       return res.status(400).json({ error: 'radius_m doit être un nombre de mètres positif' });

@@ -1562,6 +1562,11 @@ function AgenciesView() {
   const [payload, setPayload] = useState(null)
   const [persisted, setPersisted] = useState({})
   const [fetchError, setFetchError] = useState(null)
+  const [launchMode, setLaunchMode] = useState('departement')
+  const [launchValue, setLaunchValue] = useState('')
+  const [launchDepartment, setLaunchDepartment] = useState('')
+  const [launchTask, setLaunchTask] = useState(null)
+  const [launchError, setLaunchError] = useState(null)
   const [categoryFilter, setCategoryFilter] = useState('agence') // toutes | agence | formation | incertain | ecarte
   const [targetingState, setTargetingState] = useState({}) // { [domain]: { pending, done, error } }
   const latestSearchRef = useRef(null)
@@ -1630,6 +1635,67 @@ function AgenciesView() {
       window.clearInterval(refresh)
     }
   }, [])
+
+  const launchAgencySearch = async (event) => {
+    event.preventDefault()
+    const value = launchValue.trim()
+    if (!value) {
+      setLaunchError('Indique une commune, un département ou un préréglage.')
+      return
+    }
+    const body = launchMode === 'city'
+      ? { city: value, ...(launchDepartment.trim() ? { departement: launchDepartment.trim() } : {}) }
+      : launchMode === 'departement'
+        ? { departement: value }
+        : { zone: value }
+    setLaunchError(null)
+    setLaunchTask({ state: 'queued' })
+    try {
+      const response = await fetch('/api/agencies/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`)
+      setLaunchTask(data.status || { task_id: data.task_id, state: 'queued' })
+    } catch (error) {
+      setLaunchTask(null)
+      setLaunchError(error.message || 'Impossible de lancer la recherche.')
+    }
+  }
+
+  useEffect(() => {
+    const taskId = launchTask?.task_id
+    if (!taskId) return undefined
+    let cancelled = false
+    let timer
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/agencies/search/status/${encodeURIComponent(taskId)}`, { cache: 'no-store' })
+        const data = await response.json().catch(() => ({}))
+        if (cancelled) return
+        if (!response.ok) throw new Error(data.error || 'Suivi de recherche introuvable.')
+        setLaunchTask(data)
+        if (data.state === 'completed') {
+          if (data.search_id) setSelectedId(data.search_id)
+          return
+        }
+        if (data.state === 'failed') {
+          setLaunchError(data.error || 'La recherche départementale a échoué.')
+          return
+        }
+        timer = window.setTimeout(poll, 3000)
+      } catch (error) {
+        if (!cancelled) setLaunchError(error.message || 'Suivi de recherche perdu.')
+      }
+    }
+    poll()
+    return () => {
+      cancelled = true
+      if (timer) window.clearTimeout(timer)
+    }
+  }, [launchTask?.task_id, launchTask?.state])
 
   // 2) La recherche à afficher : celle mémorisée si elle existe encore,
   // sinon la dernière passe valide.
@@ -1907,6 +1973,59 @@ function AgenciesView() {
           {payload?.generated_at && <span>Dernière maj : {payload.generated_at.replace('T', ' ')}</span>}
         </div>
       </header>
+
+      <form className="agency-search-launcher" onSubmit={launchAgencySearch}>
+        <div className="agency-search-launcher-fields">
+          <label>
+            Périmètre
+            <select value={launchMode} onChange={event => setLaunchMode(event.target.value)}>
+              <option value="departement">Département</option>
+              <option value="city">Commune</option>
+              <option value="zone">Préréglage</option>
+            </select>
+          </label>
+          {launchMode === 'zone' ? (
+            <label>
+              Préréglage
+              <select value={launchValue} onChange={event => setLaunchValue(event.target.value)}>
+                <option value="">Choisir…</option>
+                <option value="paris-20">Paris 20e</option>
+                <option value="paris-19">Paris 19e</option>
+                <option value="ile-de-france">Île-de-France</option>
+                <option value="ouest-paris">Ouest parisien</option>
+              </select>
+            </label>
+          ) : (
+            <label>
+              {launchMode === 'city' ? 'Commune' : 'Département'}
+              <input
+                value={launchValue}
+                onChange={event => setLaunchValue(event.target.value)}
+                placeholder={launchMode === 'city' ? 'Montreuil' : '93 ou Seine-Saint-Denis'}
+              />
+            </label>
+          )}
+          {launchMode === 'city' && (
+            <label>
+              Département optionnel
+              <input
+                value={launchDepartment}
+                onChange={event => setLaunchDepartment(event.target.value)}
+                placeholder="93"
+              />
+            </label>
+          )}
+          <button type="submit" className="prepare-btn" disabled={Boolean(launchTask && ['queued', 'running'].includes(launchTask.state))}>
+            {launchTask?.state === 'running' ? 'Recherche en cours…' : 'Lancer la recherche'}
+          </button>
+        </div>
+        {launchTask && launchTask.state !== 'completed' && (
+          <p className="agency-search-task" role="status">
+            Tâche : {launchTask.state === 'queued' ? 'en attente' : launchTask.state === 'running' ? 'résolution, web et registre' : launchTask.state}
+          </p>
+        )}
+        {launchError && <p className="agency-search-launch-error" role="alert">{launchError}</p>}
+      </form>
 
       {searches.length > 0 && (
         <div className="agency-search-picker">
