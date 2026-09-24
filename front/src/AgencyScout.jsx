@@ -13,6 +13,18 @@ const COLUMNS = [
   { key: 'distance_m', label: 'Distance' },
 ]
 
+// 75020 → « Paris 20e », 69003 → « Lyon 3e », 13008 → « Marseille 8e ».
+// Ailleurs, la commune lue dans l'adresse suffit.
+const ARRONDISSEMENTS = { 75: 'Paris', 69: 'Lyon', 13: 'Marseille' }
+
+function fmtZone(cp, ville) {
+  if (!cp) return 'Sans adresse'
+  const base = ARRONDISSEMENTS[cp.slice(0, 2)]
+  const rang = Number(cp.slice(2))
+  if (base && rang >= 1 && rang <= 20) return `${base} ${rang}${rang === 1 ? 'er' : 'e'}`
+  return ville ? `${ville} (${cp})` : cp
+}
+
 function fmtDistance(m) {
   if (m == null) return '—'
   return m < 1000 ? `${m} m` : `${(m / 1000).toFixed(1).replace('.', ',')} km`
@@ -31,6 +43,9 @@ export default function AgencyScout() {
   const [error, setError] = useState('')
   const [sort, setSort] = useState({ key: 'score', dir: -1 })
   const [categorie, setCategorie] = useState('')
+  // Filtre d'affichage par arrondissement ou commune — sans rapport avec le
+  // code postal du scan, qui décide de ce qu'on va chercher.
+  const [zone, setZone] = useState('')
   const [rayon, setRayon] = useState(3000)
   const [cp, setCp] = useState('')
   const [launching, setLaunching] = useState(false)
@@ -166,10 +181,29 @@ export default function AgencyScout() {
     }
   }
 
+  const zones = useMemo(() => {
+    const counts = new Map()
+    for (const a of data?.agencies || []) {
+      const cle = a.code_postal || ''
+      const entry = counts.get(cle) || { value: cle, label: fmtZone(a.code_postal, a.ville), count: 0 }
+      entry.count += 1
+      counts.set(cle, entry)
+    }
+    // Les vraies zones d'abord, par code postal ; « Sans adresse » en dernier.
+    return [...counts.values()].sort((a, b) =>
+      a.value === '' ? 1 : b.value === '' ? -1 : a.value.localeCompare(b.value))
+  }, [data])
+
+  // Un scan peut faire disparaître la zone filtrée. Rester dessus afficherait
+  // une liste vide sans dire pourquoi : on retombe sur « Toutes ».
+  const zoneActive = zones.some((z) => z.value === zone) ? zone : ''
+
   const rows = useMemo(() => {
-    const list = (data?.agencies || []).filter((a) => !categorie || a.categorie === categorie)
+    const list = (data?.agencies || []).filter((a) =>
+      (!categorie || a.categorie === categorie) &&
+      (zoneActive === '' || (a.code_postal || '') === zoneActive))
     return [...list].sort((a, b) => sort.dir * compare(a, b, sort.key))
-  }, [data, categorie, sort])
+  }, [data, categorie, zoneActive, sort])
 
   // Retenir & préparer : même circuit que la V2 (POST /api/agencies/target,
   // source=scout). Le serveur vérifie le domaine dans la base scout, ajoute
@@ -303,6 +337,19 @@ export default function AgencyScout() {
         {[['', 'Toutes'], ['agence', 'Agences'], ['formation', 'Formation'], ['autre', 'Autres']].map(([v, l]) => (
           <button key={v} type="button" className={categorie === v ? 'chip active' : 'chip'} onClick={() => setCategorie(v)}>{l}</button>
         ))}
+        {zones.length > 1 && (
+          <label className="scout-zone">
+            Zone
+            <select value={zoneActive} onChange={(e) => setZone(e.target.value)}>
+              <option value="">Toutes ({data?.agencies?.length || 0})</option>
+              {zones.map((z) => (
+                <option key={z.value || 'sans-adresse'} value={z.value}>
+                  {z.label} ({z.count})
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <span className="scout-count">{rows.length} structures</span>
       </div>
 

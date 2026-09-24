@@ -550,6 +550,19 @@ def scan(queries: list[str] | None = None, center=DEFAULT_CENTER, radius_m: int 
         db.close()
 
 
+def address_parts(address: str | None) -> tuple[str | None, str | None]:
+    """Code postal et commune **lus** dans l'adresse Google, jamais déduits.
+
+    « 10 rue X, 75020 Paris, France » → ("75020", "Paris"). Une fiche sans
+    adresse rend (None, None) : elle ne se range dans aucun arrondissement, et
+    c'est une information, pas un trou à combler.
+    """
+    match = re.search(r"\b(\d{5})\b[,\s]+([^,]+)", str(address or ""))
+    if not match:
+        return (None, None)
+    return match.group(1), re.sub(r"\s+", " ", match.group(2)).strip() or None
+
+
 def list_agencies(categorie: str | None = None, min_score: int = 0, path: Path = DB_PATH) -> dict:
     db = connect(path)
     sql = """SELECT a.place_id, a.name, a.address, a.distance_m, a.website, a.domain, a.lat, a.lng,
@@ -568,6 +581,9 @@ def list_agencies(categorie: str | None = None, min_score: int = 0, path: Path =
             r["emails"] = json.loads(r["emails"]) if r["emails"] else []
         except (TypeError, ValueError):
             r["emails"] = []
+        # De quoi filtrer par arrondissement ou par commune sans que le front
+        # ait à découper une adresse lui-même.
+        r["code_postal"], r["ville"] = address_parts(r["address"])
     month = datetime.now(timezone.utc).strftime("%Y-%m")
     usage = db.execute("SELECT calls FROM usage WHERE month = ?", (month,)).fetchone()
     out = {"agencies": rows, "running": get_meta(db, "running"), "last_scan": get_meta(db, "last_scan"),

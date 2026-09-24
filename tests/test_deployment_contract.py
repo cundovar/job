@@ -33,6 +33,20 @@ def test_agency_scout_view_carries_target_button_and_task_resume():
     assert "'--consignes'" in service
 
 
+def test_le_filtre_par_zone_lit_le_champ_que_le_serveur_expose():
+    """Le front filtre sur `code_postal`, que `list_agencies` dérive de l'adresse.
+
+    Renommer le champ d'un seul côté rendrait le sélecteur muet sans erreur :
+    toutes les fiches tomberaient dans « Sans adresse ».
+    """
+    core = (PROJECT_ROOT / "agency_scout/core.py").read_text(encoding="utf-8")
+    assert 'r["code_postal"], r["ville"] = address_parts(r["address"])' in core
+
+    jsx = (PROJECT_ROOT / "front/src/AgencyScout.jsx").read_text(encoding="utf-8")
+    assert "a.code_postal" in jsx
+    assert "scout-zone" in jsx
+
+
 def test_runtime_image_contains_front_export_module():
     dockerfile = (PROJECT_ROOT / "Dockerfile").read_text(encoding="utf-8")
     copy_commands = [

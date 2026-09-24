@@ -184,3 +184,43 @@ def test_un_domaine_deja_connu_n_est_pas_duplique(base, monkeypatch):
 def test_une_url_non_publique_est_refusee(base, url):
     with pytest.raises(ValueError):
         core.add_agency(url, path=base)
+
+
+# --- Filtrage par arrondissement / commune ------------------------------------
+# Le front regroupe sur ces deux champs. Ils sont **lus** dans l'adresse Google :
+# une fiche sans adresse ne se range dans aucun arrondissement, et c'est une
+# information, pas un trou à combler.
+
+@pytest.mark.parametrize("adresse,attendu", [
+    ("10 rue X, 75020 Paris, France", ("75020", "Paris")),
+    ("75011 Paris", ("75011", "Paris")),
+    ("2 av. Y, 93100 Montreuil, France", ("93100", "Montreuil")),
+    ("12 rue Z, 69003 Lyon 3e", ("69003", "Lyon 3e")),
+    ("Lyon", (None, None)),
+    ("", (None, None)),
+    (None, (None, None)),
+])
+def test_le_code_postal_et_la_commune_sont_lus_dans_l_adresse(adresse, attendu):
+    assert core.address_parts(adresse) == attendu
+
+
+def test_list_agencies_expose_le_code_postal_et_la_commune(base, monkeypatch):
+    db = core.connect(base)
+    db.execute(
+        """INSERT INTO agencies (place_id, name, address, lat, lng, distance_m, website, domain,
+                                 types, query, first_seen, last_seen, source)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        ("places-1", "Agence Vingtième", "10 rue X, 75020 Paris, France", 48.86, 2.39, 200,
+         "https://vingtieme.fr", "vingtieme.fr", "", "agence web",
+         core.now(), core.now(), "places"),
+    )
+    db.commit()
+    db.close()
+    monkeypatch.setattr(core, "fetch_site_text", _fetch())
+    core.add_agency("https://sans-adresse.fr", path=base)  # saisie manuelle : adresse NULL
+
+    par_domaine = {a["domain"]: a for a in core.list_agencies(path=base)["agencies"]}
+
+    assert (par_domaine["vingtieme.fr"]["code_postal"], par_domaine["vingtieme.fr"]["ville"]) == ("75020", "Paris")
+    assert par_domaine["sans-adresse.fr"]["code_postal"] is None
+    assert par_domaine["sans-adresse.fr"]["ville"] is None
