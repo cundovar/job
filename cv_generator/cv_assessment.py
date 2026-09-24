@@ -251,16 +251,25 @@ def evaluate_truthfulness(
         }
         for item in report["truth_issues"]
     ]
+    source_issues = report.get("source_issues", [])
+    if issues:
+        reason = "Contenu non autorisé détecté."
+    elif source_issues:
+        # La source est incomplète, pas fausse : la dimension ne bascule pas en
+        # échec, mais le CV ne part pas sans que la raison soit nommée.
+        reason = (
+            f"Profil maître incomplet sur {len(source_issues)} point(s) de date : "
+            + " ; ".join(str(item.get("detail") or item.get("code")) for item in source_issues[:3])
+        )
+    else:
+        reason = "Contenu entièrement relié au profil maître."
     return {
         "status": "fail" if issues else "pass",
         "issues": issues,
         "details": report["truth_issues"],
         "format_issues": report["format_issues"],
-        "reason": (
-            "Contenu entièrement relié au profil maître."
-            if not issues
-            else "Contenu non autorisé détecté."
-        ),
+        "source_issues": source_issues,
+        "reason": reason,
     }
 
 

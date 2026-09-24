@@ -61,15 +61,34 @@ Un bloc groupé est écrit directement par l'agent :
 Le champ historique `source_highlight_indexes` reste lu pendant la migration :
 il désigne implicitement les highlights de l'expérience qui porte la puce.
 
-### Les deux familles d'erreurs
+### Les trois familles d'erreurs
 
 | Famille | Effet | Exemples de codes |
 |---|---|---|
-| `truth` | **Bloque la publication.** Statut `blocked`. | `UNKNOWN_EXPERIENCE`, `BULLET_WITHOUT_SOURCE`, `SOURCE_OUT_OF_RANGE`, `SOURCE_OUTSIDE_EXPERIENCE`, `UNDECLARED_GROUP_MEMBER`, `GROUP_TOO_FEW_MEMBERS`, `UNKNOWN_SKILL`, `UNKNOWN_PROJECT_TECHNOLOGY`, `UNKNOWN_EDUCATION`, `FORBIDDEN_CLAIM`, `CLAIM_NOT_SUPPORTED_BY_SOURCE` |
+| `truth` | **Bloque la publication.** Statut `blocked`. | `UNKNOWN_EXPERIENCE`, `BULLET_WITHOUT_SOURCE`, `SOURCE_OUT_OF_RANGE`, `SOURCE_OUTSIDE_EXPERIENCE`, `UNDECLARED_GROUP_MEMBER`, `GROUP_TOO_FEW_MEMBERS`, `UNKNOWN_SKILL`, `UNKNOWN_PROJECT_TECHNOLOGY`, `UNKNOWN_EDUCATION`, `FORBIDDEN_CLAIM`, `CLAIM_NOT_SUPPORTED_BY_SOURCE`, `TEMPORAL_CLAIM_NOT_IN_SOURCE` |
 | `format` | **Interdit l'export final**, corrigeable par une révision. Statut `review`. | `BULLET_TOO_LONG`, `TOO_MANY_BULLETS`, `PROFILE_TOO_LONG`, `TOO_MANY_SKILLS`, `EMPTY_EXPERIENCE`, `EXPERIENCE_ORDER_NOT_ANTICHRONOLOGICAL` |
+| `source` | **Le profil maître ne dit pas ce qu'il faudrait.** Statut `review`, **sans aucun tour de révision** : aucun agent ne peut le réparer. | `SOURCE_END_DATE_UNCONFIRMED`, `SOURCE_TEMPORAL_CLAIM_CONFLICT` |
 
 L'ordre antéchronologique est **signalé**, jamais rétabli : c'est au réviseur de
 le corriger, faute de quoi Python déciderait à la place de l'agent.
+
+### Les dates : rien n'est déduit d'une absence
+
+Une période se lit telle quelle. **Une fin absente ne veut pas dire « en
+cours »** : seul `"ongoing": true` l'affirme. Sans lui, la période se rend
+`« 2023 – (fin à confirmer) »`, se trie sur sa date de début, et produit un
+`SOURCE_END_DATE_UNCONFIRMED` qui met le CV en `review`.
+
+C'est le défaut qui avait sorti un CV où un freelance 2023-2024 s'affichait
+`« 2023 – Aujourd'hui »` **au-dessus** des missions 2026 : la fin manquait dans
+le profil, et deux règles opposées s'en accommodaient — le rendu y lisait un
+présent, le tri y lisait `9999-12`.
+
+Une puce qui affirme une activité en cours (`depuis`, `aujourd'hui`,
+`actuellement`) sur une période fermée est fautive dans les deux sens : si la
+preuve citée le dit aussi, c'est le profil qui se contredit
+(`SOURCE_TEMPORAL_CLAIM_CONFLICT`) ; si elle ne le dit pas, l'agent a ajouté une
+date (`TEMPORAL_CLAIM_NOT_IN_SOURCE`, bloquant).
 
 ### Ce que Python n'a pas le droit de faire
 
@@ -103,7 +122,7 @@ plan → rédaction → vérité (Python puis agent) → juge recruteur
 |---|---|---|---|
 | `preparing` | génération en cours (état de la tâche asynchrone) | — | non |
 | `ready` | vérité acceptée, gabarit conforme, évaluation `ready` | oui | oui |
-| `review` | le juge demande une correction, ou une contrainte de gabarit subsiste | **non** | non |
+| `review` | le juge demande une correction, une contrainte de gabarit subsiste, ou la source est incomplète | **non** | non |
 | `blocked` | une affirmation n'est pas reliée au profil maître | **non** | non |
 | `absent` | aucun CV généré — **le CV reste optionnel**, rien n'est bloqué | — | oui |
 
@@ -132,7 +151,7 @@ est-il publiable ». L'API, le catalogue et le front la lisent tous — auparava
 trois prédicats divergents cohabitaient, et aucun ne lisait `overall_status`.
 
 - `GET /applications/:id/cv/status` expose `status`, `reason`,
-  `blocking_issues`, `format_issues`, `revision_rounds` ;
+  `blocking_issues`, `format_issues`, `source_issues`, `revision_rounds` ;
 - le téléchargement d'un fichier final répond **409** hors `ready` ;
 - l'approbation d'envoi et « J'ai postulé » sont refusées si un CV existe mais
   n'est pas validé ; **sans CV généré, le flux est inchangé** ;

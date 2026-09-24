@@ -543,6 +543,13 @@ export default function ManualCvView({ onOpenCandidatures }) {
                   ))}
                 </ul>
               )}
+              {(result.status?.source_issues || []).slice(0, 6).length > 0 && (
+                <ul>
+                  {result.status.source_issues.slice(0, 6).map((item, index) => (
+                    <li key={`source-${index}`}><code>{item.path}</code> — {item.detail}</li>
+                  ))}
+                </ul>
+              )}
               {(result.status?.format_issues || []).slice(0, 6).length > 0 && (
                 <ul>
                   {result.status.format_issues.slice(0, 6).map((item, index) => (

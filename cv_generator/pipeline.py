@@ -144,6 +144,7 @@ def _finish_without_content(
         "agent_error": error,
         "blocking_issues": [],
         "format_issues": [],
+        "source_issues": [],
     }
     trace = {
         "pipeline": "ai_cv_pipeline_v4",
@@ -383,6 +384,9 @@ def prepare_custom_cv(
 
     blocking_issues = list(truth_check.get("truth_issues", []))
     format_issues = list(truth_check.get("format_issues", []))
+    # Une source incomplète n'a jamais déclenché de tour de révision plus haut :
+    # elle ne se corrige pas à la plume, elle se tranche dans le profil maître.
+    source_issues = list(truth_check.get("source_issues", []))
 
     _write_progress(output_dir, "export", revision_round=revision_rounds)
     save_json(output_dir / "cv_adaptation_plan.json", plan)
@@ -407,7 +411,7 @@ def prepare_custom_cv(
     # erreur de gabarit non résorbée interdit l'export final.
     if blocking_issues and assessment["overall_status"] != "blocked":
         assessment["overall_status"] = "blocked"
-    elif format_issues and assessment["overall_status"] == "ready":
+    elif (format_issues or source_issues) and assessment["overall_status"] == "ready":
         assessment["overall_status"] = "review"
     if agent_contract_error and assessment["overall_status"] == "ready":
         # Un CV dont la dernière révision a échoué n'est pas « prêt » : la
@@ -421,6 +425,7 @@ def prepare_custom_cv(
         "truth_verdict": truth_check.get("verdict"),
         "blocking_issues": blocking_issues,
         "format_issues": format_issues,
+        "source_issues": source_issues,
     }
 
     published = assessment["overall_status"] == "ready"
@@ -489,6 +494,7 @@ def prepare_custom_cv(
         "automatic_revision_limit": MAX_AUTOMATIC_REVISION_ROUNDS,
         "stopped_because": stopped_because,
         "agent_error": agent_contract_error,
+        "source_issue_count": len(source_issues),
         "published": published,
         "stale_artefacts_removed": removed,
         "python_guardrails": [
@@ -498,6 +504,7 @@ def prepare_custom_cv(
             "compétences, projets et formations vérifiés contre les libellés autorisés",
             "contraintes de gabarit et affirmations interdites signalées, jamais corrigées en silence",
             "artefacts cv_final réservés au statut ready",
+            "période sans fin prouvée signalée en source_issues, jamais rendue « Aujourd'hui »",
         ],
     }
     save_json(output_dir / "cv_agent_trace.json", trace)

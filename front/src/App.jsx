@@ -1080,6 +1080,18 @@ function CandidaturesView({ mission = 'annonce' }) {
                   </ul>
                 </>
               )}
+              {(cvStatus?.source_issues || []).length > 0 && (
+                <>
+                  <strong>Profil maître à compléter</strong>
+                  <ul>
+                    {cvStatus.source_issues.slice(0, 6).map((item, index) => (
+                      <li key={`source-${index}`}>
+                        <code>{item.path}</code> — {item.detail}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
               {(cvStatus?.format_issues || []).length > 0 && (
                 <>
                   <strong>Contraintes de mise en page restantes</strong>

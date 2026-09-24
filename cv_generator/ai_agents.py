@@ -1262,6 +1262,9 @@ def _merge_truth_check(
         "unsupported_count": len(unsupported),
         "truth_issues": issues,
         "format_issues": validation["format_issues"],
+        # Une source incomplète n'entre pas dans le contrat de correction : le
+        # réviseur n'a rien à y réparer, elle se transporte jusqu'au verdict.
+        "source_issues": validation.get("source_issues", []),
         "python_validation": {
             "ok": validation["ok"],
             "truthful": validation["truthful"],

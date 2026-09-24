@@ -70,13 +70,23 @@ def compact_items(items: Iterable[str], limit: int, max_chars: int | None = None
 
 
 def period_to_text(period: Dict[str, Any] | None) -> str:
+    """Rend une période sans jamais deviner ce que la source ne dit pas.
+
+    Une fin absente n'est pas une activité en cours : seul ``ongoing`` l'affirme.
+    Sans lui, la fin reste inconnue et se lit comme telle — le CV part en
+    révision plutôt que de publier un « Aujourd'hui » que rien ne prouve.
+    """
     if not isinstance(period, dict):
         return ""
     start = period.get("start") or ""
-    end = period.get("end") or "Aujourd'hui"
-    if not start and not period.get("end"):
+    end = period.get("end") or ""
+    if not start and not end:
         return ""
-    return f"{start} – {end}"
+    if end:
+        return f"{start} – {end}"
+    if period.get("ongoing") is True:
+        return f"{start} – Aujourd'hui"
+    return f"{start} – (fin à confirmer)"
 
 
 def flatten_skills(skills: Dict[str, Any]) -> List[str]:
