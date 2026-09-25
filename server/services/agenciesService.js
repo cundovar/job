@@ -19,6 +19,11 @@ const SEARCHES_DIR = path.join(AGENCIES_DIR, 'searches');
 const SEARCH_INDEX_PATH = path.join(AGENCIES_DIR, 'index.json');
 const LATEST_PATH = path.join(AGENCIES_DIR, 'latest.json');
 const ANALYSES_PATH = path.join(PROJECT_ROOT, 'data/agency_analyses.json');
+// Décisions de tri, par **domaine** : écarter une agence vue à Nanterre doit la
+// montrer écartée quand elle ressort à Puteaux. Hors des snapshots de passe,
+// qui sont figés, et hors Git comme tout `data/`.
+const DECISIONS_PATH = path.join(PROJECT_ROOT, 'data/agency_decisions.json');
+const DECISION_VALUES = new Set(['retenu', 'ecarte']);
 
 // Identifiant produit par make_search_id : `<zone-slug>-<AAAAMMJJ-HHMMSS>`.
 // Le motif interdit `/` et `..` ; l'appartenance à l'index est vérifiée en plus,
@@ -623,6 +628,56 @@ function readPersistedAnalyses() {
   return { updated_at: cache?.updated_at || null, count: Object.keys(analyses).length, analyses };
 }
 
+/**
+ * Décisions lues, aplaties par domaine. Une valeur inconnue n'est pas une
+ * décision : elle est ignorée plutôt que servie telle quelle, sinon un fichier
+ * abîmé colorerait des lignes au hasard.
+ */
+function readDecisions() {
+  const raw = readJsonFile(DECISIONS_PATH);
+  const entries = raw && typeof raw.decisions === 'object' && raw.decisions ? raw.decisions : {};
+  const decisions = {};
+  for (const [key, entry] of Object.entries(entries)) {
+    const domain = normalizeDomain(key);
+    const value = entry && typeof entry === 'object' ? entry.decision : entry;
+    if (!domain || !DECISION_VALUES.has(value)) continue;
+    decisions[domain] = {
+      domain,
+      decision: value,
+      // Une décision sans date ne se relit plus dans six mois.
+      decided_at: (entry && typeof entry === 'object' && entry.decided_at) || null,
+      source: (entry && typeof entry === 'object' && entry.source) || '',
+    };
+  }
+  return { updated_at: raw?.updated_at || null, count: Object.keys(decisions).length, decisions };
+}
+
+/**
+ * Pose ou retire une décision. `decision` à null efface : une décision se
+ * reprend. Écriture atomique — un fichier tronqué rendrait toutes les
+ * décisions illisibles d'un coup.
+ */
+function writeDecision(domain, decision, source = '') {
+  const normalized = normalizeDomain(domain);
+  if (!normalized) throw new Error('Domaine manquant.');
+  if (decision !== null && !DECISION_VALUES.has(decision)) {
+    throw new Error(`Décision inconnue : ${decision}. Valeurs possibles : retenu, ecarte, ou null pour revenir à « à décider ».`);
+  }
+  const raw = readJsonFile(DECISIONS_PATH);
+  const decisions = raw && typeof raw.decisions === 'object' && raw.decisions ? { ...raw.decisions } : {};
+  if (decision === null) {
+    delete decisions[normalized];
+  } else {
+    decisions[normalized] = { decision, decided_at: new Date().toISOString(), source };
+  }
+  fs.mkdirSync(path.dirname(DECISIONS_PATH), { recursive: true });
+  const payload = { updated_at: new Date().toISOString(), decisions };
+  const temporary = `${DECISIONS_PATH}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
+  fs.renameSync(temporary, DECISIONS_PATH);
+  return decisions[normalized] || { domain: normalized, decision: null };
+}
+
 export {
   normalizeDomain,
   validateDomain,
@@ -640,6 +695,8 @@ export {
   readSearchIndex,
   readSearchPayload,
   readPersistedAnalyses,
+  readDecisions,
+  writeDecision,
   knownSearchIds,
   LATEST_SEARCH_ID,
   SEARCH_ID_PATTERN

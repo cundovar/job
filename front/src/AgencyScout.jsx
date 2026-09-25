@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ExternalLink, LoaderCircle, Plus, RotateCw, Search, TriangleAlert } from 'lucide-react'
 import { zoneOptions } from './zones'
+import AgencyDecision from './AgencyDecision'
+import { A_DECIDER, decisionCounts, matchesDecision, useAgencyDecisions } from './agencyDecisions'
 import './AgencyScout.css'
 
 const SCOUT_TARGET_TASKS_KEY = 'scout_target_tasks'
@@ -38,6 +40,10 @@ export default function AgencyScout() {
   const [rayon, setRayon] = useState(3000)
   const [cp, setCp] = useState('')
   const [scanInfo, setScanInfo] = useState('')
+  // Tri « retenu / écarté », partagé avec l'onglet Agences : même domaine,
+  // même décision, quelle que soit la page où elle a été prise.
+  const { decisionOf, decide, pendingOf, error: decisionError } = useAgencyDecisions()
+  const [decisionFiltre, setDecisionFiltre] = useState('')
   const [launching, setLaunching] = useState(false)
   // Ajout manuel : une URL, un nom facultatif, et le retour du serveur à afficher.
   const [addUrl, setAddUrl] = useState('')
@@ -186,12 +192,18 @@ export default function AgencyScout() {
   // une liste vide sans dire pourquoi : on retombe sur « Toutes ».
   const zoneActive = zones.some((z) => z.value === zone) ? zone : ''
 
+  const decisionStats = useMemo(
+    () => decisionCounts(data?.agencies || [], (a) => decisionOf(a.domain)),
+    [data, decisionOf],
+  )
+
   const rows = useMemo(() => {
     const list = (data?.agencies || []).filter((a) =>
       (!categorie || a.categorie === categorie) &&
-      (zoneActive === '' || (a.code_postal || '') === zoneActive))
+      (zoneActive === '' || (a.code_postal || '') === zoneActive) &&
+      matchesDecision(decisionOf(a.domain), decisionFiltre))
     return [...list].sort((a, b) => sort.dir * compare(a, b, sort.key))
-  }, [data, categorie, zoneActive, sort])
+  }, [data, categorie, zoneActive, sort, decisionFiltre, decisionOf])
 
   // Retenir & préparer : même circuit que la V2 (POST /api/agencies/target,
   // source=scout). Le serveur vérifie le domaine dans la base scout, ajoute
@@ -320,6 +332,8 @@ export default function AgencyScout() {
 
       {scanInfo && <p className="scout-added">{scanInfo}</p>}
 
+      {decisionError && <p className="scout-error">{decisionError}</p>}
+
       {error && <p className="scout-error"><TriangleAlert size={16} /> {error}</p>}
 
       <div className="scout-filters">
@@ -339,6 +353,15 @@ export default function AgencyScout() {
             </select>
           </label>
         )}
+        <span className="scout-sep" aria-hidden="true">|</span>
+        {[['', `Toutes (${decisionStats.toutes})`],
+          [A_DECIDER, `À décider (${decisionStats[A_DECIDER]})`],
+          ['retenu', `Retenues (${decisionStats.retenu})`],
+          ['ecarte', `Écartées (${decisionStats.ecarte})`]].map(([v, l]) => (
+          <button key={v || 'toutes'} type="button"
+            className={decisionFiltre === v ? 'chip active' : 'chip'}
+            onClick={() => setDecisionFiltre(v)}>{l}</button>
+        ))}
         <span className="scout-count">{rows.length} structures</span>
       </div>
 
@@ -357,7 +380,7 @@ export default function AgencyScout() {
           </thead>
           <tbody>
             {rows.map((a) => (
-              <tr key={a.place_id}>
+              <tr key={a.place_id} className={decisionOf(a.domain) ? `is-decision-${decisionOf(a.domain)}` : ''}>
                 <td>
                   <strong>{a.name || a.domain}</strong>
                   {a.source === 'manuel' && <span className="scout-origin">saisie manuelle</span>}
@@ -388,6 +411,13 @@ export default function AgencyScout() {
                   {!a.resume && <span className="scout-sub">{a.error || (a.website ? 'Pas encore analysé' : 'Pas de site web sur Google')}</span>}
                 </td>
                 <td className="scout-action">
+                  {a.domain && (
+                    <AgencyDecision
+                      decision={decisionOf(a.domain)}
+                      pending={pendingOf(a.domain)}
+                      onDecide={(valeur) => decide(a.domain, valeur, 'scout')}
+                    />
+                  )}
                   {a.domain && (
                     <textarea
                       className="scout-consignes"

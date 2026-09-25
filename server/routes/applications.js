@@ -32,7 +32,9 @@ import {
   sameProspectingRequest,
   readSearchIndex,
   readSearchPayload,
-  readPersistedAnalyses
+  readPersistedAnalyses,
+  readDecisions,
+  writeDecision
 } from '../services/agenciesService.js';
 
 // Vérifie qu'un domaine existe dans la base Agency Scout (SQLite via CLI).
@@ -1301,6 +1303,31 @@ export default function createApplicationsRouter(repo) {
     }
   });
 
+  // GET /api/agencies/decisions — Tri retenu/écarté, par domaine, tous onglets
+  // confondus : c'est la même agence, elle n'a pas deux avis selon la page.
+  router.get('/agencies/decisions', (_req, res) => {
+    try {
+      res.json(readDecisions());
+    } catch (err) {
+      console.error('[GET /agencies/decisions]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // PUT /api/agencies/decisions/:domain — Pose ou retire une décision.
+  // `decision: null` revient à « à décider » : une décision se reprend. Rien
+  // n'est supprimé de la liste — un écarté effacé serait redécouvert au scan
+  // suivant, réanalysé, et reposerait la même question.
+  router.put('/agencies/decisions/:domain', (req, res) => {
+    try {
+      const raw = req.body?.decision;
+      const decision = raw === null || raw === undefined || raw === '' ? null : String(raw);
+      res.json({ ok: true, ...writeDecision(req.params.domain, decision, String(req.body?.source || '')) });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
   // POST /api/agencies/target — Ajoute une agence puis met la préparation en file
   // Deux sources : 'search' (défaut) relit l'agence dans la passe affichée
   // (search_id) ; 'scout' vérifie le domaine dans la base Agency Scout
@@ -1396,6 +1423,10 @@ export default function createApplicationsRouter(repo) {
         appendToCSV(csvPath, displayName, normalizedDomain, scoutOptions);
         appendToYAML(yamlPath, displayName, normalizedDomain, scoutOptions);
         console.log(`[POST /agencies/target] Agence ${displayName} ajoutée au ciblage (source: ${source})`);
+        // Préparer une candidature, c'est retenir. L'inverse — une fiche
+        // préparée qui resterait « à décider » — se relirait comme un oubli.
+        try { writeDecision(normalizedDomain, 'retenu', 'preparation'); }
+        catch (err) { console.error('[POST /agencies/target] décision non écrite:', err.message); }
       }
 
       if (dry) {

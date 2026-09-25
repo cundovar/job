@@ -16,6 +16,8 @@ import HermesChat from './HermesChat'
 import RecipientEditor from './RecipientEditor'
 import { setRecipientRole, withPrimaryRecipient } from './recipients'
 import { zoneOptions } from './zones'
+import AgencyDecision from './AgencyDecision'
+import { A_DECIDER, decisionCounts, matchesDecision, useAgencyDecisions } from './agencyDecisions'
 
 const DATA_URL = '/data'
 
@@ -1640,6 +1642,9 @@ function AgenciesView() {
   // périmètre de la recherche : celui-ci décide de ce qu'on va chercher,
   // celui-là de ce qu'on regarde dans ce qui a été trouvé.
   const [zoneFilter, setZoneFilter] = useState('')
+  // Tri « retenu / écarté » — même magasin que l'onglet Agences v3 :
+  // une agence jugée ici l'est aussi là-bas.
+  const [decisionFiltre, setDecisionFiltre] = useState('')
   const [targetingState, setTargetingState] = useState({}) // { [domain]: { pending, done, error } }
   // Consignes IA par domaine : ce qu'il faut appuyer pour CETTE candidature.
   // Elles partent avec le ciblage — lettre et CV ne sont rédigés qu'une fois.
@@ -1834,6 +1839,7 @@ function AgenciesView() {
   // Les anciens snapshots peuvent encore contenir des lignes injectées depuis
   // config/companies.csv sans découverte pendant la passe. Elles restent dans
   // l'archive historique, mais ne sont plus présentées comme des résultats.
+  const { decisionOf, decide, pendingOf, error: decisionError } = useAgencyDecisions()
   const allAgencies = (payload?.agencies || []).filter(agency => {
     const origins = agency.origins || [agency.origin].filter(Boolean)
     return !(origins.length === 1 && origins[0] === 'csv')
@@ -1847,9 +1853,11 @@ function AgenciesView() {
   // Changer de recherche peut faire disparaître la zone filtrée : y rester
   // afficherait une liste vide sans dire pourquoi.
   const zoneActive = zones.some(z => z.value === zoneFilter) ? zoneFilter : ''
+  const decisionStats = decisionCounts(allAgencies, a => decisionOf(a.website))
   const agencies = allAgencies.filter(a =>
     (categoryFilter === 'toutes' || (a.category || 'agence') === categoryFilter)
-    && (zoneActive === '' || (a.postal_code || '') === zoneActive))
+    && (zoneActive === '' || (a.postal_code || '') === zoneActive)
+    && matchesDecision(decisionOf(a.website), decisionFiltre))
   const counts = {
     agence: allAgencies.filter(a => (a.category || 'agence') === 'agence').length,
     formation: allAgencies.filter(a => a.category === 'formation').length,
@@ -2156,6 +2164,22 @@ function AgenciesView() {
             </label>
           )}
           <div className="agency-category-filter">
+            {[['', `Toutes (${decisionStats.toutes})`],
+              [A_DECIDER, `À décider (${decisionStats[A_DECIDER]})`],
+              ['retenu', `Retenues (${decisionStats.retenu})`],
+              ['ecarte', `Écartées (${decisionStats.ecarte})`]].map(([value, label]) => (
+              <button
+                key={value || 'toutes'}
+                type="button"
+                className={decisionFiltre === value ? 'active' : ''}
+                onClick={() => setDecisionFiltre(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {decisionError && <p className="agency-search-launch-error" role="alert">{decisionError}</p>}
+          <div className="agency-category-filter">
             {[['agence', `Agences (${counts.agence})`],
               ['formation', `Formations (${counts.formation})`],
               ['incertain', `Incertains registre (${counts.incertain})`],
@@ -2210,7 +2234,8 @@ function AgenciesView() {
               : 'Mise en file de la préparation…'
 
           return (
-            <article key={agency.website || i} className="job-card agency-card">
+            <article key={agency.website || i}
+              className={`job-card agency-card${decisionOf(agency.website) ? ` is-decision-${decisionOf(agency.website)}` : ''}`}>
               <div className="card-top">
                 <div className="card-badges">
                   <span className={agencyCategoryClass(agency)}>{agencyCategoryLabel(agency)}</span>
@@ -2274,6 +2299,13 @@ function AgenciesView() {
               )}
 
               <div className="agency-actions">
+                {domain && (
+                  <AgencyDecision
+                    decision={decisionOf(agency.website)}
+                    pending={pendingOf(agency.website)}
+                    onDecide={valeur => decide(agency.website, valeur, 'agences')}
+                  />
+                )}
                 {domain && (
                   <button
                     className={`prepare-btn ${isDone ? 'done' : ''}`}

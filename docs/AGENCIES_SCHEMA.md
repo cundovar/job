@@ -177,6 +177,37 @@ peut porter un bloc `analysis` produit par un LLM routé
 | `issues` | Problèmes de contrat relevés par la validation Python |
 | `fingerprint` / `prompt_version` / `analyzed_at` / `provider` / `model` | Traçabilité du jugement |
 
+## Le tri du candidat : `data/agency_decisions.json`
+
+Distinct de tout ce qui précède : `category` est un **verdict d'activité** lu
+dans l'auto-description, `decision` est l'avis du candidat sur une piste. Les
+deux ne se remplacent pas — une agence bien classée peut être écartée, un
+incertain peut être retenu.
+
+```jsonc
+{
+  "updated_at": "2026-09-25T09:50:00Z",
+  "decisions": {
+    // Clé : domaine normalisé (sans www), jamais l'identifiant d'une ligne de
+    // passe. Écartée à Nanterre, elle reste écartée quand elle ressort ailleurs.
+    "exemple.fr": { "decision": "retenu", "decided_at": "...", "source": "scout" }
+  }
+}
+```
+
+- Trois états, et le troisième n'est pas stocké : **absent = à décider**. Avec
+  un simple booléen, tout serait « non retenu » au départ et le rouge ne dirait
+  plus rien.
+- Seules `retenu` et `ecarte` sont des décisions. Une autre valeur est ignorée
+  à la lecture : un fichier abîmé ne doit pas colorer des lignes au hasard.
+- **Hors des snapshots**, qui sont figés : y écrire un avis réécrirait une passe.
+  Hors Git comme tout `data/`, sur le volume persistant en prod.
+- `POST /api/agencies/target` pose `retenu` : préparer une candidature, c'est
+  retenir. L'inverse se relirait comme un oubli.
+- Un écarté n'est **jamais supprimé** de la liste : effacé, il serait redécouvert
+  au scan suivant, réanalysé, et reposerait la même question. Il s'affiche
+  atténué, bordé de rouge, et se filtre.
+
 Règles de persistance :
 
 - Le cache runtime est `data/agency_analyses.json` (hors Git, volume persistant

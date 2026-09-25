@@ -54,6 +54,29 @@ def test_le_filtre_par_zone_lit_le_champ_que_le_serveur_expose():
     assert "a.postal_code" in app
 
 
+def test_le_tri_retenu_ecarte_est_partage_par_les_deux_onglets():
+    """Une décision porte sur un domaine, pas sur la ligne d'une passe.
+
+    Les snapshots de recherche sont figés : y écrire un avis les réécrirait.
+    La décision vit donc à part (`data/agency_decisions.json`), lue par les deux
+    pages — sinon la même agence aurait deux avis selon l'onglet.
+    """
+    service = (PROJECT_ROOT / "server/services/agenciesService.js").read_text(encoding="utf-8")
+    assert "data/agency_decisions.json" in service
+    assert "function writeDecision" in service
+
+    routes = (PROJECT_ROOT / "server/routes/applications.js").read_text(encoding="utf-8")
+    assert "/agencies/decisions/:domain" in routes
+    # Préparer une candidature, c'est retenir.
+    assert "writeDecision(normalizedDomain, 'retenu', 'preparation')" in routes
+
+    for page in ("front/src/App.jsx", "front/src/AgencyScout.jsx"):
+        source = (PROJECT_ROOT / page).read_text(encoding="utf-8")
+        assert "useAgencyDecisions" in source, page
+        assert "AgencyDecision" in source, page
+        assert "is-decision-" in source, page
+
+
 def test_le_scan_scout_accepte_une_commune_et_la_centre_dessus():
     """« Nanterre » dans le champ périmètre part en --ville, pas en --cp.
 

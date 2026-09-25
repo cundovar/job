@@ -1,0 +1,30 @@
+/* Deux positions, un état neutre : au repos, aucune n'est remplie. */
+.agency-decision {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--r-full, 999px);
+  overflow: hidden;
+}
+.agency-decision button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--text-muted, #64748b);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.agency-decision button + button { border-left: 1px solid var(--border); }
+.agency-decision button:hover:not(:disabled) { background: var(--surface-sunken, #f1f5f9); }
+.agency-decision button:disabled { opacity: 0.6; cursor: default; }
+.agency-decision button.is-active.is-retenu { color: #fff; background: #15803d; }
+.agency-decision button.is-active.is-ecarte { color: #fff; background: #b91c1c; }
+
+/* La ligne écartée reste lisible : atténuée et bordée de rouge, jamais cachée.
+   Une fiche supprimée serait redécouverte au scan suivant et rejugée pour rien. */
+.is-decision-ecarte { border-left: 3px solid #b91c1c !important; opacity: 0.55; }
+.is-decision-retenu { border-left: 3px solid #15803d !important; }
