@@ -348,12 +348,17 @@ function CandidaturesView({ mission = 'annonce' }) {
   const [cvReco, setCvReco] = useState({})              // { [id]: recommandations agent (préremplies) }
   const cvPollControllerRef = useRef(null)
 
-  // Charge les candidatures depuis le fichier JSON statique. Le bloc `preuves`
-  // n'existe que pour les dossiers de prospection : il suffit à les distinguer.
+  // `metadata.source` définit la nature du dossier. Les preuves servent à
+  // justifier un envoi, mais les anciens dossiers spontanés n'en ont pas : les
+  // utiliser comme filtre les faisait disparaître de l'onglet Spontanées.
   useEffect(() => {
     fetch(`${DATA_URL}/candidatures.json`)
       .then(r => r.json())
-      .then(d => setCandidatures((d.candidatures || []).filter(c => Boolean(c.preuves) === spontanee)))
+      .then(d => setCandidatures((d.candidatures || []).filter(c =>
+        spontanee
+          ? c?.metadata?.source === 'prospection_spontanee'
+          : c?.metadata?.source !== 'prospection_spontanee'
+      )))
       .catch(() => {})
   }, [spontanee])
 
@@ -833,6 +838,12 @@ function CandidaturesView({ mission = 'annonce' }) {
         </div>
 
         <PreuvesPanel preuves={c?.preuves} />
+        {spontanee && !c?.preuves && (
+          <div className="backend-warning">
+            <TriangleAlert /> Dossier historique : les preuves structurées n’étaient pas encore enregistrées.
+            Il reste consultable et son statut de candidature est conservé, mais il ne peut pas être approuvé pour un nouvel envoi depuis cette interface.
+          </div>
+        )}
 
         {/* Autorisation d'envoi. Distincte de « J'ai postulé » : celle-ci ouvre
             la porte, l'autre constate un envoi déjà fait. */}
@@ -1199,8 +1210,8 @@ function CandidaturesView({ mission = 'annonce' }) {
       </h1>
       {spontanee && (
         <p className="liste-intro">
-          Dossiers construits sans annonce. Chacun porte les preuves qui justifient
-          l'envoi : ouvre-le pour les relire avant d'approuver.
+          Dossiers construits sans annonce. Ouvre les preuves disponibles avant d’approuver un envoi ;
+          les dossiers historiques sans preuves structurées restent consultables.
         </p>
       )}
 
