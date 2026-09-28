@@ -257,11 +257,36 @@ function writeApprovalStatus(id, approved) {
   return metadata;
 }
 
+// Adresses écrites dans le texte d'une annonce (« envoyez votre CV à … »).
+// Ce ne sont que des suggestions : rien n'est sélectionné sans un clic, et
+// chaque adresse garde l'extrait d'où elle vient.
+function announcementEmailSuggestions(id, recipients = []) {
+  try {
+    const job = JSON.parse(fs.readFileSync(path.join(applicationDir(id), 'job.json'), 'utf-8'));
+    const text = String(job.description || '');
+    const taken = new Set(recipients.map(item => item.email));
+    const suggestions = [];
+    for (const match of text.matchAll(CONTACT_RE)) {
+      const email = match[0].toLowerCase();
+      if (taken.has(email)) continue;
+      taken.add(email);
+      const start = Math.max(0, match.index - 60);
+      const extrait = text.slice(start, match.index + match[0].length + 20).replace(/\s+/g, ' ').trim();
+      suggestions.push({ email, source: `texte de l’annonce : « ${extrait} »` });
+      if (suggestions.length >= 5) break;
+    }
+    return suggestions;
+  } catch {
+    return [];
+  }
+}
+
 function approvalState(id) {
   const metadata = readApplicationMetadata(id);
   let recipients = [];
   try { recipients = effectiveRecipients(id, metadata); } catch { recipients = []; }
   return {
+    suggestions: announcementEmailSuggestions(id, recipients),
     id,
     status: metadata.status || '',
     approved: metadata.status === APPROVED_STATUS,

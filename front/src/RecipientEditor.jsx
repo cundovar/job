@@ -46,7 +46,7 @@ export default function RecipientEditor({
       <div className="recipient-add-row">
         <input
           type="email"
-          placeholder="Ajouter une adresse en Cc"
+          placeholder={recipients.length ? 'Ajouter une adresse en Cc' : 'Ajouter une adresse email'}
           value={value}
           onChange={event => setValue(event.target.value)}
           disabled={!canAdd && recipients.length >= 5 || sendAttempt}

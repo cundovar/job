@@ -323,6 +323,25 @@ function PreuvesPanel({ preuves }) {
   )
 }
 
+// Sur une annonce, on postule le plus souvent sur la plateforme : l'envoi
+// par email est une option repliée, ouverte d'office seulement quand une
+// adresse est déjà choisie. Sur une spontanée, c'est le geste principal.
+function EnvoiMailOptionnel({ optionnel, ouvert, children }) {
+  if (!optionnel) return children
+  return (
+    <details className="consignes-details envoi-mail-optionnel" open={ouvert || undefined}>
+      <summary>
+        <Mail /> Envoyer aussi par email <span className="consignes-optional">(optionnel)</span>
+      </summary>
+      <p className="approval-note">
+        À utiliser seulement quand l’annonce demande une candidature par email.
+        Sinon, postule sur la plateforme puis clique « J’ai postulé ».
+      </p>
+      {children}
+    </details>
+  )
+}
+
 // `mission` sépare deux gestes qui ne se valident pas pareil : une candidature
 // sur annonce se copie-colle sur un formulaire, une spontanée s'approuve avant
 // de partir par email. Les mélanger dans une même liste rendait le bouton
@@ -890,8 +909,37 @@ function CandidaturesView({ mission = 'annonce' }) {
 
         {/* Autorisation d'envoi. Distincte de « J'ai postulé » : celle-ci ouvre
             la porte, l'autre constate un envoi déjà fait. */}
-        {c?.preuves && backendOk && (
+        {(c?.preuves || !spontanee) && backendOk && (
+          <EnvoiMailOptionnel
+            optionnel={!spontanee}
+            ouvert={hasRecipients || Boolean(approval?.approved) || hasSendAttempt}
+          >
           <div className="approval-zone">
+            {!spontanee && (approval?.suggestions || []).length > 0 && !hasSendAttempt && (
+              <div className="mail-suggestions">
+                <strong>Adresses écrites dans l’annonce</strong>
+                {(approval?.suggestions || []).map(item => (
+                  <div className="mail-suggestion" key={item.email}>
+                    <button
+                      type="button"
+                      className="annuler-btn"
+                      onClick={() => setRecipientDrafts(prev => ({
+                        ...prev,
+                        [selected]: {
+                          ...prev[selected],
+                          items: withPrimaryRecipient([...(prev[selected]?.items || recipientItems), { email: item.email, role: 'cc', source: item.source }]),
+                          saved: false,
+                        },
+                      }))}
+                      disabled={recipientItems.some(r => r.email === item.email)}
+                    >
+                      Ajouter {item.email}
+                    </button>
+                    <span className="preuve-source">{item.source}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <RecipientEditor
               recipients={recipientItems}
               pending={recipientDrafts[selected]?.pending}
@@ -901,7 +949,7 @@ function CandidaturesView({ mission = 'annonce' }) {
               onUpdate={(index, field, value) => updateRecipient(selected, index, field, value)}
               onAdd={email => setRecipientDrafts(prev => ({
                 ...prev,
-                [selected]: { ...prev[selected], items: [...withPrimaryRecipient(prev[selected]?.items || recipientItems), { email, role: 'cc', source: 'ajout_manuel' }], saved: false },
+                [selected]: { ...prev[selected], items: withPrimaryRecipient([...(prev[selected]?.items || recipientItems), { email, role: 'cc', source: 'ajout_manuel' }]), saved: false },
               }))}
               onRemove={index => removeRecipient(selected, index)}
               onSave={() => saveRecipients(selected)}
@@ -941,7 +989,7 @@ function CandidaturesView({ mission = 'annonce' }) {
                 type="button"
                 className="approve-btn"
                 onClick={() => handleApproval(selected, true)}
-                disabled={approvalPending || !preuvesSuffisantes || !hasRecipients || !recipientSaved || cvBlocksSending}
+                disabled={approvalPending || (spontanee && !preuvesSuffisantes) || !hasRecipients || !recipientSaved || cvBlocksSending}
               >
                 {approvalPending ? 'Enregistrement…' : <><ShieldCheck /> Approuver l'envoi</>}
               </button>
@@ -971,6 +1019,7 @@ function CandidaturesView({ mission = 'annonce' }) {
                 : "Ajoute au moins une adresse, puis enregistre-la avant d'approuver l'envoi."}
             </p>
           </div>
+          </EnvoiMailOptionnel>
         )}
 
         {/* Bouton / badge postulé dans la vue détail */}
