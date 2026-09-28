@@ -24,6 +24,9 @@ def stub_hermes_letter(request, monkeypatch):
     import applications.application_builder as builder
     monkeypatch.setattr(
         builder,
-        "generate_motivation_letter",
-        lambda job, recommendation, user_profile=None: "# Lettre de motivation\n\nMadame, Monsieur,\n",
+        "generate_motivation_letter_with_report",
+        lambda job, recommendation, user_profile=None: (
+            "# Lettre de motivation\n\nMadame, Monsieur,\n",
+            {"etat": "sans_consigne", "suivies": [], "ecartees": []},
+        ),
     )

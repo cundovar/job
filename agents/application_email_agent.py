@@ -6,6 +6,9 @@ from __future__ import annotations
 from typing import Any, Dict
 
 
+MAIL_NOTE_MAX = 1000
+
+
 def _job_value(job: Dict[str, Any], key: str, default: str = "") -> str:
     value = job.get(key, default)
     return str(value).strip() if value is not None else default
@@ -62,6 +65,12 @@ def generate_application_email(
         if spontaneous
         else f"Je vous adresse ma candidature pour le poste de {title}{company_line}."
     )
+    # Phrase écrite par le candidat lui-même dans l'interface : insérée telle
+    # quelle, jamais reformulée ni complétée. C'est sa parole, pas une
+    # déduction du modèle — le mail reste un gabarit sans IA.
+    note = _job_value(job, "mail_personal_note")[:MAIL_NOTE_MAX]
+    note_block = [note, ""] if note else []
+
     return "\n".join([
         objet,
         "",
@@ -71,6 +80,7 @@ def generate_application_email(
         "",
         pitch,
         "",
+        *note_block,
         f"CV joint : {recommendation.cv_name}",
         f"Portfolio : {portfolio}",
         "",

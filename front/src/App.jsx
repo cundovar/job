@@ -17,6 +17,8 @@ import RecipientEditor from './RecipientEditor'
 import { setRecipientRole, withPrimaryRecipient } from './recipients'
 import { zoneOptions } from './zones'
 import AgencyDecision from './AgencyDecision'
+import ConsignesEditor, { ConsignesReport } from './ConsignesEditor'
+import { saveLastConsignes } from './consignes'
 import { A_DECIDER, decisionCounts, matchesDecision, useAgencyDecisions } from './agencyDecisions'
 
 const DATA_URL = '/data'
@@ -346,6 +348,7 @@ function CandidaturesView({ mission = 'annonce' }) {
   const [editLettre, setEditLettre] = useState({})      // { [id]: { editing, value, pending, saved, error } }
   const [editMail, setEditMail] = useState({})          // { [id]: { editing, value, pending, saved, error } }
   const [cvReco, setCvReco] = useState({})              // { [id]: recommandations agent (préremplies) }
+  const [regenLettre, setRegenLettre] = useState({})    // { [id]: { consignes, mailNote, pending, ok, error } }
   const cvPollControllerRef = useRef(null)
 
   // `metadata.source` définit la nature du dossier. Les preuves servent à
@@ -755,6 +758,40 @@ function CandidaturesView({ mission = 'annonce' }) {
     }
   }
 
+  // Refait lettre + mail avec d'autres consignes. Le serveur remplace les
+  // deux fichiers et retire l'approbation : on le fait confirmer avant.
+  const handleRegenerateLettre = async (id, draft) => {
+    const consignes = (draft?.consignes || '').trim()
+    const mailNote = (draft?.mailNote || '').trim()
+    const ok = window.confirm(
+      "La lettre et le mail seront réécrits, tes modifications manuelles remplacées, et l'approbation d'envoi retirée. Continuer ?"
+    )
+    if (!ok) return
+    setRegenLettre(prev => ({ ...prev, [id]: { ...prev[id], pending: true, ok: false, error: null } }))
+    saveLastConsignes({ consignes, mailNote })
+    try {
+      const res = await fetch(`/api/applications/${id}/lettre/prepare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ consignes, mail_note: mailNote }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      const result = await waitForPreparation(data.task_id, data.status)
+      if (result.candidature) {
+        setCandidatures(prev => prev.map(item => (item.id === id ? { ...item, ...result.candidature } : item)))
+      }
+      // Les éditeurs locaux montreraient l'ancienne version : on les vide.
+      setEditLettre(prev => ({ ...prev, [id]: undefined }))
+      setEditMail(prev => ({ ...prev, [id]: undefined }))
+      setCvReco(prev => ({ ...prev, [id]: consignes }))
+      setRegenLettre(prev => ({ ...prev, [id]: { ...prev[id], pending: false, ok: true } }))
+      refreshApproval(id)
+    } catch (err) {
+      setRegenLettre(prev => ({ ...prev, [id]: { ...prev[id], pending: false, error: err.message || 'Régénération impossible.' } }))
+    }
+  }
+
   // Préremplit les recommandations agent depuis le dossier sélectionné
   // (sans écraser une édition locale en cours).
   useEffect(() => {
@@ -827,6 +864,12 @@ function CandidaturesView({ mission = 'annonce' }) {
     const lettreIncluse = approval?.include_lettre !== false
     const hasSendAttempt = Boolean(sendBrevo[selected]?.ok)
     const preuvesSuffisantes = Boolean(c?.preuves)
+    // Brouillon de régénération : préremplie avec les consignes du dossier
+    // (ou, pour un ancien dossier, celles que la chaîne CV lit dans job.json).
+    const regenDraft = regenLettre[selected]?.consignes !== undefined ? regenLettre[selected] : {
+      consignes: c?.metadata?.consignes?.lettre ?? cvReco[selected] ?? '',
+      mailNote: c?.metadata?.consignes?.mail_note ?? '',
+    }
     return (
       <div className="candidature-detail">
         <button className="tab back-btn" onClick={() => setSelected(null)}><ArrowLeft /> Retour</button>
@@ -991,6 +1034,30 @@ function CandidaturesView({ mission = 'annonce' }) {
             </>
           )}
         </div>
+        <ConsignesReport consignes={c?.metadata?.consignes} />
+        <details className="consignes-details">
+          <summary>Refaire la lettre et le mail avec d'autres consignes</summary>
+          <ConsignesEditor
+            value={regenDraft}
+            onChange={next => setRegenLettre(prev => ({ ...prev, [selected]: { ...prev[selected], ...next, ok: false } }))}
+            disabled={regenLettre[selected]?.pending || hasSendAttempt}
+          />
+          <div className="prepare-actions">
+            <button
+              className="prepare-btn"
+              onClick={() => handleRegenerateLettre(selected, regenDraft)}
+              disabled={regenLettre[selected]?.pending || hasSendAttempt}
+            >
+              {regenLettre[selected]?.pending ? 'Réécriture en cours…' : <><RotateCw /> Refaire la lettre et le mail</>}
+            </button>
+          </div>
+          {regenLettre[selected]?.ok && (
+            <p className="approval-note" style={{ color: '#0F6E66' }}><CircleCheck /> Lettre et mail réécrits. Relis-les, puis approuve à nouveau l'envoi.</p>
+          )}
+          {regenLettre[selected]?.error && (
+            <p className="approval-note" style={{ color: '#fb7185' }}>{regenLettre[selected].error}</p>
+          )}
+        </details>
         {editLettre[selected]?.editing && (
           <>
             <textarea
@@ -2672,6 +2739,7 @@ function App() {
   const [fetchError, setFetchError] = useState(false)
   const [preparePendingKey, setPreparePendingKey] = useState(null)
   const [prepareMessage, setPrepareMessage] = useState(null)
+  const [jobConsignes, setJobConsignes] = useState({})       // { [prepareKey]: { consignes, mailNote } }
   const { status: searchStatus, launching: searchLaunching, launch: launchSearch } = useSearchRunner()
 
   const loadIndex = useCallback(() => {
@@ -2741,11 +2809,17 @@ function App() {
     const key = job.url || `${job.title}-${job.company}`
     setPreparePendingKey(key)
     setPrepareMessage(null)
+    // Consignes optionnelles : champs vides = génération habituelle.
+    const { consignes = '', mailNote = '' } = jobConsignes[key] || {}
+    const payloadJob = { ...job }
+    if (consignes.trim()) payloadJob.candidate_instructions = consignes.trim()
+    if (mailNote.trim()) payloadJob.mail_personal_note = mailNote.trim()
+    saveLastConsignes({ consignes, mailNote })
     try {
       const res = await fetch('/api/applications/prepare', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ job }),
+        body: JSON.stringify({ job: payloadJob }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -2949,6 +3023,19 @@ function App() {
                           )}
                         </details>
                       )}
+                      <details className="consignes-details">
+                        <summary>
+                          Personnaliser la lettre et le mail <span className="consignes-optional">(optionnel)</span>
+                          {(jobConsignes[prepareKey]?.consignes?.trim() || jobConsignes[prepareKey]?.mailNote?.trim()) && (
+                            <span className="consignes-dot" aria-label="consignes saisies" />
+                          )}
+                        </summary>
+                        <ConsignesEditor
+                          value={jobConsignes[prepareKey]}
+                          onChange={next => setJobConsignes(prev => ({ ...prev, [prepareKey]: next }))}
+                          disabled={isPreparing}
+                        />
+                      </details>
                       <div className="prepare-actions">
                         <button
                           className="prepare-btn"

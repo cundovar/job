@@ -80,7 +80,13 @@ def _load_system_prompt() -> str:
         "## Format de reponse (impose par l'appelant)\n\n"
         "Reponds UNIQUEMENT avec un objet JSON valide, sans bloc de code :\n"
         '{"lettre": "<texte complet de la lettre en markdown>", '
-        '"angle_motivation": "<angle retenu en une phrase>"}'
+        '"angle_motivation": "<angle retenu en une phrase>", '
+        '"consignes_suivies": ["<consigne appliquee, reformulee brievement>"], '
+        '"consignes_ecartees": [{"consigne": "<consigne non appliquee>", '
+        '"raison": "<pourquoi : absente des preuves, contradictoire...>"}]}\n\n'
+        "Sans `consignes_candidat`, renvoie deux listes vides. Chaque consigne "
+        "reçue apparait dans l'une des deux listes : une consigne ecartee se "
+        "declare, elle ne disparait pas en silence."
     )
 
 
@@ -118,6 +124,41 @@ def _build_payload(
     }
 
 
+def _clean_list(value: Any, limit: int = 20) -> list[str] | None:
+    if not isinstance(value, list):
+        return None
+    return [str(item).strip()[:500] for item in value[:limit] if str(item).strip()]
+
+
+def _consignes_report(consignes: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    """Ce que l'agent dit avoir fait des consignes du candidat.
+
+    Trois états : ``sans_consigne`` (rien demandé), ``rapporte`` (l'agent a
+    rempli les deux listes) et ``non_rapporte`` (des consignes étaient
+    présentes mais l'agent n'a rien déclaré). Ce dernier cas n'est pas un
+    échec : on ne sait pas, et le front doit le dire au lieu de supposer
+    que tout a été suivi.
+    """
+    if not consignes:
+        return {"etat": "sans_consigne", "suivies": [], "ecartees": []}
+    suivies = _clean_list(data.get("consignes_suivies"))
+    raw_ecartees = data.get("consignes_ecartees")
+    ecartees = None
+    if isinstance(raw_ecartees, list):
+        ecartees = []
+        for item in raw_ecartees[:20]:
+            if isinstance(item, dict):
+                consigne = str(item.get("consigne") or "").strip()[:500]
+                raison = str(item.get("raison") or "").strip()[:500]
+            else:
+                consigne, raison = str(item).strip()[:500], ""
+            if consigne:
+                ecartees.append({"consigne": consigne, "raison": raison})
+    if suivies is None or ecartees is None:
+        return {"etat": "non_rapporte", "suivies": suivies or [], "ecartees": ecartees or []}
+    return {"etat": "rapporte", "suivies": suivies, "ecartees": ecartees}
+
+
 def generate_motivation_letter(
     job: Dict[str, Any],
     recommendation: Any,
@@ -125,6 +166,19 @@ def generate_motivation_letter(
     bridge_client: CLIAgentBridgeClient | None = None,
 ) -> str:
     """Ask the CLI bridge to write the letter. Raises MotivationLetterError on failure."""
+    letter, _report = generate_motivation_letter_with_report(
+        job, recommendation, user_profile, bridge_client=bridge_client
+    )
+    return letter
+
+
+def generate_motivation_letter_with_report(
+    job: Dict[str, Any],
+    recommendation: Any,
+    user_profile: Dict[str, Any] | None = None,
+    bridge_client: CLIAgentBridgeClient | None = None,
+) -> tuple[str, Dict[str, Any]]:
+    """Comme ``generate_motivation_letter``, plus le rapport sur les consignes."""
     payload = _build_payload(job, recommendation, user_profile)
     system_prompt = _load_system_prompt()
     from cv_generator.ai_agents import CVAgentError, CVLLMClient
@@ -141,4 +195,5 @@ def generate_motivation_letter(
     letter = (result.data.get("lettre") or "").strip()
     if not letter:
         raise MotivationLetterError("L'agent IA n'a pas renvoyé de lettre.")
-    return _stamp_place_and_date(letter)
+    report = _consignes_report(payload["consignes_candidat"], result.data)
+    return _stamp_place_and_date(letter), report

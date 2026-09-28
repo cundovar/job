@@ -2083,3 +2083,65 @@ h3 > .lucide {
   color: var(--text-muted);
   font-size: var(--fs-xs);
 }
+
+/* --- Consignes lettre / mail --------------------------------- */
+.consignes-details {
+  margin-top: var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface);
+}
+.consignes-details > summary {
+  cursor: pointer;
+  font-size: 0.88rem;
+  color: var(--text-strong);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.consignes-optional { color: var(--text-muted); font-weight: normal; }
+.consignes-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.consignes-editor { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-2); }
+.consignes-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.consigne-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-align: left;
+}
+.consigne-chip svg { width: 0.85rem; height: 0.85rem; }
+.consigne-chip.active { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.consigne-chip:disabled { opacity: 0.6; cursor: default; }
+.consignes-label { display: flex; flex-direction: column; font-size: 0.8rem; color: var(--text-muted); }
+.consignes-label .agency-consignes { margin-top: 0.25rem; }
+.consignes-recall { align-self: flex-start; }
+.consignes-report {
+  margin: var(--sp-3) 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 3px solid var(--accent);
+  background: var(--surface);
+  font-size: 0.85rem;
+}
+.consignes-text { white-space: pre-wrap; font: inherit; margin: 0.35rem 0; color: var(--text); }
+.consignes-mail-note { margin: 0.35rem 0; color: var(--text); }
+.consignes-suivies, .consignes-ecartees { list-style: none; padding: 0; margin: 0.35rem 0; }
+.consignes-suivies li, .consignes-ecartees li, .consignes-unknown {
+  display: flex; gap: 0.35rem; align-items: flex-start; margin: 0.2rem 0;
+}
+.consignes-suivies svg, .consignes-ecartees svg, .consignes-unknown svg { width: 1rem; height: 1rem; flex: none; margin-top: 0.1rem; }
+.consignes-suivies li { color: #0F6E66; }
+.consignes-ecartees li, .consignes-unknown { color: #b45309; }

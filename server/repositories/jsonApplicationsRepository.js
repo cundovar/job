@@ -27,11 +27,11 @@ const PREPARE_TIMEOUT_MS = Number.parseInt(
  * autre requete n'etait servie (health, polling CV...) et les clients mobiles
  * perdaient la connexion avant la reponse. On passe donc en spawn asynchrone.
  */
-function runPreparePython(job) {
+function runPreparePython(payload, module = 'hermes_commands.job_prepare_payload') {
   return new Promise((resolve, reject) => {
     const child = spawn(
       PREPARE_PYTHON_BIN,
-      ['-m', 'hermes_commands.job_prepare_payload'],
+      ['-m', module],
       { cwd: PROJECT_ROOT, stdio: ['pipe', 'pipe', 'pipe'] }
     );
 
@@ -92,7 +92,7 @@ function runPreparePython(job) {
     });
 
     child.stdin.on('error', () => {});
-    child.stdin.end(JSON.stringify({ job }));
+    child.stdin.end(JSON.stringify(payload));
   });
 }
 
@@ -175,7 +175,7 @@ export default class JsonApplicationsRepository extends ApplicationsRepository {
       throw new Error('Offre invalide : titre ou URL requis');
     }
 
-    const stdout = await runPreparePython(job);
+    const stdout = await runPreparePython({ job });
 
     let prepared;
     try {
@@ -186,6 +186,21 @@ export default class JsonApplicationsRepository extends ApplicationsRepository {
 
     const candidature = await this.getById(prepared.id);
     return { ...prepared, candidature };
+  }
+
+  async regenerateLetter(id, { consignes = '', mailNote = '' } = {}) {
+    const stdout = await runPreparePython(
+      { id, consignes, mail_note: mailNote },
+      'hermes_commands.job_regenerate_letter'
+    );
+    let regenerated;
+    try {
+      regenerated = JSON.parse(stdout);
+    } catch {
+      throw new Error(`Réponse régénération invalide : ${stdout}`);
+    }
+    const candidature = await this.getById(id);
+    return { ...regenerated, candidature };
   }
 
   async markApplied(id) {
