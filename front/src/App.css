@@ -2159,3 +2159,16 @@ h3 > .lucide {
 .cv-validated strong { display: inline-flex; align-items: center; gap: 0.35rem; }
 .cv-validated strong svg { width: 1rem; height: 1rem; }
 .cv-publication-diagnostic.cv-validated { background: var(--ok-bg); border-color: var(--ok-border); }
+
+/* --- Noms des fichiers PDF ------------------------------------- */
+.pdf-names > summary svg { width: 1rem; height: 1rem; }
+.pdf-names input[type="text"] {
+  margin-top: 0.25rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+}

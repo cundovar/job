@@ -26,7 +26,7 @@ from company_analysis.duplicate import duplicate_check
 
 from .application_tracker import ApplicationTracker
 from .mail_template import render_mail_html
-from .sender import EmailSender, SendResult
+from .sender import EmailSender, SendResult, _attachment_label, labeled
 
 CONTACT_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 APPROVED_STATUS = "APPROVED"
@@ -127,13 +127,43 @@ def user_validated_cv(dossier: Path) -> Path | None:
     return pdf if isinstance(validation, dict) and validation.get("preview_sha256") == digest else None
 
 
+ATTACHMENT_NAME_MAX = 120
+_FORBIDDEN_NAME_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+
+
+def clean_attachment_name(value: Any) -> str:
+    """Nom de fichier choisi par le candidat, rendu sûr ; vide = nom par défaut.
+
+    Même règle que le serveur (server/routes/applications.js) : pas de
+    séparateur de chemin ni de caractère interdit, 120 caractères au plus,
+    toujours en .pdf.
+    """
+    name = _FORBIDDEN_NAME_CHARS.sub(" ", str(value or ""))
+    name = re.sub(r"\s+", " ", name).strip()
+    if name.lower().endswith(".pdf"):
+        name = name[:-4]
+    name = name.strip(" .")[: ATTACHMENT_NAME_MAX - 4].strip(" .")
+    return f"{name}.pdf" if name else ""
+
+
+def attachment_names(metadata: Dict[str, Any]) -> Dict[str, str]:
+    raw = metadata.get("attachment_names")
+    raw = raw if isinstance(raw, dict) else {}
+    return {kind: clean_attachment_name(raw.get(kind)) for kind in ("cv", "lettre")}
+
+
 def attachment_paths(dossier: Path, metadata: Dict[str, Any]) -> List[Path]:
     """Les pièces jointes réellement présentes, lettre comprise si elle est voulue."""
+    names = attachment_names(metadata)
     final_cv = dossier / "cv" / "cv_final.pdf"
-    candidates = [final_cv if final_cv.exists() else (user_validated_cv(dossier) or final_cv)]
+    candidates = [("cv", final_cv if final_cv.exists() else (user_validated_cv(dossier) or final_cv))]
     if include_lettre(metadata):
-        candidates.append(dossier / "lettre_motivation.pdf")
-    return [path for path in candidates if path.exists()]
+        candidates.append(("lettre", dossier / "lettre_motivation.pdf"))
+    return [
+        labeled(path, names[kind]) if names[kind] else path
+        for kind, path in candidates
+        if path.exists()
+    ]
 
 
 def recipient_fingerprint(recipients: list[dict[str, str]]) -> str:
@@ -303,6 +333,7 @@ def send_dossier(
     # texte seul ; le contrôle CV amont reste maître du refus.
     attachments = attachment_paths(dossier_path, payload["metadata"])
     result["would_send"]["attachments"] = [path.name for path in attachments]
+    result["would_send"]["attachment_names"] = [_attachment_label(path) for path in attachments]
 
     if not commit:
         # Défaut sec : on s'arrête ici, le fournisseur n'est jamais touché.

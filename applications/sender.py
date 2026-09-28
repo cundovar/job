@@ -55,8 +55,28 @@ ATTACHMENT_LABELS = {
 }
 
 
+class LabeledPath(type(Path())):
+    """Un fichier joint qui porte le nom choisi par le candidat.
+
+    Le chemin reste le fichier interne (cv_final.pdf…) ; seul le nom vu par le
+    destinataire change. Sous-classe de Path : les expéditeurs existants
+    continuent de lire le fichier sans rien savoir du nom.
+    """
+
+    label: str = ""
+
+
+def labeled(path: Path, label: str) -> Path:
+    item = LabeledPath(path)
+    item.label = label
+    return item
+
+
 def _attachment_label(path: Path) -> str:
     """Nom lisible pour le destinataire, pas un nom de fichier interne."""
+    custom = getattr(path, "label", "")
+    if custom:
+        return custom
     return ATTACHMENT_LABELS.get(Path(path).name.lower(), Path(path).name)
 
 

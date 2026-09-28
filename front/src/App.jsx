@@ -335,6 +335,60 @@ function PreuvesPanel({ preuves }) {
   )
 }
 
+// Noms des fichiers PDF du dossier : ceux du téléchargement et ceux que voit
+// le recruteur en pièce jointe. Un champ vide garde le nom par défaut.
+function PdfNamesEditor({ value, defaults, onChange, onSave, pending, saved, error, locked, approved }) {
+  const draft = value || {}
+  const customised = Boolean(draft.cv?.trim() || draft.lettre?.trim())
+  return (
+    <details className="consignes-details pdf-names" open={customised || undefined}>
+      <summary>
+        <FileText /> Noms des fichiers PDF <span className="consignes-optional">(optionnel)</span>
+      </summary>
+      <div className="consignes-editor">
+        <label className="consignes-label">
+          CV
+          <input
+            type="text"
+            maxLength={120}
+            value={draft.cv || ''}
+            placeholder={defaults.cv || 'CV - Facundo Varas.pdf'}
+            disabled={pending || locked}
+            onChange={e => onChange({ ...draft, cv: e.target.value })}
+          />
+        </label>
+        <label className="consignes-label">
+          Lettre de motivation
+          <input
+            type="text"
+            maxLength={120}
+            value={draft.lettre || ''}
+            placeholder={defaults.lettre || 'Lettre de motivation - Facundo Varas.pdf'}
+            disabled={pending || locked}
+            onChange={e => onChange({ ...draft, lettre: e.target.value })}
+          />
+        </label>
+        <p className="approval-note">
+          Utilisés au téléchargement et en pièce jointe du mail. Vide = nom par défaut ; « .pdf » est ajouté si besoin.
+          {approved && ' Changer un nom retire l’approbation d’envoi.'}
+        </p>
+        <div>
+          <button
+            type="button"
+            className="copy-btn"
+            onClick={() => onSave(draft)}
+            disabled={pending || locked}
+          >
+            {pending ? 'Enregistrement…' : 'Enregistrer les noms'}
+          </button>
+        </div>
+        {saved && <p className="approval-note" style={{ color: '#0F6E66' }}><CircleCheck /> Noms enregistrés.</p>}
+        {error && <p className="approval-note" style={{ color: '#fb7185' }}>{error}</p>}
+      </div>
+    </details>
+  )
+}
+
 // Sur une annonce, on postule le plus souvent sur la plateforme : l'envoi
 // par email est une option repliée, ouverte d'office seulement quand une
 // adresse est déjà choisie. Sur une spontanée, c'est le geste principal.
@@ -379,6 +433,7 @@ function CandidaturesView({ mission = 'annonce' }) {
   const [editLettre, setEditLettre] = useState({})      // { [id]: { editing, value, pending, saved, error } }
   const [editMail, setEditMail] = useState({})          // { [id]: { editing, value, pending, saved, error } }
   const [cvReco, setCvReco] = useState({})              // { [id]: recommandations agent (préremplies) }
+  const [pdfNames, setPdfNames] = useState({})          // { [id]: { cv, lettre, pending, saved, error } }
   const [cvValidation, setCvValidation] = useState({})  // { [id]: { pending, error } }
   const [regenLettre, setRegenLettre] = useState({})    // { [id]: { consignes, mailNote, pending, ok, error } }
   const cvPollControllerRef = useRef(null)
@@ -428,6 +483,27 @@ function CandidaturesView({ mission = 'annonce' }) {
     navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  // Nom des fichiers PDF (téléchargement et pièces jointes). Vide = défaut.
+  const savePdfNames = async (id, draft) => {
+    setPdfNames(prev => ({ ...prev, [id]: { ...prev[id], pending: true, saved: false, error: null } }))
+    try {
+      const res = await fetch(`/api/applications/${id}/attachment-names`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cv: draft.cv || '', lettre: draft.lettre || '' }),
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
+      setPdfNames(prev => ({
+        ...prev,
+        [id]: { cv: payload.attachment_names?.cv || '', lettre: payload.attachment_names?.lettre || '', pending: false, saved: true },
+      }))
+      refreshApproval(id)
+    } catch (err) {
+      setPdfNames(prev => ({ ...prev, [id]: { ...prev[id], pending: false, error: err.message || 'Enregistrement impossible.' } }))
+    }
   }
 
   // Tu tranches là où l'IA hésitait : un CV « à corriger » peut être accepté
@@ -941,6 +1017,23 @@ function CandidaturesView({ mission = 'annonce' }) {
             <TriangleAlert /> Dossier historique : les preuves structurées n’étaient pas encore enregistrées.
             Il reste consultable et son statut de candidature est conservé, mais il ne peut pas être approuvé pour un nouvel envoi depuis cette interface.
           </div>
+        )}
+
+        {backendOk && approval && (
+          <PdfNamesEditor
+            value={pdfNames[selected]?.cv !== undefined ? pdfNames[selected] : {
+              cv: approval.attachment_names?.cv || '',
+              lettre: approval.attachment_names?.lettre || '',
+            }}
+            defaults={approval.default_attachment_names || {}}
+            onChange={next => setPdfNames(prev => ({ ...prev, [selected]: { ...prev[selected], ...next, saved: false } }))}
+            onSave={draft => savePdfNames(selected, draft)}
+            pending={pdfNames[selected]?.pending}
+            saved={pdfNames[selected]?.saved}
+            error={pdfNames[selected]?.error}
+            locked={hasSendAttempt}
+            approved={Boolean(approval?.approved)}
+          />
         )}
 
         {/* Autorisation d'envoi. Distincte de « J'ai postulé » : celle-ci ouvre

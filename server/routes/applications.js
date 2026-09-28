@@ -300,6 +300,26 @@ function announcementEmailSuggestions(id, recipients = []) {
   }
 }
 
+// Noms des fichiers PDF choisis par le candidat. Même règle que
+// applications/send.py (clean_attachment_name) : pas de séparateur de chemin
+// ni de caractère interdit, 120 caractères au plus, toujours en .pdf.
+const DEFAULT_ATTACHMENT_NAMES = {
+  cv: 'CV - Facundo Varas.pdf',
+  lettre: 'Lettre de motivation - Facundo Varas.pdf',
+};
+
+function cleanAttachmentName(value) {
+  let name = String(value ?? '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (name.toLowerCase().endsWith('.pdf')) name = name.slice(0, -4);
+  name = name.replace(/^[\s.]+|[\s.]+$/g, '').slice(0, 116).replace(/^[\s.]+|[\s.]+$/g, '');
+  return name ? `${name}.pdf` : '';
+}
+
+function customAttachmentNames(metadata) {
+  const raw = metadata?.attachment_names && typeof metadata.attachment_names === 'object' ? metadata.attachment_names : {};
+  return { cv: cleanAttachmentName(raw.cv), lettre: cleanAttachmentName(raw.lettre) };
+}
+
 function approvalState(id) {
   const metadata = readApplicationMetadata(id);
   let recipients = [];
@@ -314,6 +334,8 @@ function approvalState(id) {
     recipients_hash: metadata.approval_recipients_hash || null,
     // Clé absente = la lettre part, comme tous les dossiers l'ont toujours fait.
     include_lettre: metadata.send_include_lettre !== false,
+    attachment_names: customAttachmentNames(metadata),
+    default_attachment_names: DEFAULT_ATTACHMENT_NAMES,
   };
 }
 
@@ -1121,7 +1143,8 @@ export default function createApplicationsRouter(repo) {
       if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Aucun PDF de lettre pour ce dossier' });
       const application = await repo.getById(req.params.id);
       const metadata = readApplicationMetadata(req.params.id);
-      res.download(filePath, downloadFilename(application || {
+      const custom = customAttachmentNames(metadata).lettre;
+      res.download(filePath, custom || downloadFilename(application || {
         entreprise: metadata.company,
         poste: metadata.job_title,
       }, 'Lettre.pdf'));
@@ -1155,10 +1178,11 @@ export default function createApplicationsRouter(repo) {
       const application = await repo.getById(req.params.id);
       const metadata = readApplicationMetadata(req.params.id);
       // Un aperçu que tu as validé se télécharge sous le nom d'un CV, pas « À corriger ».
-      const downloadAs = file === USER_VALIDATED_PDF && cvStatus(req.params.id).status === 'validated'
-        ? 'cv_final.pdf'
-        : file;
-      res.download(filePath, downloadFilename(application || {
+      const sentAsCv = file === 'cv_final.pdf'
+        || (file === USER_VALIDATED_PDF && cvStatus(req.params.id).status === 'validated');
+      const downloadAs = sentAsCv ? 'cv_final.pdf' : file;
+      const custom = sentAsCv ? customAttachmentNames(metadata).cv : '';
+      res.download(filePath, custom || downloadFilename(application || {
         entreprise: metadata.company,
         poste: metadata.job_title,
       }, downloadAs));
@@ -1282,6 +1306,33 @@ export default function createApplicationsRouter(repo) {
       fs.renameSync(temporaryPath, metadataPath);
       res.json({ ok: true, include_lettre: metadata.send_include_lettre, approved: false });
     } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // PUT /api/applications/:id/attachment-names — { cv, lettre }
+  // Nom des fichiers PDF, au téléchargement comme en pièce jointe. Vide = nom
+  // par défaut. Le nom vu par le destinataire change : l'approbation tombe.
+  router.put('/applications/:id/attachment-names', (req, res) => {
+    try {
+      const dir = applicationDir(req.params.id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      if (hasSendRecord(req.params.id)) return res.status(409).json({ error: 'Ce dossier possède déjà une tentative d’envoi ; ses pièces jointes sont verrouillées.' });
+      const names = { cv: cleanAttachmentName(req.body?.cv), lettre: cleanAttachmentName(req.body?.lettre) };
+      const metadataPath = path.join(dir, 'metadata.json');
+      const metadata = readApplicationMetadata(req.params.id);
+      const kept = Object.fromEntries(Object.entries(names).filter(([, value]) => value));
+      if (Object.keys(kept).length) metadata.attachment_names = kept;
+      else delete metadata.attachment_names;
+      metadata.status = READY_STATUS;
+      metadata.approval_updated_at = new Date().toISOString();
+      delete metadata.approval_recipients_hash;
+      const temporaryPath = `${metadataPath}.${process.pid}.tmp`;
+      fs.writeFileSync(temporaryPath, `${JSON.stringify(metadata, null, 2)}\n`, 'utf-8');
+      fs.renameSync(temporaryPath, metadataPath);
+      res.json({ ok: true, attachment_names: names, default_attachment_names: DEFAULT_ATTACHMENT_NAMES, approved: false });
+    } catch (err) {
+      console.error('[PUT /applications/:id/attachment-names]', err.message);
       res.status(400).json({ error: err.message });
     }
   });

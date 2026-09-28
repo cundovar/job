@@ -536,3 +536,57 @@ def test_une_validation_perimee_ne_joint_pas_l_apercu(tmp_path):
     )
 
     assert result["would_send"]["attachments"] == ["lettre_motivation.pdf"]
+
+
+# ── Noms des fichiers PDF choisis par le candidat ─────────────────────────
+
+def test_les_pieces_jointes_portent_les_noms_choisis(tmp_path):
+    from applications.sender import _attachment_label
+
+    dossier = make_dossier(tmp_path)
+    _pdfs(dossier)
+    metadata_path = dossier / "metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["attachment_names"] = {"cv": "CV Facundo Varas - Webmaster", "lettre": "Lettre / Acme.PDF"}
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    result = send_dossier(
+        dossier, FakeSender(),
+        tracker=ApplicationTracker(tmp_path / "tracker.json"),
+        companies_csv="/dev/null",
+    )
+
+    # Le fichier interne ne change pas ; seul le nom vu par le destinataire change.
+    assert result["would_send"]["attachments"] == ["cv_final.pdf", "lettre_motivation.pdf"]
+    assert result["would_send"]["attachment_names"] == [
+        "CV Facundo Varas - Webmaster.pdf",
+        "Lettre Acme.pdf",
+    ]
+    from applications.send import attachment_paths
+
+    labels = [_attachment_label(p) for p in attachment_paths(dossier, metadata)]
+    assert labels == ["CV Facundo Varas - Webmaster.pdf", "Lettre Acme.pdf"]
+
+
+def test_sans_nom_choisi_les_noms_par_defaut_restent(tmp_path):
+    dossier = make_dossier(tmp_path)
+    _pdfs(dossier)
+
+    result = send_dossier(
+        dossier, FakeSender(),
+        tracker=ApplicationTracker(tmp_path / "tracker.json"),
+        companies_csv="/dev/null",
+    )
+
+    assert result["would_send"]["attachment_names"] == [
+        "CV - Facundo Varas.pdf",
+        "Lettre de motivation - Facundo Varas.pdf",
+    ]
+
+
+def test_un_nom_de_fichier_ne_peut_pas_sortir_du_dossier():
+    from applications.send import clean_attachment_name
+
+    assert clean_attachment_name("../../etc/passwd") == "etc passwd.pdf"
+    assert clean_attachment_name("  .pdf ") == ""
+    assert len(clean_attachment_name("a" * 300)) == 120
