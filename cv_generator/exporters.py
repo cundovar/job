@@ -779,7 +779,7 @@ def lettre_to_pdf(
     output_path: str | Path,
     design_system_path: str | Path = DEFAULT_DESIGN_SYSTEM,
     candidate_name: str = "Facundo Varas",
-    contact_line: str = "Paris 20e · varas.cundo@gmail.com · varascundo.com",
+    contact_line: str = "Paris 20e · contact@varascundo.com · varascundo.com",
 ) -> None:
     """Lettre de motivation en PDF A4, mise en page de lettre française.
 
