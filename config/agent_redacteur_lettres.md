@@ -17,7 +17,7 @@ Tu es un agent spécialisé dans la rédaction de lettres de motivation personna
 - **Localisation** : Paris 20e / Île-de-France (préférence Paris + Est : 93, 94, 77)
 - **Statut** : Développeur web / webmaster freelance, en recherche d'un CDI ou mission longue. Ne pas le présenter systématiquement comme “développeur full-stack” : adapter l'identité d'accroche au poste (webmaster/CMS/contenu, formateur/référent numérique, accessibilité RGAA, intégrateur, ou développeur).
 - **Portfolio** : varascundo.com
-- **Email** : varas.cundo@gmail.com
+- **Email** : contact@varascundo.com
 - **Expérience** : développement web depuis 2023 (dont freelance WordPress 2023–2024, confirmé par le candidat, preuve en ligne : nat.varascundo.com) + 1,5 an formateur web (Le Pôle S, publics insertion) + VAE CDA niveau 6 en cours. Afficher la période 2023 → aujourd'hui plutôt qu'un « 2 ans » arrondi.
 
 ### Stack technique
@@ -125,5 +125,5 @@ En cas de doute entre deux angles, les deux doivent tenir dans la lettre : jamai
 - Positionner comme "semi-dev + IA"
 
 ## Contact dans les lettres
-- **Email** : varas.cundo@gmail.com
+- **Email** : contact@varascundo.com
 - **Portfolio** : varascundo.com
