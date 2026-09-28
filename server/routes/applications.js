@@ -17,6 +17,8 @@ import {
   CV_FILES,
   isFinalCvFile,
   resolveCvPublication,
+  USER_VALIDATION_FILE,
+  USER_VALIDATED_PDF,
 } from '../services/cvPublication.js';
 import {
   normalizeDomain,
@@ -133,8 +135,25 @@ function cvStatus(id) {
       progress = null;
     }
   }
-  const publication = resolveCvPublication(files, assessment, review);
+  const publication = resolveCvPublication(files, assessment, review, readUserValidation(cvDir));
   return { exists: fs.existsSync(cvDir), files, review, assessment, progress, ...publication };
+}
+
+function fileSha256(filePath) {
+  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+// Validation humaine : valide seulement si l'aperçu n'a pas changé depuis.
+function readUserValidation(cvDir) {
+  const validationPath = path.join(cvDir, USER_VALIDATION_FILE);
+  const pdfPath = path.join(cvDir, USER_VALIDATED_PDF);
+  if (!fs.existsSync(validationPath) || !fs.existsSync(pdfPath)) return null;
+  try {
+    const validation = JSON.parse(fs.readFileSync(validationPath, 'utf-8'));
+    return { ...validation, valid: validation?.preview_sha256 === fileSha256(pdfPath) };
+  } catch {
+    return null;
+  }
 }
 
 function readApplicationMetadata(id) {
@@ -371,7 +390,7 @@ export default function createApplicationsRouter(repo) {
     } catch {
       return null;
     }
-    if (publication.status === 'absent' || publication.status === 'ready') return null;
+    if (['absent', 'ready', 'validated'].includes(publication.status)) return null;
     return {
       error: "Le CV de cette candidature n'est pas validé.",
       cv_status: publication.status,
@@ -1135,12 +1154,61 @@ export default function createApplicationsRouter(repo) {
       if (!fs.existsSync(filePath)) return res.status(404).json({ error: `Fichier introuvable : ${file}` });
       const application = await repo.getById(req.params.id);
       const metadata = readApplicationMetadata(req.params.id);
+      // Un aperçu que tu as validé se télécharge sous le nom d'un CV, pas « À corriger ».
+      const downloadAs = file === USER_VALIDATED_PDF && cvStatus(req.params.id).status === 'validated'
+        ? 'cv_final.pdf'
+        : file;
       res.download(filePath, downloadFilename(application || {
         entreprise: metadata.company,
         poste: metadata.job_title,
-      }, file));
+      }, downloadAs));
     } catch (err) {
       console.error('[GET /applications/:id/cv/download/:file]', err.message);
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // POST /api/applications/:id/cv/user-validation — { validated: true|false }
+  // Tu valides (ou retires ta validation d')un CV que l'IA a laissé « à
+  // corriger ». Un CV « bloqué » ne se valide pas : une affirmation y manque de
+  // preuve dans le profil maître. Ce qui partirait change : l'approbation tombe.
+  router.post('/applications/:id/cv/user-validation', (req, res) => {
+    try {
+      const id = req.params.id;
+      const dir = applicationDir(id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${id}` });
+      if (typeof req.body?.validated !== 'boolean') {
+        return res.status(400).json({ error: 'validated doit valoir true ou false.' });
+      }
+      if (hasSendRecord(id)) return res.status(409).json({ error: 'Ce dossier possède déjà une tentative d’envoi ; son CV est verrouillé.' });
+      const cvDir = path.join(dir, 'cv');
+      const validationPath = path.join(cvDir, USER_VALIDATION_FILE);
+      if (req.body.validated) {
+        const current = cvStatus(id);
+        if (current.status === 'blocked') {
+          return res.status(409).json({
+            error: 'Ce CV est bloqué par le contrôle de véracité : une affirmation n’a pas de preuve dans ton profil maître. Complète le profil ou régénère le CV.',
+            cv_status: current.status,
+          });
+        }
+        if (current.status !== 'review') {
+          return res.status(409).json({ error: `Rien à valider : le CV est au statut « ${current.status} ».`, cv_status: current.status });
+        }
+        const pdfPath = path.join(cvDir, USER_VALIDATED_PDF);
+        if (!fs.existsSync(pdfPath)) return res.status(409).json({ error: 'Aucun aperçu PDF à valider pour ce CV.' });
+        fs.writeFileSync(validationPath, `${JSON.stringify({
+          validated_at: new Date().toISOString(),
+          cv_status_at_validation: current.status,
+          ai_reason: current.reason || '',
+          preview_sha256: fileSha256(pdfPath),
+        }, null, 2)}\n`, 'utf-8');
+      } else if (fs.existsSync(validationPath)) {
+        fs.unlinkSync(validationPath);
+      }
+      writeApprovalStatus(id, false);
+      res.json({ ...statusWithTask(id), approved: false });
+    } catch (err) {
+      console.error('[POST /applications/:id/cv/user-validation]', err.message);
       res.status(400).json({ error: err.message });
     }
   });

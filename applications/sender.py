@@ -48,6 +48,8 @@ def _load_repo_env() -> None:
 
 ATTACHMENT_LABELS = {
     "cv_final.pdf": "CV - Facundo Varas.pdf",
+    # Aperçu d'un CV « à corriger » validé par l'utilisateur : c'est son CV.
+    "cv_review_preview.pdf": "CV - Facundo Varas.pdf",
     "cv_ats.pdf": "CV ATS - Facundo Varas.pdf",
     "lettre_motivation.pdf": "Lettre de motivation - Facundo Varas.pdf",
 }

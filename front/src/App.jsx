@@ -57,6 +57,7 @@ function fmtSession(search) {
 const CV_STATUS_LABELS = {
   preparing: 'Génération en cours',
   ready: 'CV prêt',
+  validated: 'Validé par toi',
   review: 'À corriger',
   blocked: 'Bloqué',
   absent: 'Pas encore généré',
@@ -90,6 +91,17 @@ function CvDownloads({ cv }) {
   const status = { files: cv.files }
   // Hors `ready`, l'API refuse les fichiers finaux : on ne propose pas un lien
   // qui renverra une erreur, et on oriente vers l'aperçu à corriger.
+  if (cv.status === 'validated') {
+    return (
+      <div className="cv-library-downloads" aria-label={`Fichiers du CV ${cv.poste || cv.id}`}>
+        {cv.files?.['cv_review_preview.pdf'] && (
+          <a className="download-btn primary" href={cvFileUrl(cv.id, 'cv_review_preview.pdf', status)} download>
+            <FileDown /> PDF (validé par toi)
+          </a>
+        )}
+      </div>
+    )
+  }
   if (cv.status !== 'ready') {
     return (
       <div className="cv-library-downloads" aria-label={`Fichiers du CV ${cv.poste || cv.id}`}>
@@ -150,7 +162,7 @@ function MesCvView() {
           <article className="cv-library-card" key={cv.id}>
             <div>
               <div className="card-top">
-                <span className={cv.status === 'ready' ? 'badge-postuler' : 'badge-peut-etre'}>
+                <span className={['ready', 'validated'].includes(cv.status) ? 'badge-postuler' : 'badge-peut-etre'}>
                   {CV_STATUS_LABELS[cv.status] || 'Incomplet'}
                 </span>
               </div>
@@ -367,6 +379,7 @@ function CandidaturesView({ mission = 'annonce' }) {
   const [editLettre, setEditLettre] = useState({})      // { [id]: { editing, value, pending, saved, error } }
   const [editMail, setEditMail] = useState({})          // { [id]: { editing, value, pending, saved, error } }
   const [cvReco, setCvReco] = useState({})              // { [id]: recommandations agent (préremplies) }
+  const [cvValidation, setCvValidation] = useState({})  // { [id]: { pending, error } }
   const [regenLettre, setRegenLettre] = useState({})    // { [id]: { consignes, mailNote, pending, ok, error } }
   const cvPollControllerRef = useRef(null)
 
@@ -415,6 +428,29 @@ function CandidaturesView({ mission = 'annonce' }) {
     navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  // Tu tranches là où l'IA hésitait : un CV « à corriger » peut être accepté
+  // tel quel. Un CV « bloqué » (preuve absente du profil maître) ne le peut pas.
+  const handleCvValidation = async (id, validated, aiReason = '') => {
+    if (validated && !window.confirm(
+      `Valider ce CV tel quel ?${aiReason ? `\n\nRemarque de l'IA : ${aiReason}` : ''}\n\nIl pourra partir avec la candidature. L'approbation d'envoi est retirée : tu devras la redonner.`
+    )) return
+    setCvValidation(prev => ({ ...prev, [id]: { pending: true, error: null } }))
+    try {
+      const res = await fetch(`/api/applications/${id}/cv/user-validation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ validated }),
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
+      setCvStatuses(prev => ({ ...prev, [id]: payload }))
+      setCvValidation(prev => ({ ...prev, [id]: { pending: false, error: null } }))
+      refreshApproval(id)
+    } catch (err) {
+      setCvValidation(prev => ({ ...prev, [id]: { pending: false, error: err.message || 'Validation impossible.' } }))
+    }
   }
 
   const refreshCvStatus = async (id) => {
@@ -1230,6 +1266,11 @@ function CandidaturesView({ mission = 'annonce' }) {
                 <a className="download-btn" href={cvFileUrl(selected, 'cv_final.json', cvStatus)} download>JSON</a>
               </>
             )}
+            {cvState === 'validated' && cvStatus?.files?.['cv_review_preview.pdf'] && (
+              <a className="download-btn" href={cvFileUrl(selected, 'cv_review_preview.pdf', cvStatus)} download>
+                <FileDown /> PDF (validé par toi)
+              </a>
+            )}
             {cvBlocksSending && cvStatus?.files?.['cv_review_preview.pdf'] && (
               // L'aperçu est téléchargeable sous un nom qui interdit de le
               // confondre avec un CV validé.
@@ -1289,10 +1330,52 @@ function CandidaturesView({ mission = 'annonce' }) {
                   </ul>
                 </>
               )}
+              {cvState === 'review' ? (
+                <div className="cv-user-validation">
+                  <p className="cv-publication-hint">
+                    Relis l'aperçu. Si le CV te convient malgré la remarque, tu peux le valider toi-même :
+                    il partira avec la candidature.
+                  </p>
+                  <button
+                    type="button"
+                    className="approve-btn"
+                    onClick={() => handleCvValidation(selected, true, cvStatus?.reason || '')}
+                    disabled={!backendOk || cvValidation[selected]?.pending || cvPendingId === selected || hasSendAttempt}
+                  >
+                    {cvValidation[selected]?.pending ? 'Enregistrement…' : <><ShieldCheck /> Valider ce CV quand même</>}
+                  </button>
+                </div>
+              ) : (
+                <p className="cv-publication-hint">
+                  Un CV bloqué ne se valide pas à la main : une affirmation n'a pas de preuve dans ton profil maître.
+                  Complète le profil maître si la preuve existe, puis régénère le CV.
+                </p>
+              )}
+              {cvValidation[selected]?.error && (
+                <p className="approval-note" style={{ color: '#fb7185' }}>{cvValidation[selected].error}</p>
+              )}
+            </div>
+          )}
+          {cvState === 'validated' && (
+            <div className="cv-publication-diagnostic cv-validated" role="status">
+              <strong><ShieldCheck /> Tu as validé ce CV tel quel.</strong>
+              {cvStatus?.user_validation?.ai_reason && (
+                <p>L'IA demandait : {cvStatus.user_validation.ai_reason}</p>
+              )}
               <p className="cv-publication-hint">
-                Relancez une génération pour tenter une nouvelle correction, ou ajustez le profil maître
-                si la preuve manque réellement.
+                Cette validation vaut pour ce CV précis : une régénération la fait tomber.
               </p>
+              <button
+                type="button"
+                className="annuler-btn"
+                onClick={() => handleCvValidation(selected, false)}
+                disabled={!backendOk || cvValidation[selected]?.pending || hasSendAttempt}
+              >
+                {cvValidation[selected]?.pending ? '…' : 'Retirer ma validation'}
+              </button>
+              {cvValidation[selected]?.error && (
+                <p className="approval-note" style={{ color: '#fb7185' }}>{cvValidation[selected].error}</p>
+              )}
             </div>
           )}
           {!backendOk && <p className="cv-generator-note">Le backend doit être disponible pour générer le CV.</p>}

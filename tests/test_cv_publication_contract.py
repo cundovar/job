@@ -41,16 +41,17 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def resolve(files, assessment=None, review=None):
+def resolve(files, assessment=None, review=None, user_validation=None):
     """Exécute la règle Node telle quelle, sans la réécrire en Python."""
     payload = json.dumps(
-        {"files": files, "assessment": assessment, "review": review}, ensure_ascii=False
+        {"files": files, "assessment": assessment, "review": review, "userValidation": user_validation},
+        ensure_ascii=False,
     )
     script = (
         f"import {{ resolveCvPublication }} from {json.dumps(RESOLVER.as_uri())};"
         f"const input = {payload};"
         "process.stdout.write(JSON.stringify("
-        "resolveCvPublication(input.files, input.assessment, input.review)));"
+        "resolveCvPublication(input.files, input.assessment, input.review, input.userValidation)));"
     )
     completed = subprocess.run(
         ["node", "--input-type=module", "-e", script],
@@ -257,3 +258,43 @@ def test_the_server_file_allowlist_covers_what_the_pipeline_writes(tmp_path, car
     produced = {path.name for path in (dossier / "cv").iterdir()}
 
     assert produced <= allowed, produced - allowed
+
+
+# --------------------------------------------------------------------------- #
+# Validation humaine d'un CV « à corriger »
+# --------------------------------------------------------------------------- #
+
+VALID = {"valid": True, "validated_at": "2026-09-28T10:00:00Z", "ai_reason": "Une puce est longue."}
+
+
+def test_un_cv_a_corriger_valide_par_l_utilisateur_devient_publiable():
+    """Règle 3 : là où l'IA hésite, c'est l'utilisateur qui tranche."""
+    result = resolve(
+        files_map(DIAGNOSTIC_FILES + PREVIEW_FILES),
+        assessment("review"),
+        {"status": "needs_minor_revision", "verdict": "Une puce est longue."},
+        VALID,
+    )
+
+    assert result["status"] == "validated"
+    assert result["reason"] == "Une puce est longue."  # la remarque de l'IA reste visible
+    assert result["user_validation"]["ai_reason"] == "Une puce est longue."
+
+
+def test_une_validation_perimee_ne_vaut_rien():
+    """L'aperçu a changé depuis (régénération) : l'accord ne le couvre pas."""
+    result = resolve(files_map(DIAGNOSTIC_FILES + PREVIEW_FILES), assessment("review"), None, {**VALID, "valid": False})
+
+    assert result["status"] == "review"
+
+
+def test_un_cv_bloque_ne_se_valide_jamais_a_la_main():
+    """Règle 2 : une affirmation sans preuve dans le profil maître reste bloquante."""
+    result = resolve(
+        files_map(DIAGNOSTIC_FILES + PREVIEW_FILES),
+        assessment("blocked", blocking=[{"code": "BULLET_WITHOUT_SOURCE", "detail": "Aucune preuve."}]),
+        None,
+        VALID,
+    )
+
+    assert result["status"] == "blocked"
