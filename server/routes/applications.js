@@ -529,7 +529,10 @@ export default function createApplicationsRouter(repo) {
     };
   }
 
-  function enqueuePrepareTask(job) {
+  // `run` produit le résultat : préparation d'une offre ou régénération
+  // d'une lettre existante. Les deux partagent la même file (un seul script
+  // Python à la fois) et le même suivi /applications/prepare/status.
+  function enqueuePrepareTask(run) {
     prepareSequence += 1;
     const task = {
       task_id: `prep_${Date.now().toString(36)}_${prepareSequence}`,
@@ -547,7 +550,7 @@ export default function createApplicationsRouter(repo) {
       task.state = 'running';
       task.started_at = new Date().toISOString();
       try {
-        task.result = await repo.prepareFromJob(job);
+        task.result = await run();
         task.state = 'completed';
       } catch (err) {
         task.state = 'failed';
@@ -790,12 +793,49 @@ export default function createApplicationsRouter(repo) {
     if (!job.title && !job.url) {
       return res.status(400).json({ error: 'Offre invalide : titre ou URL requis' });
     }
-    const task = enqueuePrepareTask(job);
+    // Consignes du candidat : optionnelles, bornées ici comme en Python.
+    // Elles partent dans job.json, jamais dans la description de l'offre.
+    const consignes = String(job.candidate_instructions || '').trim().slice(0, 2000);
+    const mailNote = String(job.mail_personal_note || '').trim().slice(0, 1000);
+    const cleanJob = { ...job };
+    delete cleanJob.candidate_instructions;
+    delete cleanJob.mail_personal_note;
+    if (consignes) cleanJob.candidate_instructions = consignes;
+    if (mailNote) cleanJob.mail_personal_note = mailNote;
+    const task = enqueuePrepareTask(() => repo.prepareFromJob(cleanJob));
     res.status(202).json({
       accepted: true,
       task_id: task.task_id,
       status: publicPrepareTask(task),
     });
+  });
+
+  // POST /api/applications/:id/lettre/prepare — Réécrit lettre + mail avec
+  // de nouvelles consignes. Refusé une fois une tentative d'envoi faite : ce
+  // qui est parti ne se réécrit pas. L'approbation tombe côté Python.
+  const regeneratingLetters = new Set();
+  router.post('/applications/:id/lettre/prepare', (req, res) => {
+    try {
+      const id = req.params.id;
+      const dir = applicationDir(id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${id}` });
+      if (hasSendRecord(id)) return res.status(409).json({ error: 'Ce dossier possède déjà une tentative d’envoi ; sa lettre est verrouillée.' });
+      if (regeneratingLetters.has(id)) return res.status(409).json({ error: 'Une régénération est déjà en cours pour ce dossier.' });
+      const consignes = String(req.body?.consignes ?? '').trim().slice(0, 2000);
+      const mailNote = String(req.body?.mail_note ?? '').trim().slice(0, 1000);
+      regeneratingLetters.add(id);
+      const task = enqueuePrepareTask(async () => {
+        try {
+          return await repo.regenerateLetter(id, { consignes, mailNote });
+        } finally {
+          regeneratingLetters.delete(id);
+        }
+      });
+      res.status(202).json({ accepted: true, task_id: task.task_id, status: publicPrepareTask(task) });
+    } catch (err) {
+      console.error('[POST /applications/:id/lettre/prepare]', err.message);
+      res.status(400).json({ error: err.message });
+    }
   });
 
   // GET /api/applications/prepare/status/:taskId — Suivi de la préparation

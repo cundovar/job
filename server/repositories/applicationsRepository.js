@@ -45,6 +45,16 @@ export default class ApplicationsRepository {
   }
 
   /**
+   * Réécrit lettre et mail d'un dossier existant avec de nouvelles consignes.
+   * @param {string} id
+   * @param {{consignes?: string, mailNote?: string}} options
+   * @returns {Promise<Object>} { id, consignes, candidature }
+   */
+  async regenerateLetter(id, options) {
+    throw new Error('regenerateLetter() non implémenté');
+  }
+
+  /**
    * Marque une candidature comme postulée.
    * Écrit applied_at = aujourd'hui et follow_up_at = aujourd'hui + 7 jours.
    * @param {string} id
