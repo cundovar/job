@@ -32,6 +32,7 @@ async function readJson(response) {
 
 const CV_STATUS_LABELS = {
   ready: 'CV prêt',
+  validated: 'CV validé par toi',
   review: 'CV à corriger',
   blocked: 'CV bloqué',
   absent: 'CV non généré',

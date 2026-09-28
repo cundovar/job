@@ -487,3 +487,52 @@ def test_le_dry_run_annonce_les_pieces_jointes(tmp_path):
 
     assert not result["refused"]
     assert result["would_send"]["attachments"] == ["cv_final.pdf", "lettre_motivation.pdf"]
+
+
+# ── CV « à corriger » validé par l'utilisateur ────────────────────────────
+
+def _preview_validated(dossier, *, tamper=False):
+    import hashlib
+
+    cv_dir = dossier / "cv"
+    cv_dir.mkdir(exist_ok=True)
+    pdf = cv_dir / "cv_review_preview.pdf"
+    pdf.write_bytes(b"%PDF-1.4 apercu")
+    digest = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    (cv_dir / "cv_user_validation.json").write_text(
+        json.dumps({"preview_sha256": digest}), encoding="utf-8"
+    )
+    if tamper:
+        # Le CV a été régénéré après la validation : autre contenu, autre empreinte.
+        pdf.write_bytes(b"%PDF-1.4 autre apercu")
+    (dossier / "lettre_motivation.pdf").write_bytes(b"%PDF-1.4 lettre")
+
+
+def test_le_cv_valide_par_l_utilisateur_part_sous_le_nom_d_un_cv(tmp_path):
+    dossier = make_dossier(tmp_path)
+    _preview_validated(dossier)
+    sender = FakeSender()
+
+    result = send_dossier(
+        dossier, sender,
+        tracker=ApplicationTracker(tmp_path / "tracker.json"),
+        companies_csv="/dev/null", commit=True,
+    )
+
+    assert result["attachments"] == ["cv_review_preview.pdf", "lettre_motivation.pdf"]
+    from applications.sender import _attachment_label
+
+    assert _attachment_label(dossier / "cv" / "cv_review_preview.pdf") == "CV - Facundo Varas.pdf"
+
+
+def test_une_validation_perimee_ne_joint_pas_l_apercu(tmp_path):
+    dossier = make_dossier(tmp_path)
+    _preview_validated(dossier, tamper=True)
+
+    result = send_dossier(
+        dossier, FakeSender(),
+        tracker=ApplicationTracker(tmp_path / "tracker.json"),
+        companies_csv="/dev/null",
+    )
+
+    assert result["would_send"]["attachments"] == ["lettre_motivation.pdf"]

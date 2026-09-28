@@ -104,9 +104,33 @@ def include_lettre(metadata: Dict[str, Any]) -> bool:
     return metadata.get("send_include_lettre", True) is not False
 
 
+USER_VALIDATION_FILE = "cv_user_validation.json"
+USER_VALIDATED_PDF = "cv_review_preview.pdf"
+
+
+def user_validated_cv(dossier: Path) -> Path | None:
+    """L'aperçu d'un CV « à corriger » que l'utilisateur a validé tel quel.
+
+    Même règle que le serveur (server/services/cvPublication.js) : l'accord
+    porte l'empreinte de l'aperçu. Un CV régénéré depuis n'est pas couvert.
+    """
+    cv_dir = dossier / "cv"
+    pdf = cv_dir / USER_VALIDATED_PDF
+    validation_path = cv_dir / USER_VALIDATION_FILE
+    if not pdf.is_file() or not validation_path.is_file():
+        return None
+    try:
+        validation = json.loads(validation_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    digest = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    return pdf if isinstance(validation, dict) and validation.get("preview_sha256") == digest else None
+
+
 def attachment_paths(dossier: Path, metadata: Dict[str, Any]) -> List[Path]:
     """Les pièces jointes réellement présentes, lettre comprise si elle est voulue."""
-    candidates = [dossier / "cv" / "cv_final.pdf"]
+    final_cv = dossier / "cv" / "cv_final.pdf"
+    candidates = [final_cv if final_cv.exists() else (user_validated_cv(dossier) or final_cv)]
     if include_lettre(metadata):
         candidates.append(dossier / "lettre_motivation.pdf")
     return [path for path in candidates if path.exists()]

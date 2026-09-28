@@ -40,6 +40,12 @@ export const CV_FILES = new Set([
 
 const FINAL_SET = new Set(FINAL_CV_FILES);
 
+// Validation humaine d'un CV que l'IA a laissé « à corriger ». Elle porte
+// l'empreinte de l'aperçu validé : un CV régénéré n'hérite jamais d'un accord
+// donné à un autre contenu.
+export const USER_VALIDATION_FILE = 'cv_user_validation.json';
+export const USER_VALIDATED_PDF = 'cv_review_preview.pdf';
+
 export function isFinalCvFile(file) {
   return FINAL_SET.has(file);
 }
@@ -62,15 +68,34 @@ function reviewReason(review, formatIssues, sourceIssues) {
 /**
  * Traduit l'état d'un dossier en statut de publication.
  *
- * `absent`  aucun CV généré — le CV reste optionnel, rien n'est bloqué ;
- * `review`  généré mais pas validé — pas de fichier final, envoi refusé ;
- * `blocked` un contrôle de vérité a échoué ;
- * `ready`   validé ET fichiers finaux présents.
+ * `absent`    aucun CV généré — le CV reste optionnel, rien n'est bloqué ;
+ * `review`    généré mais pas validé — pas de fichier final, envoi refusé ;
+ * `validated` un `review` que l'utilisateur a relu et accepté tel quel : il
+ *             tranche là où l'IA hésitait (règle 3). L'aperçu devient le CV
+ *             envoyé ; aucun fichier `cv_final` n'est fabriqué pour autant ;
+ * `blocked`   un contrôle de vérité a échoué — jamais validable à la main :
+ *             la preuve manque dans le profil maître (règle 2) ;
+ * `ready`     validé ET fichiers finaux présents.
  *
  * `preparing` n'apparaît pas ici : il vient de l'état de la tâche asynchrone,
  * pas de l'état du dossier sur disque.
  */
-export function resolveCvPublication(files = {}, assessment = null, review = null) {
+export function resolveCvPublication(files = {}, assessment = null, review = null, userValidation = null) {
+  const publication = resolveAutomaticPublication(files, assessment, review);
+  if (publication.status === 'review' && userValidation?.valid && files[USER_VALIDATED_PDF]) {
+    return {
+      ...publication,
+      status: 'validated',
+      user_validation: {
+        validated_at: userValidation.validated_at || null,
+        ai_reason: userValidation.ai_reason || publication.reason,
+      },
+    };
+  }
+  return publication;
+}
+
+function resolveAutomaticPublication(files = {}, assessment = null, review = null) {
   const hasAnyFile = Object.values(files).some(Boolean);
   const finalFilesPresent = FINAL_CV_FILES.every(file => files[file]);
 

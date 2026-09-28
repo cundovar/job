@@ -229,7 +229,8 @@ h3 > .lucide {
 }
 
 /* Statut de publication du CV : une couleur par état, la même partout. */
-.cv-publication-badge.ready {
+.cv-publication-badge.ready,
+.cv-publication-badge.validated {
   background: var(--ok-bg);
   border-color: var(--ok-border);
   color: var(--ok);
@@ -2152,3 +2153,9 @@ h3 > .lucide {
 .mail-suggestions { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: var(--sp-3); font-size: 0.85rem; }
 .mail-suggestion { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
 .mail-suggestion .preuve-source { font-size: 0.78rem; color: var(--text-muted); overflow-wrap: anywhere; }
+
+/* --- Validation manuelle d'un CV « à corriger » ---------------- */
+.cv-user-validation { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); margin-top: var(--sp-2); }
+.cv-validated strong { display: inline-flex; align-items: center; gap: 0.35rem; }
+.cv-validated strong svg { width: 1rem; height: 1rem; }
+.cv-publication-diagnostic.cv-validated { background: var(--ok-bg); border-color: var(--ok-border); }
