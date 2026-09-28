@@ -254,8 +254,8 @@ def send_dossier(
     recipients = payload["recipients"]
     if not recipients:
         refusal = (
-            "destinataire : aucune adresse publique vérifiée dans les constats du dossier — "
-            "une adresse ne se reconstitue pas."
+            "destinataire : aucune adresse choisie pour ce dossier, ni relevée dans ses "
+            "constats — une adresse ne se reconstitue pas."
         )
         result.update({"refused": True, "refusal": refusal})
         return result

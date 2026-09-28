@@ -2145,3 +2145,10 @@ h3 > .lucide {
 .consignes-suivies svg, .consignes-ecartees svg, .consignes-unknown svg { width: 1rem; height: 1rem; flex: none; margin-top: 0.1rem; }
 .consignes-suivies li { color: #0F6E66; }
 .consignes-ecartees li, .consignes-unknown { color: #b45309; }
+
+/* --- Envoi par email optionnel (annonces) --------------------- */
+.envoi-mail-optionnel > summary svg { width: 1rem; height: 1rem; }
+.envoi-mail-optionnel .approval-zone { margin-top: var(--sp-2); }
+.mail-suggestions { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: var(--sp-3); font-size: 0.85rem; }
+.mail-suggestion { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+.mail-suggestion .preuve-source { font-size: 0.78rem; color: var(--text-muted); overflow-wrap: anywhere; }
