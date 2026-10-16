@@ -89,14 +89,20 @@ def _offer_resume_markdown(job: Dict[str, Any]) -> str:
     )
 
 
-def _write_letter_pdf(motivation_letter_path: Path, directory: Path) -> Path | None:
+def _write_letter_pdf(motivation_letter_path: Path, directory: Path, job_title: str = "") -> Path | None:
     # Le PDF part en pièce jointe avec le CV : un échec d'export ne fait pas
     # échouer le dossier, le .md reste la source de vérité de la lettre.
     lettre_pdf_path = directory / "lettre_motivation.pdf"
     try:
+        from agents.motivation_letter_agent import is_mediation_poste
         from cv_generator.exporters import lettre_to_pdf
 
-        lettre_to_pdf(motivation_letter_path, lettre_pdf_path)
+        kwargs: Dict[str, Any] = {}
+        # Poste médiation numérique : pas de portfolio dans le bandeau du PDF
+        # (mediateur.varascundo.com est cité dans le corps de la lettre).
+        if is_mediation_poste(job_title):
+            kwargs["contact_line"] = "Paris 20e · contact@varascundo.com"
+        lettre_to_pdf(motivation_letter_path, lettre_pdf_path, **kwargs)
     except Exception:
         return None
     return lettre_pdf_path
@@ -131,7 +137,7 @@ def build_application_package(
     resume_path.write_text(_offer_resume_markdown(job), encoding="utf-8")
     letter, report = generate_motivation_letter_with_report(job, recommendation, user_profile)
     motivation_letter_path.write_text(letter, encoding="utf-8")
-    lettre_pdf_path = _write_letter_pdf(motivation_letter_path, directory)
+    lettre_pdf_path = _write_letter_pdf(motivation_letter_path, directory, str(job.get("title") or ""))
     application_email_path.write_text(
         generate_application_email(job, recommendation, user_profile),
         encoding="utf-8",

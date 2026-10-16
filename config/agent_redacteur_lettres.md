@@ -33,6 +33,13 @@ Tu es un agent spécialisé dans la rédaction de lettres de motivation personna
 3. **La Magicieuse** (en cours) : freelance redesign WordPress/WooCommerce headless
 4. **Qualiscope Formation** (en cours) : mission bénévole Symfony 7.4, PHPStan, PHPUnit
 5. **Pipeline n8n IA** : automatisation de génération de sites WP via agents IA
+6. **Mediateur** (mediateur.varascundo.com) : site gratuit de formation à la médiation numérique, conçu et développé seul — deux parcours (apprendre le numérique / accompagner comme médiateur), plus de vingt cours courts avec exercices et QCM, lecture à voix haute de chaque cours, utilisable hors ligne, et création de cours et exercices personnalisés par utilisateur inscrit (visibles de lui seul et de l'admin). **Projet de référence pour les postes de médiateur numérique et conseiller numérique : le citer à la place de DevDoc dans ces lettres.**
+
+### Contexte médiation numérique (Le Pôle S, Pantin)
+
+Au Pôle S à Pantin, Cundo a travaillé aux côtés de collègues qui menaient des actions de médiation numérique auprès des habitants. Il y a découvert de près le contexte de ce métier : l'accompagnement des personnes éloignées du numérique, les démarches administratives en ligne, la lutte contre l'illectronisme et le travail avec les partenaires du territoire. Cette proximité lui a donné une bonne compréhension des besoins du public et de la réalité du terrain.
+
+À utiliser pour les postes de médiateur numérique, conseiller numérique, formateur / accompagnant numérique : contexte observé de l'intérieur, jamais un poste de médiateur occupé — la formulation « aux côtés de collègues » doit rester.
 
 ## Style et ton
 
@@ -116,8 +123,11 @@ En cas de doute entre deux angles, les deux doivent tenir dans la lettre : jamai
 - Mettre en avant : La Magicieuse (projet concret), approche headless, design system
 - Mentionner plugin MCP WordPress si l'entreprise est tech-forward
 
-### Poste Formateur / Référent numérique
-- Mettre en avant : Le Pôle S, DevDoc
+### Poste Formateur / Médiateur numérique / Conseiller numérique
+- Mettre en avant : Le Pôle S, Mediateur (mediateur.varascundo.com) — dans ces lettres, citer Mediateur et non DevDoc
+- Ne JAMAIS mentionner DevDoc dans ces lettres : Mediateur le remplace (règle aussi appliquée mécaniquement par le code, qui avertit si DevDoc passe)
+- Signature SANS ligne « Portfolio » dans ces lettres : garder uniquement l'email (le code retire toute ligne Portfolio et nettoie le bandeau du PDF)
+- Mobiliser le « Contexte médiation numérique (Le Pôle S, Pantin) » : c'est l'argument de proximité terrain pour ces postes
 - Connecter à la mission sociale si ESS/insertion/culture
 
 ### Poste IA / Automatisation / n8n

@@ -11,6 +11,7 @@ since a degraded letter that looks finished is worse than a visible error.
 """
 from __future__ import annotations
 
+import logging
 import re
 from datetime import date
 from pathlib import Path
@@ -20,6 +21,51 @@ from utils.cli_agent_bridge import CLIAgentBridgeClient
 
 AGENT_NAME = "agent_redacteur_lettres"
 PROMPT_FILE = "agent_redacteur_lettres.md"
+
+_LOG = logging.getLogger(__name__)
+
+# Postes médiation numérique / conseiller numérique : règles éditoriales
+# propres à cette famille (Mediateur et non DevDoc, pas de ligne Portfolio).
+_MEDIATION_POSTE_RE = re.compile(
+    r"m[ée]diateur|m[ée]diation\s+num[ée]rique|conseiller\s+num[ée]rique|"
+    r"conseiller\s+emploi|inclusion\s+num[ée]rique|accompagnement\s+num[ée]rique",
+    re.IGNORECASE,
+)
+
+# Le seul projet pédagogique citable dans les lettres médiation numérique.
+_MEDIATION_PROJET = "Mediateur"
+# Projet interdit dans ces lettres : détecté pour avertissement, jamais
+# réécrit en silence (une réécriture mécanique inventerait des faits).
+_PROJET_INTERDIT = "DevDoc"
+
+
+def is_mediation_poste(job_title: str) -> bool:
+    """Vrai si l'intitulé relève de la médiation / du conseil numérique."""
+    return bool(_MEDIATION_POSTE_RE.search(job_title or ""))
+
+
+def apply_mediation_poste_rules(letter: str, job_title: str) -> str:
+    """Règles mécaniques des lettres médiation numérique, indépendantes de l'IA.
+
+    - La ligne « Portfolio : … » est retirée de la signature (l'email reste ;
+      mediateur.varascundo.com est cité dans le corps de la lettre).
+    - Une mention de DevDoc déclenche un avertissement visible : la lettre
+      n'est PAS réécrite automatiquement, c'est un signe que le prompt n'a pas
+      été suivi et que la lettre doit être refaite avant envoi.
+    """
+    if not is_mediation_poste(job_title):
+        return letter
+    lines = letter.splitlines()
+    kept = [line for line in lines if not line.strip().lower().startswith("portfolio")]
+    if len(kept) != len(lines):
+        _LOG.info("Ligne « Portfolio » retirée de la lettre (poste médiation numérique).")
+    if _PROJET_INTERDIT in letter:
+        _LOG.warning(
+            "Lettre pour un poste de médiation numérique mentionnant %s : "
+            "le projet à citer est %s (mediateur.varascundo.com). Regénérer la "
+            "lettre avant envoi.", _PROJET_INTERDIT, _MEDIATION_PROJET,
+        )
+    return "\n".join(kept)
 
 _MOIS_FR = [
     "janvier", "février", "mars", "avril", "mai", "juin",
@@ -196,4 +242,7 @@ def generate_motivation_letter_with_report(
     if not letter:
         raise MotivationLetterError("L'agent IA n'a pas renvoyé de lettre.")
     report = _consignes_report(payload["consignes_candidat"], result.data)
-    return _stamp_place_and_date(letter), report
+    letter = apply_mediation_poste_rules(
+        _stamp_place_and_date(letter), str(job.get("title") or "")
+    )
+    return letter, report
