@@ -7,11 +7,13 @@ const CV_DOWNLOAD_VARIANTS = {
   'cv_ats.html': 'ATS-HTML',
   'cv_final.json': 'données',
   'cv_assessment.json': 'évaluation',
-  // Les aperçus portent un nom qui interdit de les confondre avec un CV validé.
-  'cv_review_preview.pdf': 'A-CORRIGER',
-  'cv_review_preview.html': 'A-CORRIGER-HTML',
-  'cv_review_preview_ats.pdf': 'A-CORRIGER-ATS',
-  'cv_review_preview_ats.html': 'A-CORRIGER-ATS-HTML',
+  // Aperçus : même nommage que les fichiers finaux (décision Cundo, 2026-10-16 :
+  // pas de marqueur « A-CORRIGER » dans le nom de téléchargement, même quand le
+  // CV reste à corriger côté pipeline — le statut reste visible dans l'app).
+  'cv_review_preview.pdf': '',
+  'cv_review_preview.html': 'HTML',
+  'cv_review_preview_ats.pdf': 'ATS',
+  'cv_review_preview_ats.html': 'ATS-HTML',
   'cv_content.json': 'contenu',
   'cv_progress.json': 'progression',
   'cv_truth_check.json': 'controle-verite',
@@ -54,10 +56,18 @@ export function downloadFilename(application, file) {
   const company = filenamePart(application?.entreprise, 'Entreprise', 25);
   const role = roleFilenamePart(application?.poste);
   const extension = path.extname(file) || '.bin';
+  // La lettre de motivation ne porte pas le préfixe « CV_ » (décision Cundo).
+  const isLettre = /^lettre/i.test(path.basename(file));
   const configuredVariant = CV_DOWNLOAD_VARIANTS[file];
   const variant = configuredVariant === ''
     ? ''
     : filenamePart(configuredVariant || path.basename(file, extension), 'CV');
-  const basename = ['CV', candidate, company, role, variant].filter(Boolean).join('_');
+  const basename = [
+    ...(isLettre ? [] : ['CV']),
+    candidate,
+    company,
+    role,
+    variant,
+  ].filter(Boolean).join('_');
   return `${basename}${extension}`;
 }
