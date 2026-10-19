@@ -2222,3 +2222,20 @@ def test_source_gap_does_not_force_revision():
     assert review["status"] == "validated"
     assert review["source_gaps"] == ["Coordination de prestataires absente de la source"]
     assert build_correction_contract(review) == []
+
+
+def test_exigence_nommee_dans_une_puce_visible_est_prouvee():
+    from cv_generator.cv_quality_checker import review_cv
+    import json
+    from pathlib import Path
+
+    master = json.loads(Path("tests/fixtures/cv_master_sample.json").read_text(encoding="utf-8"))
+    draft = {"cv": {"title": "T", "profile": "", "skills": [], "projects": [],
+                    "experiences": [{"id": "visible", "title": "", "organization": "",
+                                     "bullets": ["Collaboration avec Jira, Git et branches"]}]}}
+    plan = {"evidence_matches": [{"requirement": "Git", "experience_ids": ["autre"], "project_ids": []}]}
+    review = review_cv({}, master, plan, draft)
+    assert not any(
+        p.get("code") == "SKILL_WITHOUT_EVIDENCE" and "Git" in p.get("problem", "")
+        for p in review["problems"]
+    )

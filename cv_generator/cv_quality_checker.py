@@ -75,6 +75,16 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
     for item in cv.get("experiences", []):
         visible_experience_ids.add(item.get("id"))
         visible_experience_ids.update(item.get("source_experience_ids", []))
+    # Texte des preuves seulement (puces et projets) : une compétence listée
+    # dans la rubrique Compétences ne se prouve pas elle-même.
+    evidence_parts: List[str] = []
+    for exp in cv.get("experiences", []):
+        for bullet in exp.get("bullets", []):
+            evidence_parts.append(bullet.get("text", "") if isinstance(bullet, dict) else str(bullet))
+    for project in cv.get("projects", []):
+        evidence_parts.append(str(project.get("description", "")))
+        evidence_parts.extend(str(item) for item in project.get("technologies", []) or [])
+    evidence_text = normalize(" ".join(evidence_parts))
     evidence_by_requirement = {}
     for match in plan.get("evidence_matches", []):
         requirement = str(match.get("requirement") or "compétence")
@@ -84,7 +94,12 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
     for requirement, evidence in evidence_by_requirement.items():
         project_ids = evidence["project_ids"]
         experience_ids = evidence["experience_ids"]
-        if (project_ids or experience_ids) and not (
+        # Une exigence nommée en toutes lettres dans une puce visible est
+        # prouvée, même si le plan citait une autre expérience pour elle (ex.
+        # « Git » prouvé par qualiscope_contributor alors que le plan visait
+        # qualiscope_backend, son alternative exclusive).
+        named_in_cv = bool(normalize(requirement)) and normalize(requirement) in evidence_text
+        if (project_ids or experience_ids) and not named_in_cv and not (
             project_ids & visible_project_ids or experience_ids & visible_experience_ids
         ):
             problems.append({
