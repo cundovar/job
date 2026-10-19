@@ -2198,3 +2198,27 @@ def test_une_experience_retiree_nest_plus_suggeree_par_python():
 
     suggeres = [item["experience_id"] for item in _experience_plan(job, {"id": "webmaster"}, master)]
     assert suggeres == ["gardee"]
+
+
+def test_source_gap_does_not_force_revision():
+    from cv_generator.ai_agents import _merge_review, build_correction_contract
+
+    class _Run:
+        provider = "test"
+        model = "test"
+
+        def __getattr__(self, name):
+            return None
+
+    proposed = {
+        "status": "needs_revision",
+        "quality_score": 80,
+        "problems": [
+            {"code": "SOURCE_GAP", "severity": "high", "section": "experiences",
+             "problem": "Coordination de prestataires absente de la source"}
+        ],
+    }
+    review = _merge_review(proposed, {"problems": []}, _Run(), {})
+    assert review["status"] == "validated"
+    assert review["source_gaps"] == ["Coordination de prestataires absente de la source"]
+    assert build_correction_contract(review) == []

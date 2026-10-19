@@ -446,8 +446,13 @@ Vérifie aussi que les consignes_candidat réalisables ont été respectées. Si
 toute consigne oubliée, mais ne pénalise pas le CV pour une demande impossible ou non sourcée.
 Pour une annonce hybride de formation web et IA, renseigne les cinq piliers de couverture.
 Chaque preuve doit citer uniquement un identifiant d'expérience ou de projet existant dans la
-source. Un pilier manquant doit produire une correction concrète et influencer ton verdict.\nVérifie que les expériences sont présentées dans un ordre antéchronologique et signale toute\ninversion. Pour chaque exigence critique du plan, vérifie qu'une expérience ou un projet visible\napporte une preuve. Une technologie demandée mais absente de la source est un écart honnête non réparable :
-ne la classe pas en sévérité haute et ne déclenche pas une révision à elle seule. Utilise le code
+source. Un pilier manquant doit produire une correction concrète et influencer ton verdict.\nVérifie que les expériences sont présentées dans un ordre antéchronologique et signale toute\ninversion. Pour chaque exigence critique du plan, vérifie qu'une expérience ou un projet visible\napporte une preuve. Une technologie, une mission ou une responsabilité demandée mais absente de la source (par
+exemple « coordination de prestataires », « animation de communauté », « application mobile »)
+est un écart honnête non réparable : déclare-la avec le code SOURCE_GAP, en sévérité low, et
+liste-la aussi dans "source_gaps". Un SOURCE_GAP ne déclenche jamais de révision : aucun agent ne
+peut le corriger, il sera traité dans la lettre ou en entretien. Ne range PAS en SOURCE_GAP une
+exigence que la source prouve sous d'autres mots (ex. un guide d'administration prouve « guides
+utilisateurs ») : c'est alors un problème de formulation réparable. Utilise le code
 SKILL_WITHOUT_EVIDENCE lorsqu'une compétence importante est\naffichée ou demandée sans preuve concrète visible dans le CV.
 
 JSON attendu:
@@ -455,6 +460,7 @@ JSON attendu:
   "strengths":["..."],
   "problems":[{"code":"SKILL_WITHOUT_EVIDENCE|autre_code","severity":"high|medium|low","section":"...","problem":"...","suggested_fix":"..."}],
   "missing_keywords":["..."],
+  "source_gaps":["exigence de l'annonce absente de la source"],
   "overrepresented_keywords":["..."],
   "forbidden_claims_found":["..."],
   "evidence_coverage":[
@@ -1122,6 +1128,13 @@ def _assemble_cv_content(
     return content
 
 
+SOURCE_GAP_CODE = "SOURCE_GAP"
+
+
+def _is_source_gap(problem: Dict[str, Any]) -> bool:
+    return str(problem.get("code") or "").strip().upper() == SOURCE_GAP_CODE
+
+
 def _normalize_problems(value: Any) -> List[Dict[str, str]]:
     if not isinstance(value, list):
         return []
@@ -1132,6 +1145,10 @@ def _normalize_problems(value: Any) -> List[Dict[str, str]]:
         severity = str(item.get("severity") or "medium").lower()
         if severity not in {"high", "medium", "low"}:
             severity = "medium"
+        if str(item.get("code") or "").strip().upper() == SOURCE_GAP_CODE:
+            # Un écart de source n'est réparable par aucun agent : il ne peut
+            # pas porter une sévérité qui forcerait une révision.
+            severity = "low"
         problem = _clip(item.get("problem"), 360)
         if not problem:
             continue
@@ -1349,7 +1366,9 @@ def _merge_review(
     problems = _normalize_problems(proposed.get("problems"))
     # Ce que le juge IA a lui-même relevé, avant fusion avec les signalements
     # Python : c'est sur cette seule liste qu'on contrôle la cohérence du verdict.
-    ai_reported_high = any(item.get("severity") == "high" for item in problems)
+    ai_reported_high = any(
+        item.get("severity") == "high" and not _is_source_gap(item) for item in problems
+    )
     known = {(item["section"], item["problem"]) for item in problems}
     technical_sections = {"truthfulness", "header", "profile", "skills", "experiences", "evidence"}
     technical_problems = [
@@ -1378,6 +1397,25 @@ def _merge_review(
     # Python impose une révision sur une erreur de vérité, jamais sur un
     # jugement de pertinence : une compétence insuffisamment prouvée est un
     # signalement remis au juge IA, pas un veto déterministe.
+    source_gaps = compact_items(
+        [
+            *_as_string_list(proposed.get("source_gaps"), 20),
+            *[item["problem"] for item in problems if _is_source_gap(item)],
+        ],
+        limit=20,
+    )
+    repairable = [item for item in problems if not _is_source_gap(item)]
+    if (
+        status != "validated"
+        and not repairable
+        and not deterministic.get("format_issues")
+        and not deterministic.get("truth_blocking")
+        and not forbidden
+    ):
+        # Seuls des écarts de source restent : une révision ne changerait rien
+        # (elle finirait en no_progress). Le CV est validé, les écarts sont
+        # transmis à la lettre et à l'entretien via source_gaps.
+        status = "validated"
     if deterministic.get("truth_blocking") or forbidden:
         status = "needs_revision"
     elif ai_reported_high:
@@ -1398,6 +1436,7 @@ def _merge_review(
         "problems": problems,
         "problem_codes": sorted({item.get("code") for item in problems if item.get("code")}),
         "missing_keywords": missing,
+        "source_gaps": source_gaps,
         "overrepresented_keywords": _as_string_list(proposed.get("overrepresented_keywords"), 20),
         "forbidden_claims_found": forbidden,
         "evidence_coverage": _normalize_evidence_coverage(
@@ -1448,6 +1487,10 @@ def build_correction_contract(
             }
         )
     for problem in review.get("problems", []):
+        if _is_source_gap(problem):
+            # Rien à corriger dans le CV : l'écart est assumé et remonté via
+            # review["source_gaps"] pour la lettre de motivation.
+            continue
         corrections.append(
             {
                 "origin": "relevance",
