@@ -311,6 +311,9 @@ affirmation absente, contradictoire ou interdite, refuse cette partie et ajoute 
 N'inclus une expérience que si elle apporte une preuve explicite à un critère de l'annonce.
 Il est préférable de retenir moins d'expériences plutôt que de remplir les emplacements avec
 des expériences faibles ou hors sujet. Respecte la visibilité conditionnelle de la source.
+Quand l'annonce exige de la documentation, des procédures ou des guides utilisateurs,
+sélectionne en priorité un projet de documentation du catalogue (DevDoc) avec ses liens
+publics, plutôt qu'un projet d'automatisation sans rapport avec cette exigence.
 Quand l'annonce combine formation, développement web et IA, couvre trois piliers avec des
 preuves distinctes: pédagogie auprès du public visé, réalisation technique réelle et pratique
 de l'IA. Recherche aussi une réalisation publique pertinente quand la source fournit un lien.

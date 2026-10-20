@@ -581,7 +581,10 @@ def cv_to_pdf(
             current_y = draw_wrapped(_project_text(project), main_x, current_y, main_w, body_size, leading, color=secondary)
             if project.get("links"):
                 current_y -= 2.0 * content_scale
-                current_y = draw_wrapped(_display_url(project["links"][0]), main_x, current_y, main_w, body_size, leading, color=accent)
+                # Deux liens maximum (constat 20/10/2026 : le lien /docs/ de
+                # DevDoc, second de la liste, était silencieusement ignoré).
+                shown = " · ".join(_display_url(link) for link in project["links"][:2])
+                current_y = draw_wrapped(shown, main_x, current_y, main_w, body_size, leading, color=accent)
             current_y -= 10.0 * content_scale
         return current_y
 
