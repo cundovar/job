@@ -538,11 +538,15 @@ def cv_to_pdf(
         # Le libellé suit le CV (cv.skills_title) : « Compétences techniques »
         # ne convient pas à un CV de médiation numérique (décision Cundo).
         current_y = draw_section(str(cv.get("skills_title") or "Compétences techniques"), main_x, current_y, content_scale)
+        # Lisibilité (décision Cundo 20/10/2026) : le libellé de rubrique est sur
+        # sa propre ligne, en gras et plus grand que les items.
+        label_size = body_size + 1.2
         for skill in cv.get("skills", []):
             label = str(skill.get("title", ""))
-            text = f"{label} : {', '.join(skill.get('items', []))}"
-            current_y = draw_wrapped(text, main_x, current_y, main_w, body_size, leading, color=primary)
-            current_y -= 6.5 * content_scale
+            items = ", ".join(str(item) for item in skill.get("items", []))
+            current_y = draw_wrapped(label, main_x, current_y, main_w, label_size, leading, bold=True, color=primary)
+            current_y = draw_wrapped(items, main_x, current_y, main_w, body_size, leading, color=primary)
+            current_y -= 7.0 * content_scale
         return current_y - 22.0 * content_scale
 
     def draw_experiences_block(current_y):
