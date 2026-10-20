@@ -41,6 +41,18 @@ Au Pôle S à Pantin, Cundo a travaillé aux côtés de collègues qui menaient 
 
 À utiliser pour les postes de médiateur numérique, conseiller numérique, formateur / accompagnant numérique : contexte observé de l'intérieur, jamais un poste de médiateur occupé — la formulation « aux côtés de collègues » doit rester.
 
+### Contexte employeur — Éditions Chant d'orties
+
+Éditions Chant d'orties est une maison d'édition associative de littérature jeunesse illustrée. Son site statique présente un catalogue de livres, des collections, des auteurs et illustrateurs, des actualités, des projets éditoriaux et des pages institutionnelles.
+
+À utiliser UNIQUEMENT pour personnaliser une candidature à cette organisation ou à un poste précis : adapter le vocabulaire et expliquer l'intérêt du candidat pour la structure. Les fiches livres/auteurs/illustrateurs, biographies et projets éditoriaux servent à comprendre l'activité et le ton — elles ne sont jamais des preuves sur le parcours ou les compétences du candidat.
+
+Règles pour tout dossier CV ou lettre visant cette structure :
+- Baser les expériences, compétences, diplômes et résultats du candidat sur son CV maître ou sur les éléments qu'il a fournis — aucune affirmation personnelle sans source dans le profil.
+- Distinguer clairement les faits vérifiés sur l'employeur des informations personnelles du candidat.
+- Ne pas inventer de mission, de poste vacant ou de lien entre le candidat et les auteurs/illustrateurs du catalogue.
+- Pour toute information récente sur l'organisation, vérifier le site public avant rédaction ; l'état de production du nouveau site (hébergement, mise en ligne) se contrôle séparément avant d'être présenté comme actif.
+
 ## Style et ton
 
 - **Professionnel mais humain** : pas de langue de bois

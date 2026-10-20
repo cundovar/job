@@ -645,12 +645,41 @@ def _validate_source_dates(
     return issues
 
 
+def _start_sort_key(period: Dict[str, Any] | None) -> Tuple[str, str]:
+    """Clé (début, fin) pour juger l'ordre affiché du CV.
+
+    La lecture humaine d'un CV suit les dates de DÉBUT. Quand deux périodes se
+    chevauchent (un poste long et un poste parallèle), classer par date de fin
+    produit une suite de débuts non monotone — « 2013 – 2022 » au-dessus de
+    « 2018 – 2021 » — perçue comme un désordre. Le tri global
+    (`_period_sort_key`, par fin, avec ongoing d'abord) reste inchangé pour les
+    autres usages ; ici seul l'ordre affiché au recruteur est jugé.
+    """
+    if not isinstance(period, dict):
+        return ("0000-00", "0000-00")
+
+    def normalized(value: Any, month: str) -> str:
+        raw = str(value or "").strip()
+        if not raw:
+            return "0000-00"
+        return raw if "-" in raw else f"{raw}-{month}"
+
+    start = normalized(period.get("start"), "01")
+    if period.get("end"):
+        end = normalized(period.get("end"), "12")
+    elif period.get("ongoing") is True:
+        end = "9999-12"
+    else:
+        end = start
+    return (start, end)
+
+
 def _validate_order(
     views: Sequence[ExperienceView],
     master: Dict[str, Any],
 ) -> List[TruthIssue]:
-    """Signale un ordre non antéchronologique sans jamais le corriger."""
-    keys = [_period_sort_key(experience_period(master, view.id)) for view in views]
+    """Signale un ordre non antéchronologique (par date de début) sans jamais le corriger."""
+    keys = [_start_sort_key(experience_period(master, view.id)) for view in views]
     for position in range(1, len(keys)):
         if keys[position - 1] < keys[position]:
             return [
@@ -658,8 +687,8 @@ def _validate_order(
                     "EXPERIENCE_ORDER_NOT_ANTICHRONOLOGICAL",
                     FORMAT,
                     f"experiences[{position}]",
-                    f"« {views[position].id} » est plus récente que « {views[position - 1].id} » "
-                    "mais apparaît après : l'ordre attendu est antéchronologique.",
+                    f"« {views[position].id} » a commencé après « {views[position - 1].id} » "
+                    "mais apparaît après : l'ordre attendu est antéchronologique (par date de début).",
                     views[position].id,
                 )
             ]

@@ -535,7 +535,9 @@ def cv_to_pdf(
     projects = cv.get("projects", [])
 
     def draw_skills_block(current_y):
-        current_y = draw_section("Compétences techniques", main_x, current_y, content_scale)
+        # Le libellé suit le CV (cv.skills_title) : « Compétences techniques »
+        # ne convient pas à un CV de médiation numérique (décision Cundo).
+        current_y = draw_section(str(cv.get("skills_title") or "Compétences techniques"), main_x, current_y, content_scale)
         for skill in cv.get("skills", []):
             label = str(skill.get("title", ""))
             text = f"{label} : {', '.join(skill.get('items', []))}"
@@ -564,7 +566,10 @@ def cv_to_pdf(
     def draw_projects_block(current_y):
         if not projects:
             return current_y
-        section_title = "Projets IA & automatisation" if cv.get("section_order", []).index("projects") < cv.get("section_order", []).index("experiences") else ("Projets personnels" if len(projects[:2]) > 1 else "Projet personnel")
+        # « Projets IA & automatisation » abandonné (inutile pour médiation /
+        # conseiller numérique, décision Cundo 2026-10-16) : le titre de la
+        # section dépend uniquement du nombre de projets affichés.
+        section_title = "Projets personnels" if len(projects[:2]) > 1 else "Projet personnel"
         current_y = draw_section(section_title, main_x, current_y, content_scale)
         for project in projects[:2]:
             current_y = draw_wrapped(str(project.get("title", "")), main_x, current_y, main_w, title_size, title_leading, bold=True, color=primary)

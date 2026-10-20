@@ -1,116 +1,117 @@
 {
   "ok": true,
   "version": "v2",
-  "search_id": "ville-roissy-en-brie-77-20260923-124740",
-  "generated_at": "2026-09-23T12:47:40",
-  "total": 1,
-  "scanned_domains": 49,
-  "seed_count": 50,
+  "search_id": "ville-chessy-77-20260925-100700",
+  "generated_at": "2026-09-25T10:07:20",
+  "total": 2,
+  "scanned_domains": 48,
+  "seed_count": 48,
   "queries": [
-    "agence web Roissy-en-Brie WordPress",
-    "agence digitale Roissy-en-Brie création site internet",
-    "studio développement web Roissy-en-Brie",
-    "développeur web freelance agence Roissy-en-Brie 77680",
-    "organisme de formation numérique Roissy-en-Brie",
-    "formation développeur web Roissy-en-Brie",
-    "formation accessibilité RGAA Roissy-en-Brie Seine-et-Marne"
+    "agence web Chessy WordPress",
+    "agence digitale Chessy création site internet",
+    "studio développement web Chessy",
+    "développeur web freelance agence Chessy 77700",
+    "organisme de formation numérique Chessy",
+    "formation développeur web Chessy",
+    "formation accessibilité RGAA Chessy Seine-et-Marne"
   ],
   "query_families": {
     "agence": [
-      "agence web Roissy-en-Brie WordPress",
-      "agence digitale Roissy-en-Brie création site internet",
-      "studio développement web Roissy-en-Brie",
-      "développeur web freelance agence Roissy-en-Brie 77680"
+      "agence web Chessy WordPress",
+      "agence digitale Chessy création site internet",
+      "studio développement web Chessy",
+      "développeur web freelance agence Chessy 77700"
     ],
     "formation": [
-      "organisme de formation numérique Roissy-en-Brie",
-      "formation développeur web Roissy-en-Brie",
-      "formation accessibilité RGAA Roissy-en-Brie Seine-et-Marne"
+      "organisme de formation numérique Chessy",
+      "formation développeur web Chessy",
+      "formation accessibilité RGAA Chessy Seine-et-Marne"
     ]
   },
-  "zone": "ville-roissy-en-brie-77",
-  "zone_label": "Roissy-en-Brie (77 · Seine-et-Marne)",
+  "zone": "ville-chessy-77",
+  "zone_label": "Chessy (77 · Seine-et-Marne)",
   "city": {
-    "name": "Roissy-en-Brie",
-    "insee": "77390",
+    "name": "Chessy",
+    "insee": "77111",
     "departement": "77",
     "departement_name": "Seine-et-Marne",
     "postal_codes": [
-      "77680"
+      "77700"
     ],
-    "latitude": 48.7913,
-    "longitude": 2.6647,
+    "latitude": 48.8718,
+    "longitude": 2.7697,
     "source": "geo.api.gouv.fr (API Découpage administratif)"
   },
+  "department": null,
   "perimeter": {
-    "city": "Roissy-en-Brie",
-    "insee": "77390",
+    "city": "Chessy",
+    "insee": "77111",
     "verifie": 0,
-    "mention_seule": 1,
+    "mention_seule": 2,
     "sans_lien": 0,
     "sans_lien_details": []
   },
   "steps": [
     {
       "step": "resolution",
-      "started_at": "2026-09-23T12:46:42",
-      "duration_ms": 282,
+      "started_at": "2026-09-25T10:05:39",
+      "duration_ms": 380,
       "volumes": {
         "postal_codes": 1
       }
     },
     {
       "step": "decouverte_web",
-      "started_at": "2026-09-23T12:46:42",
-      "duration_ms": 12965,
+      "started_at": "2026-09-25T10:05:39",
+      "duration_ms": 10026,
       "volumes": {
         "queries": 7,
-        "seeds": 37,
+        "seeds": 35,
         "google_places": 0
       }
     },
     {
       "step": "preselection",
-      "started_at": "2026-09-23T12:46:55",
-      "duration_ms": 34216,
+      "started_at": "2026-09-25T10:05:49",
+      "duration_ms": 47797,
       "volumes": {
-        "examines": 49,
-        "retenus": 1,
-        "ecartes": 48
+        "examines": 48,
+        "retenus": 3,
+        "ecartes": 45
       }
     },
     {
       "step": "crawl",
-      "started_at": "2026-09-23T12:47:29",
-      "duration_ms": 2055,
+      "started_at": "2026-09-25T10:06:37",
+      "duration_ms": 14017,
       "volumes": {
-        "crawles": 1,
-        "retenus": 1,
-        "ecartes": 48
+        "crawles": 3,
+        "retenus": 2,
+        "ecartes": 46
       }
     },
     {
       "step": "registre",
-      "started_at": "2026-09-23T12:47:31",
-      "duration_ms": 1491,
+      "started_at": "2026-09-25T10:06:51",
+      "duration_ms": 1553,
       "volumes": {
-        "candidats": 99,
+        "candidats": 100,
         "avertissements": 0
       }
     },
     {
       "step": "site_officiel",
-      "started_at": "2026-09-23T12:47:33",
-      "duration_ms": 7709,
+      "started_at": "2026-09-25T10:06:53",
+      "duration_ms": 6943,
       "volumes": {
         "examines": 12,
         "trouves": 0,
-        "sans_preuve": 99
+        "sans_preuve": 100
       }
     },
     {
       "step": "crawl_registre",
-      "started_at": "2026-09-23T12:47:40",
+      "started_at": "2026-09-25T10:06:59",
       "duration_ms": 0,
       "volumes": {
         "lus": 0,
@@ -120,26 +121,26 @@
     },
     {
       "step": "geocodage",
-      "started_at": "2026-09-23T12:47:40",
+      "started_at": "2026-09-25T10:07:00",
       "duration_ms": 0,
       "volumes": {
         "adresses_lues": 0,
-        "positions_inconnues": 1
+        "positions_inconnues": 2
       }
     },
     {
       "step": "ia",
-      "started_at": "2026-09-23T12:47:40",
-      "duration_ms": 104,
+      "started_at": "2026-09-25T10:07:00",
+      "duration_ms": 20888,
       "volumes": {
-        "analysees": 0,
-        "cache": 1,
-        "appels": 0
+        "analysees": 2,
+        "cache": 0,
+        "appels": 2
       }
     },
     {
       "step": "publication",
-      "started_at": "2026-09-23T12:47:40",
+      "started_at": "2026-09-25T10:07:20",
       "duration_ms": null,
       "volumes": {}
     }
@@ -147,7 +148,7 @@
   "distance_origin": null,
   "zone_stats": {
     "tier1": 0,
-    "tier2": 1,
+    "tier2": 2,
     "hors_zone_gardes": 0,
     "hors_zone_ecartes": 0,
     "hors_code_postal_strict": 0
@@ -155,16 +156,16 @@
   "hors_zone_ecartes_details": [],
   "radius": null,
   "registry": {
-    "candidates": 99,
+    "candidates": 100,
     "warnings": [],
-    "unpublished_uncertain": 99,
+    "unpublished_uncertain": 100,
     "site_lookup": {
       "examines": 12,
       "trouves": 0,
-      "sans_preuve": 99,
+      "sans_preuve": 100,
       "motifs": {
         "aucun site candidat": 12,
-        "plafond de recherches atteint": 87
+        "plafond de recherches atteint": 88
       },
       "cap": 12,
       "crawles": 0,
@@ -177,121 +178,71 @@
       "agence",
       "formation"
     ],
-    "unpublished": 99,
+    "unpublished": 100,
     "unpublished_by_category": {
-      "incertain": 99
+      "incertain": 100
     }
   },
   "origin_stats": {
-    "csv": 0,
+    "csv": 1,
     "registre": 0,
-    "web": 1
+    "web": 2
   },
   "ecartes": [
     {
-      "name": "zhihu.com https://www.zhihu.com › question",
-      "website": "https://www.zhihu.com/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
-    },
-    {
       "name": "Déposer un brief",
       "website": "https://app.lafabriquedunet.com/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "Espagne",
       "website": "https://www.lafabriquedunet.es/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
-    },
-    {
-      "name": "acrv.fr",
-      "website": "https://www.acrv.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
-    },
-    {
-      "name": "agence2web.com",
-      "website": "https://www.agence2web.com/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
-    },
-    {
-      "name": "galadrim.fr",
-      "website": "https://galadrim.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
-    },
-    {
-      "name": "meyerz.fr",
-      "website": "https://meyerz.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
-    },
-    {
-      "name": "targetweb.fr",
-      "website": "https://targetweb.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
-    },
-    {
-      "name": "webvision360.com",
-      "website": "https://webvision360.com/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "horizon123.com",
       "website": "https://www.horizon123.com/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
-      "name": "digitalunicorn.fr",
-      "website": "https://digitalunicorn.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "name": "agence2web.com",
+      "website": "https://www.agence2web.com/",
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
-      "name": "digital-cover.fr",
-      "website": "https://digital-cover.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "name": "acrv.fr",
+      "website": "https://www.acrv.fr/",
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
-      "name": "artichaud-studio.fr",
-      "website": "https://artichaud-studio.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "name": "yateo.com",
+      "website": "https://www.yateo.com/",
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
-      "name": "gooplus.fr",
-      "website": "http://gooplus.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "name": "targetweb.fr",
+      "website": "https://targetweb.fr/",
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
+    },
+    {
+      "name": "magiris.fr",
+      "website": "https://magiris.fr/",
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "affluencedigital.fr",
       "website": "https://affluencedigital.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
-    },
-    {
-      "name": "bonhommeparis.com",
-      "website": "https://bonhommeparis.com/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
-    },
-    {
-      "name": "lynx-business.com",
-      "website": "https://lynx-business.com/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
-    },
-    {
-      "name": "netdevices.fr",
-      "website": "https://www.netdevices.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "epixelic.com",
       "website": "https://www.epixelic.com/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
-      "name": "noiise.com",
-      "website": "https://www.noiise.com/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
-    },
-    {
-      "name": "kromaweb.fr",
-      "website": "https://kromaweb.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "name": "digital-cover.fr",
+      "website": "https://digital-cover.fr/",
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "adveris.fr",
@@ -299,44 +250,84 @@
       "motif": "page d’accueil illisible ou injoignable"
     },
     {
-      "name": "148.fr",
-      "website": "http://www.148.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "name": "galadrim.fr",
+      "website": "https://galadrim.fr/",
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "coffee-beans.fr",
       "website": "https://coffee-beans.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
-      "name": "studi0x.agency",
-      "website": "https://studi0x.agency/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "name": "agence.lebackyard.fr",
+      "website": "https://agence.lebackyard.fr/",
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
+    },
+    {
+      "name": "kromaweb.fr",
+      "website": "https://kromaweb.fr/",
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
+    },
+    {
+      "name": "gooplus.fr",
+      "website": "http://gooplus.fr/",
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
+    },
+    {
+      "name": "lynx-business.com",
+      "website": "https://lynx-business.com/",
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
+    },
+    {
+      "name": "webvision360.com",
+      "website": "https://webvision360.com/",
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
+    },
+    {
+      "name": "148.fr",
+      "website": "http://www.148.fr/",
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
+    },
+    {
+      "name": "bonhommeparis.com",
+      "website": "https://bonhommeparis.com/",
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
+    },
+    {
+      "name": "pic.digital",
+      "website": "https://pic.digital/",
+      "motif": "page d’accueil illisible ou injoignable"
+    },
+    {
+      "name": "hyperealist.com",
+      "website": "https://www.hyperealist.com/",
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "Newsletter",
       "website": "https://impli.substack.com/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "Amphibee",
       "website": "https://amphibee.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "Youdemus",
       "website": "https://www.youdemus.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "Wedezign",
       "website": "https://wedezign.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "Oscar-referencement",
       "website": "https://www.oscar-referencement.com/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "Tactee",
@@ -346,32 +337,27 @@
     {
       "name": "Bew-web-agency",
       "website": "https://www.bew-web-agency.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "Ingenius",
       "website": "https://ingenius.agency/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "Bsa-web",
       "website": "https://www.bsa-web.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "webflow.com",
       "website": "https://webflow.com/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
-    },
-    {
-      "name": "livementor.com",
-      "website": "https://www.livementor.com/",
-      "motif": "écartée à la main dans le CSV (Livementor)"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "Reactive Tech Solutions",
       "website": "https://reactive-tech-solutions.com/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "WordPress Paris",
@@ -381,68 +367,73 @@
     {
       "name": "Le Wagon — bootcamp développeur web",
       "website": "https://www.lewagon.com/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "O'clock — école développeur web",
       "website": "https://www.oclock.io/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "3W Academy — formation développeur web",
       "website": "https://3wa.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "WebForce3 — formation développement web",
       "website": "https://www.wf3.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "Wild Code School — formation dev web",
       "website": "https://www.wildcodeschool.com/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "Simplon — formation numérique & insertion",
       "website": "https://simplon.co/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "La Capsule — bootcamp dev web",
       "website": "https://lacapsule.academy/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "Studi — formation web & numérique",
       "website": "https://www.studi.com/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "Access42 — accessibilité numérique RGAA + formation",
       "website": "https://access42.net/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
     },
     {
       "name": "Atalan — accessibilité numérique + formation",
       "website": "https://atalan.fr/",
-      "motif": "aucun lien avec Roissy-en-Brie (77 · Seine-et-Marne) en page d’accueil"
+      "motif": "aucun lien avec Chessy (77 · Seine-et-Marne) en page d’accueil"
+    },
+    {
+      "name": "livementor.com",
+      "website": "https://www.livementor.com/",
+      "motif": "produit en libre-service / place de marché connue (livementor.com)"
     }
   ],
   "fit_analysis": {
-    "eligible": 1,
-    "analyzed": 0,
-    "cache_hits": 1,
+    "eligible": 2,
+    "analyzed": 2,
+    "cache_hits": 0,
     "review": 0,
-    "calls": 0,
+    "calls": 2,
     "limite_appels": 15,
     "seuil_min_score": 45,
-    "archive": "/home/cundo/apps/job-search-automation-package/output/agencies/analyses-20260923-124740.md"
+    "archive": "/home/cundo/apps/job-search-automation-package/output/agencies/analyses-20260925-100700.md"
   },
   "agencies": [
     {
       "name": "Opus agence WordPress",
-      "website": "https://opus.paris/",
+      "website": "https://opus.paris",
       "origin": "web",
       "score": 67,
       "raw_score": 67,
@@ -499,6 +490,7 @@
         "formation": 0
       },
       "sources": [
+        "config/companies.csv",
         "known"
       ],
       "fetched_pages": [
@@ -519,7 +511,7 @@
       "page_texts": [
         {
           "url": "https://opus.paris/",
-          "text": "Opus, agence WordPress : Création et Développement sur mesure Group Réalisations À propos Équipe Contact Menu Group Fermer Réalisations À propos Équipe Contact ABONNEZ-NOUS À NOTRE NEWSLETTER © 2026, Opus. All rights reserved Opus. Studio de création et développement de sites WordPress sur-mesure. Réalisations Opus réinvente votre projet avec toute la puissance de l’écosystème WordPress afin de créer des expériences digitales. Découvrir → Beauté & Cosmétique UX / UI Développement Maintenance & évolutions Fondation Écouter Voir Habitat UX / UI Développement Maintenance & évolutions Hébergement Etna France Industrie & BTP Headless UX / UI Développement Maintenance & évolutions RGAA Framatome Santé UX / UI Développement Maintenance & évolutions Hébergement Écouter Voir Éducation UX / UI Développement Maintenance & évolutions Hébergement RGAA Le site Compagnon Domino Luxe UX / UI Développement Maintenance & évolutions Hébergement Comité Colbert Éducation UX / UI Développement Maintenance & évolutions Hébergement CFA Afia Opus c'est : Nous sommes une équipe d'une quinzaine de passionnés, nous mettons tout en oeuvre pour développer des sites web WordPress modernes, impactants et performants. Découvrir l'équipe au complet → Fondateur et Président LinkedIn Cyril BALIT-VANDEBROUCK Responsable RH LinkedIn Margot MATHIE Développeur LinkedIn Pierre MAGNIEN Responsable pôle projets LinkedIn Thaly ROUGÉ Page suivante Découvrez nos réalisations Page suivante Opus réinvente votre projet avec toute la puissance de l'écosystème WordPress afin de créer des expériences digitales et innovantes. Une société Zee Group Groupe de communication indépendant et spécialisé dans l’élaboration et la production de dispositifs digitaux : Restons en contact 33, rue d’Hauteville 75010 Paris France +01 77 92 15 20 LinkedIn ABONNEZ-NOUS À NOTRE NEWSLETTER © 2026, Opus. All rights reserved Mentions légales back to top ↑ {\"props\":{\"pageProps\":{\"post\":{\"data\":{\"id\":628,\"date\":\"2022-11-22T13:52:44\",\"date_gmt\":\"2022-11-22T12:52:44\",\"guid\":{\"rendered\":\"https://backend.opus.local/?page_id=628\"},\"modified\":\"2023-06-20T16:13:52\",\"modified_gmt\":\"2023-06-20T14:13:52\",\"slug\":\"page-daccueil\",\"status\":\"publish\",\"type\":\"page\",\"link\":\"https://backend.opus.paris/\",\"title\":{\"rendered\":\"Studio de création et développement de sites WordPress sur-mesure\"},\"content\":{\"rendered\":\"\\u003cdiv class=\\\"hero__wrapper\\\"\\u003e\\n\\t\\nA Hero block using ACF.\\n\\n\\u003c/div\\u003e\\n\\n\\u003cdiv class=\\\"content__wrapper\\\"\\u003e\\n\\"
+          "text": "Opus, agence WordPress : Création et Développement sur mesure Group Réalisations À propos Équipe Contact Menu Group Fermer Réalisations À propos Équipe Contact ABONNEZ-NOUS À NOTRE NEWSLETTER © 2026, Opus. All rights reserved Opus. Studio de création et développement de sites WordPress sur-mesure. Réalisations Opus réinvente votre projet avec toute la puissance de l’écosystème WordPress afin de créer des expériences digitales. Découvrir → Beauté & Cosmétique UX / UI Développement Maintenance & évolutions Fondation Écouter Voir Habitat UX / UI Développement Maintenance & évolutions Hébergement Etna France Industrie & BTP Headless UX / UI Développement Maintenance & évolutions RGAA Framatome Santé UX / UI Développement Maintenance & évolutions Hébergement Écouter Voir Éducation UX / UI Développement Maintenance & évolutions Hébergement RGAA Le site Compagnon Domino Luxe UX / UI Développement Maintenance & évolutions Hébergement Comité Colbert Éducation UX / UI Développement Maintenance & évolutions Hébergement CFA Afia Opus c'est : Nous sommes une équipe d'une quinzaine de passionnés, nous mettons tout en oeuvre pour développer des sites web WordPress modernes, impactants et performants. Découvrir l'équipe au complet → Développeur LinkedIn Thomas VASSEUR Fondateur et Président LinkedIn Cyril BALIT-VANDEBROUCK Responsable pôle projets LinkedIn Thaly ROUGÉ Responsable RH LinkedIn Margot MATHIE Page suivante Découvrez nos réalisations Page suivante Opus réinvente votre projet avec toute la puissance de l'écosystème WordPress afin de créer des expériences digitales et innovantes. Une société Zee Group Groupe de communication indépendant et spécialisé dans l’élaboration et la production de dispositifs digitaux : Restons en contact 33, rue d’Hauteville 75010 Paris France +01 77 92 15 20 LinkedIn ABONNEZ-NOUS À NOTRE NEWSLETTER © 2026, Opus. All rights reserved Mentions légales back to top ↑ {\"props\":{\"pageProps\":{\"post\":{\"data\":{\"id\":628,\"date\":\"2022-11-22T13:52:44\",\"date_gmt\":\"2022-11-22T12:52:44\",\"guid\":{\"rendered\":\"https://backend.opus.local/?page_id=628\"},\"modified\":\"2023-06-20T16:13:52\",\"modified_gmt\":\"2023-06-20T14:13:52\",\"slug\":\"page-daccueil\",\"status\":\"publish\",\"type\":\"page\",\"link\":\"https://backend.opus.paris/\",\"title\":{\"rendered\":\"Studio de création et développement de sites WordPress sur-mesure\"},\"content\":{\"rendered\":\"\\u003cdiv class=\\\"hero__wrapper\\\"\\u003e\\n\\t\\nA Hero block using ACF.\\n\\n\\u003c/div\\u003e\\n\\n\\u003cdiv class=\\\"content__wrapper\\\"\\u003e\\n\\"
         },
         {
           "url": "https://opus.paris/a-propos",
@@ -532,6 +524,135 @@
         {
           "url": "https://opus.paris/contact",
           "text": "Contact - Opus, agence WordPress Group Réalisations À propos Équipe Contact Menu Group Fermer Réalisations À propos Équipe Contact ABONNEZ-NOUS À NOTRE NEWSLETTER © 2026, Opus. All rights reserved Laissez-nous un petit mot Où nous trouver NUMÉRO DE TÉLÉPHONE +33 (0)1 77 92 15 20 ADRESSE 33, rue d’Hauteville CODE POSTAL ET VILLE 75010 Paris, France LinkedIn ↘ Opus réinvente votre projet avec toute la puissance de l'écosystème WordPress afin de créer des expériences digitales et innovantes. Une société Zee Group Groupe de communication indépendant et spécialisé dans l’élaboration et la production de dispositifs digitaux : Restons en contact 33, rue d’Hauteville 75010 Paris France +01 77 92 15 20 LinkedIn ABONNEZ-NOUS À NOTRE NEWSLETTER © 2026, Opus. All rights reserved Mentions légales back to top ↑ {\"props\":{\"pageProps\":{\"post\":{\"data\":{\"id\":583,\"date\":\"2022-11-04T11:39:52\",\"date_gmt\":\"2022-11-04T10:39:52\",\"guid\":{\"rendered\":\"https://backend.opus.local/?page_id=583\"},\"modified\":\"2026-02-20T12:55:12\",\"modified_gmt\":\"2026-02-20T11:55:12\",\"slug\":\"contact\",\"status\":\"publish\",\"type\":\"page\",\"link\":\"https://backend.opus.paris/contact/\",\"title\":{\"rendered\":\"Contact\"},\"content\":{\"rendered\":\"\\u003cdiv class=\\\"hero__wrapper\\\"\\u003e\\n\\t\\nA Hero block using ACF.\\n\\n\\u003c/div\\u003e\\n\\n\\u003cdiv class=\\\"content__wrapper\\\"\\u003e\\n\\t\\nA Hero block using ACF.\\n\\nA Hero block using ACF.\\n\\n\\u003c/div\\u003e\",\"protected\":false},\"excerpt\":{\"rendered\":\"\",\"protected\":false},\"author\":2,\"featured_media\":2933,\"parent\":0,\"menu_order\":0,\"comment_status\":\"closed\",\"ping_status\":\"closed\",\"template\":\"\",\"meta\":{\"_acf_changed\":false,\"footnotes\":\"\"},\"class_list\":[\"post-583\",\"page\",\"type-page\",\"status-publish\",\"has-post-thumbnail\",\"hentry\"],\"yoast_head\":\"\\u003c!-- This site is optimized with the Yoast SEO Premium plugin v24.7 (Yoast SEO v24.7) - https://yoast.com/wordpress/plugins/seo/ --\\u003e\\n\\u003ctitle\\u003eContact - Opus, agence WordPress\\u003c/title\\u003e\\n\\u003cmeta name=\\\"description\\\" content=\\\"Vous avez un projet de création ou de refonte web WordPress ? Contactez-nous via notre formulaire ou appelez-nous au au +33 (0)1 77 92 15 20.\\\" /\\u003e\\n\\u003cmeta name=\\\"robots\\\" content=\\\"index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1\\\" /\\u003e\\n\\u003clink rel=\\\"canonical\\\" href=\\\"https://backend.opus.paris/contact/\\\" /\\u003e\\n\\u003cmeta property=\\\"og:locale\\\" content=\\\"fr_FR\\\" /\\u003e\\n\\u003cmeta property=\\\"og:type\\\" content=\\\"article\\\" /\\u003e\\n\\u003cmeta pro"
+        }
+      ],
+      "address": null,
+      "postal_code": null,
+      "address_source": null,
+      "place_id": null,
+      "google_maps_url": null,
+      "origins": [
+        "csv",
+        "web"
+      ],
+      "identity_match": "domaine",
+      "identity_conflicts": [],
+      "site_match": "aucun",
+      "site_match_evidence": "",
+      "site_candidates": [],
+      "identity_candidates": [],
+      "siren": null,
+      "siret": null,
+      "legal_address": null,
+      "legal_address_source": null,
+      "distance_m": null,
+      "how": "",
+      "city": "Chessy",
+      "city_insee": "77111",
+      "city_match": "mention",
+      "city_match_evidence": "mention « 77 » en page",
+      "analysis": {
+        "fit_status": "ok",
+        "strengths": [
+          "Le candidat a une expérience concrète de développement WordPress/WooCommerce pour des clients réels, ce qui correspond au cœur d'activité affiché par la structure : « Studio de création et développement de sites WordPress sur-mesure » (https://opus.paris/) et « le cousu main » revendiqué sur la page À propos (https://opus.paris/a-propos).",
+          "La structure liste explicitement « Headless » parmi ses expertises sur ses réalisations, et le candidat déclare une expérience WordPress headless (La Magicieuse) ainsi que du Nuxt/Next.js — angle de recoupement direct (https://opus.paris/realisations).",
+          "La structure cite « Développement » et « Maintenance & évolutions » comme expertises récurrentes sur ses projets, ce qui correspond aux compétences PHP 8 / Symfony, Git, Docker du candidat pour du développement et de la maintenance WordPress (https://opus.paris/realisations).",
+          "Proximité géographique : le candidat réside à Paris 20e et l'agence publie une adresse à Paris 75010 (33, rue d'Hauteville), ce qui facilite un CDI sur site/hybride sans contrainte de mobilité majeure (https://opus.paris/contact).",
+          "Le candidat a un profil hybride dev + pédagogie (ancien formateur web, VAE CDA en cours), compatible avec une équipe de « une quinzaine de passionnés » qui valorise la transmission et la montée en compétence en interne (https://opus.paris/).",
+          "La structure revendique 20 ans d'expérience digital et des parti-pris techniques forts (refus des usines à gaz, refus des thèmes rigides type Wix), ce qui peut correspondre à un candidat qui a déjà livré des plateformes pédagogiques et des sites clients sur mesure (https://opus.paris/a-propos)."
+        ],
+        "weaknesses": [
+          "La structure met en avant l'expertise « RGAA » sur plusieurs réalisations (Etna France, Le site Compagnon), mais le profil du candidat ne mentionne ni RGAA, ni accessibilité, ni audit a11y : point de vigilance sur un axe revendiqué de l'agence (https://opus.paris/realisations).",
+          "Le candidat déclare 2 ans d'expérience en développement, face à une agence qui se positionne sur « 20 ans d'expérience du digital » et une équipe d'une quinzaine de personnes : le niveau d'exigence en autonomie sur des projets grands comptes (santé, industrie, luxe, banque) n'est pas documenté dans les pages fournies (https://opus.paris/a-propos).",
+          "Aucune offre d'emploi, fiche de poste ni critère de recrutement n'apparaît dans les pages fournies : impossible de vérifier si l'agence recherche un profil WordPress, headless, intégration ou support (https://opus.paris/contact).",
+          "L'activité « UX / UI » figure sur presque toutes les réalisations ; le candidat ne mentionne que Figma/Canva en compétence secondaire, sans preuve de mission UX/UI aboutie (https://opus.paris/realisations).",
+          "La structure ne publie aucune information sur la rémunération ni sur le type de contrat proposé, alors que le candidat a une cible salaire de 35 000–45 000 € brut/an : aucun élément ne permet de valider l'alignement (https://opus.paris/contact).",
+          "Les pages ne détaillent pas la stack exacte côté back (Symfony, PHP, outils de build) ni le mode de travail (freelance, interne, sous-traitance) : le positionnement côté candidat repose sur des hypothèses à partir d'une stack « WordPress, Headless, RGAA » (https://opus.paris/)."
+        ],
+        "application_angle": "Candidater comme développeur WordPress / intégrateur WordPress (et non comme full-stack polyvalent), en mettant en avant : (1) les sites WordPress/WooCommerce livrés pour des clients réels, avec preuve en ligne ; (2) l'expérience WordPress headless, directement alignée avec l'expertise « Headless » affichée par Opus ; (3) la maintenance et les évolutions WordPress ; (4) la proximité Paris 20e / Paris 10e. Mentionner l'intérêt pour le RGAA sans revendiquer une expertise non prouvée, et proposer de renforcer cet axe en montée en compétence.",
+        "fit_summary": "L'adéquation est bonne sur le cœur du métier : Opus est un studio WordPress sur-mesure qui revendique Headless, Développement et Maintenance & évolutions, ce qui recoupe directement l'expérience WordPress/WooCommerce et headless du candidat, ainsi que sa localisation parisienne. Les pages fournies ne contiennent toutefois aucune offre d'emploi ni critère de recrutement, et deux zones d'incertitude demeurent : le RGAA (expertise mise en avant par l'agence, non documentée chez le candidat) et le niveau d'expérience attendu face à une équipe d'une quinzaine de personnes avec 20 ans d'expérience revendiqués. La confiance est donc moyenne : l'activité de la structure est bien décrite, mais pas ses besoins de recrutement.",
+        "fit_score": 7,
+        "confidence": "moyenne",
+        "category": "agence",
+        "evidence_urls": [
+          "https://opus.paris/",
+          "https://opus.paris/a-propos",
+          "https://opus.paris/realisations",
+          "https://opus.paris/contact"
+        ],
+        "issues": [],
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash",
+        "fingerprint": "fc186458d2206b317833feece7be7a3e58bcc553db317a3da5ef2c78779eb339",
+        "analyzed_at": "2026-09-25T10:07:12",
+        "prompt_version": "2",
+        "cache": "miss"
+      }
+    },
+    {
+      "name": "pineapple-squad.com",
+      "website": "https://pineapple-squad.com/",
+      "origin": "web",
+      "score": 45,
+      "raw_score": 45,
+      "stack": [
+        "WordPress"
+      ],
+      "emails": [],
+      "contact_urls": [],
+      "reasons": [
+        "+25 stack:wordpress",
+        "+8 agence:création de site",
+        "+12 zone-large:Seine-et-Marne"
+      ],
+      "signals": {
+        "positive": [
+          "+25 stack:wordpress",
+          "+8 agence:création de site",
+          "+12 zone-large:Seine-et-Marne"
+        ],
+        "negative": [],
+        "exclusion": []
+      },
+      "family_scores": {
+        "stack": 25,
+        "agence": 8,
+        "formation": 0
+      },
+      "sources": [
+        "directory:https://www.lafabriquedunet.fr/agences/pages/agences-wordpress-ile-de-france-paris"
+      ],
+      "fetched_pages": [
+        "https://pineapple-squad.com/",
+        "https://pineapple-squad.com/agence",
+        "https://pineapple-squad.com/a-propos",
+        "https://pineapple-squad.com/realisations"
+      ],
+      "snippet": "Pineapple Squad | Création de sites Seine-et-Marne & Nantes @charset \"UTF-8\";.slick-slider{position:relative;display:block;box-sizing:border-box;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;-khtml-user-select:none;-ms-touch-action:pan-y;touch-action:pan-y;-webkit-tap-highlight-color:transparent}.slick-list{position:relative;display:block;overflow:hidden;margin:0;padding:0}.slick-list:focus{outline:none}.slick-list.dragging{cursor:pointer;cursor:hand}.slick-slider .slick-track,.slick-slider .slick-list{-webkit-transform:translate3d(0,0,0);-moz-transform:translate3d(0,0,0);-ms-transform:translate3d(0,0,0);-o-transform:translate",
+      "zone_match": "tier2",
+      "zone_term": "Seine-et-Marne",
+      "category": "agence",
+      "category_reason": "la structure se décrit comme une agence ou un studio (agence web, création de sites)",
+      "category_evidence": [
+        "ss, Divi et WooCommerce pour TPE & artisans. Agence web locale à Ozoir-la-Ferrière et Nantes. 100% v",
+        "Pineapple Squad | Création de sites Seine-et-Marne & Nantes Création & refonte d"
+      ],
+      "page_texts": [
+        {
+          "url": "https://pineapple-squad.com/",
+          "text": "Pineapple Squad | Création de sites Seine-et-Marne & Nantes @charset \"UTF-8\";.slick-slider{position:relative;display:block;box-sizing:border-box;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;-khtml-user-select:none;-ms-touch-action:pan-y;touch-action:pan-y;-webkit-tap-highlight-color:transparent}.slick-list{position:relative;display:block;overflow:hidden;margin:0;padding:0}.slick-list:focus{outline:none}.slick-list.dragging{cursor:pointer;cursor:hand}.slick-slider .slick-track,.slick-slider .slick-list{-webkit-transform:translate3d(0,0,0);-moz-transform:translate3d(0,0,0);-ms-transform:translate3d(0,0,0);-o-transform:translate3d(0,0,0);transform:translate3d(0,0,0)}.slick-track{position:relative;top:0;left:0;display:block;margin-left:auto;margin-right:auto}.slick-track:before,.slick-track:after{display:table;content:''}.slick-track:after{clear:both}.slick-loading .slick-track{visibility:hidden}.slick-slide{display:none;float:left;height:100%;min-height:1px}[dir=rtl] .slick-slide{float:right}.slick-slide img{display:block}.slick-slide.slick-loading img{display:none}.slick-slide.dragging img{pointer-events:none}.slick-initialized .slick-slide{display:block}.slick-loading .slick-slide{visibility:hidden}.slick-vertical .slick-slide{display:block;height:auto;border:1px solid transparent}.slick-arrow.slick-hidden{display:none}.slick-prev,.slick-next{font-size:0;line-height:0;position:absolute;top:50%;display:block;width:20px;height:20px;padding:0;-webkit-transform:translate(0,-50%);-ms-transform:translate(0,-50%);transform:translate(0,-50%);cursor:pointer;color:transparent;border:none;outline:none;background:0 0}.slick-prev:hover,.slick-prev:focus,.slick-next:hover,.slick-next:focus{color:transparent;outline:none;background:0 0}.slick-prev:hover:before,.slick-prev:focus:before,.slick-next:hover:before,.slick-next:focus:before{opacity:1}.slick-prev.slick-disabled:before,.slick-next.slick-disabled:before{opacity:.25}.slick-prev:before,.slick-next:before{font-family:'slick';font-size:20px;line-height:1;opacity:.75;color:#fff;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}.slick-prev{left:-25px}[dir=rtl] .slick-prev{right:-25px;left:auto}.slick-prev:before{content:'←'}[dir=rtl] .slick-prev:before{content:'→'}.slick-next{right:-25px}[dir=rtl] .slick-next{right:auto;left:-25px}.slick-next:before{content:'→'}[dir=rtl] .slick-next:before{content:'←'}.slick-dotted.slick-slider{margin-b"
+        },
+        {
+          "url": "https://pineapple-squad.com/agence",
+          "text": "Agence de création de site WordPress pour TPE & PME @charset \"UTF-8\";.post-views.entry-meta>span{margin-right:0!important;font:16px/1}.post-views.entry-meta>span.post-views-icon.dashicons{display:inline-block;font-size:16px;line-height:1;text-decoration:inherit;vertical-align:middle}.post-views.load-dynamic .post-views-count{color:#0000;transition:color .3s ease-in-out;position:relative}.post-views.load-dynamic .post-views-count:after{opacity:0;transition:opacity .3s ease-in-out;position:relative;color:#6610f2}.post-views.load-dynamic.loaded .post-views-count,.post-views.load-dynamic.load-error .post-views-count{color:inherit}.post-views.load-dynamic.load-error .post-views-count:after{content:none;opacity:0;animation:none}.post-views.load-dynamic.loading .post-views-count,.post-views.load-dynamic.loading .post-views-count:after{box-sizing:border-box}.post-views.load-dynamic.loading .post-views-count:after{content:\"\";display:block;width:16px;height:16px;border-radius:50%;border:2px solid currentColor;border-color:currentColor transparent;animation:pvc-loading 1s linear infinite;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);opacity:1}@keyframes pvc-loading{0%{transform:translate(-50%,-50%) rotate(0)}to{transform:translate(-50%,-50%) rotate(360deg)}}nav.onetap-accessibility.onetap-plugin-onetap .onetap-container .onetap-accessibility-settings div.onetap-multi-functional-feature .onetap-box-functions .onetap-functional-feature .onetap-right .box-swich label.switch{display:inline-block;width:44px;height:24px;padding:2px}nav.onetap-accessibility.onetap-plugin-onetap .onetap-container .onetap-accessibility-settings div.onetap-multi-functional-feature .onetap-box-functions .onetap-functional-feature .onetap-right .box-swich label.switch input{display:none}nav.onetap-accessibility.onetap-plugin-onetap .onetap-container .onetap-accessibility-settings div.onetap-multi-functional-feature .onetap-box-functions .onetap-functional-feature .onetap-right .box-swich label.switch input:not(:checked)+.slider:hover{background:#d1d5db;transition:background-color 10ms ease-out}nav.onetap-accessibility.onetap-plugin-onetap .onetap-container .onetap-accessibility-settings div.onetap-multi-functional-feature .onetap-box-functions .onetap-functional-feature .onetap-right .box-swich label.switch .slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#e5e7eb;transition:.4s;margin:0}nav.onetap-accessibility.onetap-plugin-onetap .onetap-con"
+        },
+        {
+          "url": "https://pineapple-squad.com/a-propos",
+          "text": "Découvrez Notre Expertise Web | Pineapple Squad @charset \"UTF-8\";.post-views.entry-meta>span{margin-right:0!important;font:16px/1}.post-views.entry-meta>span.post-views-icon.dashicons{display:inline-block;font-size:16px;line-height:1;text-decoration:inherit;vertical-align:middle}.post-views.load-dynamic .post-views-count{color:#0000;transition:color .3s ease-in-out;position:relative}.post-views.load-dynamic .post-views-count:after{opacity:0;transition:opacity .3s ease-in-out;position:relative;color:#6610f2}.post-views.load-dynamic.loaded .post-views-count,.post-views.load-dynamic.load-error .post-views-count{color:inherit}.post-views.load-dynamic.load-error .post-views-count:after{content:none;opacity:0;animation:none}.post-views.load-dynamic.loading .post-views-count,.post-views.load-dynamic.loading .post-views-count:after{box-sizing:border-box}.post-views.load-dynamic.loading .post-views-count:after{content:\"\";display:block;width:16px;height:16px;border-radius:50%;border:2px solid currentColor;border-color:currentColor transparent;animation:pvc-loading 1s linear infinite;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);opacity:1}@keyframes pvc-loading{0%{transform:translate(-50%,-50%) rotate(0)}to{transform:translate(-50%,-50%) rotate(360deg)}}nav.onetap-accessibility.onetap-plugin-onetap .onetap-container .onetap-accessibility-settings div.onetap-multi-functional-feature .onetap-box-functions .onetap-functional-feature .onetap-right .box-swich label.switch{display:inline-block;width:44px;height:24px;padding:2px}nav.onetap-accessibility.onetap-plugin-onetap .onetap-container .onetap-accessibility-settings div.onetap-multi-functional-feature .onetap-box-functions .onetap-functional-feature .onetap-right .box-swich label.switch input{display:none}nav.onetap-accessibility.onetap-plugin-onetap .onetap-container .onetap-accessibility-settings div.onetap-multi-functional-feature .onetap-box-functions .onetap-functional-feature .onetap-right .box-swich label.switch input:not(:checked)+.slider:hover{background:#d1d5db;transition:background-color 10ms ease-out}nav.onetap-accessibility.onetap-plugin-onetap .onetap-container .onetap-accessibility-settings div.onetap-multi-functional-feature .onetap-box-functions .onetap-functional-feature .onetap-right .box-swich label.switch .slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#e5e7eb;transition:.4s;margin:0}nav.onetap-accessibility.onetap-plugin-onetap .onetap-contain"
+        },
+        {
+          "url": "https://pineapple-squad.com/realisations",
+          "text": "Projets - Pineapple Squad @charset \"UTF-8\";.post-views.entry-meta>span{margin-right:0!important;font:16px/1}.post-views.entry-meta>span.post-views-icon.dashicons{display:inline-block;font-size:16px;line-height:1;text-decoration:inherit;vertical-align:middle}.post-views.load-dynamic .post-views-count{color:#0000;transition:color .3s ease-in-out;position:relative}.post-views.load-dynamic .post-views-count:after{opacity:0;transition:opacity .3s ease-in-out;position:relative;color:#6610f2}.post-views.load-dynamic.loaded .post-views-count,.post-views.load-dynamic.load-error .post-views-count{color:inherit}.post-views.load-dynamic.load-error .post-views-count:after{content:none;opacity:0;animation:none}.post-views.load-dynamic.loading .post-views-count,.post-views.load-dynamic.loading .post-views-count:after{box-sizing:border-box}.post-views.load-dynamic.loading .post-views-count:after{content:\"\";display:block;width:16px;height:16px;border-radius:50%;border:2px solid currentColor;border-color:currentColor transparent;animation:pvc-loading 1s linear infinite;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);opacity:1}@keyframes pvc-loading{0%{transform:translate(-50%,-50%) rotate(0)}to{transform:translate(-50%,-50%) rotate(360deg)}}nav.onetap-accessibility.onetap-plugin-onetap .onetap-container .onetap-accessibility-settings div.onetap-multi-functional-feature .onetap-box-functions .onetap-functional-feature .onetap-right .box-swich label.switch{display:inline-block;width:44px;height:24px;padding:2px}nav.onetap-accessibility.onetap-plugin-onetap .onetap-container .onetap-accessibility-settings div.onetap-multi-functional-feature .onetap-box-functions .onetap-functional-feature .onetap-right .box-swich label.switch input{display:none}nav.onetap-accessibility.onetap-plugin-onetap .onetap-container .onetap-accessibility-settings div.onetap-multi-functional-feature .onetap-box-functions .onetap-functional-feature .onetap-right .box-swich label.switch input:not(:checked)+.slider:hover{background:#d1d5db;transition:background-color 10ms ease-out}nav.onetap-accessibility.onetap-plugin-onetap .onetap-container .onetap-accessibility-settings div.onetap-multi-functional-feature .onetap-box-functions .onetap-functional-feature .onetap-right .box-swich label.switch .slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#e5e7eb;transition:.4s;margin:0}nav.onetap-accessibility.onetap-plugin-onetap .onetap-container .onetap-accessibili"
         }
       ],
       "address": null,
@@ -554,44 +675,42 @@
       "legal_address_source": null,
       "distance_m": null,
       "how": "",
-      "city": "Roissy-en-Brie",
-      "city_insee": "77390",
+      "city": "Chessy",
+      "city_insee": "77111",
       "city_match": "mention",
-      "city_match_evidence": "mention « 77 » en page",
+      "city_match_evidence": "mention « Seine-et-Marne » en page",
       "analysis": {
         "fit_status": "ok",
         "strengths": [
-          "Adéquation directe avec le cœur de métier : Opus se présente comme un 'Studio de création et développement de sites WordPress sur-mesure' et le candidat a une expérience freelance de développement et gestion de sites WordPress/WooCommerce pour des clients réels (nat.varascundo.com), ainsi qu'une mission en cours de redesign WordPress/WooCommerce headless (La Magicieuse).",
-          "Compétence headless alignée avec l'offre de l'agence : Opus affiche l'expertise 'Headless' (projet Etna France, filtre Headless sur la page Réalisations) et le candidat maîtrise Vue.js/Nuxt/React, pile typique des frontends headless, avec un projet WordPress headless en cours.",
-          "Expérience de la maintenance et des évolutions, expertise explicitement listée par Opus sur presque tous ses projets ('Maintenance & évolutions'), cohérente avec la gestion de sites WordPress pour des clients réels du candidat.",
-          "Proximité géographique : le candidat est situé à Paris 20e (75020) et l'agence est basée au 33, rue d'Hauteville, 75010 Paris (page Contact), les deux étant intra-muros.",
-          "Taille humaine compatible : 'une équipe d'une quinzaine de passionnés' (page d'accueil), format adapté à un profil polyvalent WordPress (développement, intégration, maintenance) comme celui du candidat."
+          "L'agence se positionne explicitement sur la création de sites WordPress pour TPE & PME, ce qui correspond directement à l'expérience WordPress/WooCommerce du candidat (freelance 2023-2024 et projet La Magicieuse en cours).",
+          "La stack détectée sur le site est WordPress, technologie que le candidat pratique en environnement client réel (sites WP/WooCommerce livrés, dont une preuve en ligne citée dans son profil).",
+          "L'existence de pages 'Projets' et 'Découvrez Notre Expertise Web' indique une activité de production de sites, terrain cohérent avec un profil d'intégrateur/développeur WordPress plutôt qu'avec un poste full-stack applicatif.",
+          "Le positionnement TPE/PME correspond à un profil habitué aux cycles courts de sites vitrines/e-commerce, ce qui est l'essentiel de l'expérience WordPress du candidat."
         ],
         "weaknesses": [
-          "Aucune offre d'emploi ou page carrières n'est visible dans les pages fournies : il s'agirait d'une candidature spontanée, sans connaissance des postes ouverts ni des besoins exacts de l'agence.",
-          "Le RGAA est une expertise affichée par Opus sur plusieurs projets (Fondation Écouter, Framatome, CFA Afia, filtre RGAA), mais aucune compétence en accessibilité ou RGAA n'apparaît dans le profil du candidat.",
-          "Le positionnement de l'agence est explicitement artisanal et anti-complexité ('pas de grandes envolées lyriques', rejet des 'usines à gaz complexes et surdimensionnées', page À propos) : la partie Symfony/Node.js du profil candidat n'est pas valorisée par les pages fournies et ne correspond à aucune expertise affichée par Opus.",
-          "Séniorité potentiellement juste : le candidat affiche 2 ans d'expérience technique (4 ans au total, dont de la formation) face à une agence revendiquant '20 ans d'expérience du digital', sans que les pages indiquent le niveau recherché.",
-          "WooCommerce, cœur de l'expérience client du candidat, n'apparaît nulle part dans les expertises affichées par Opus (les filtres sont Headless, UX/UI, Développement, Maintenance, Hébergement, RGAA), ce qui limite la portée de cet argument."
+          "Les extraits fournis pour toutes les pages sont majoritairement du code CSS/JS (slick-slider, styles de plugins), sans contenu rédactionnel exploitable : aucune information sur l'équipe, l'organisation, les méthodes de travail ou les postes recherchés.",
+          "Aucune offre d'emploi, aucun processus de recrutement et aucune attente de profil ne sont mentionnés dans les pages fournies.",
+          "La localisation annoncée est 'Seine-et-Marne & Nantes' mais aucune adresse n'est publiée et la distance n'est pas renseignée, alors que le candidat est basé à Paris 20e : la faisabilité géographique et le télétravail ne peuvent pas être évalués.",
+          "Les pages ne mentionnent que WordPress : rien n'indique que les compétences du candidat en Symfony, Vue.js, React ou automatisation IA/n8n seraient mobilisées."
         ],
-        "application_angle": "Candidature spontanée au poste de développeur WordPress sur-mesure chez Opus, en mettant en avant : (1) l'expérience freelance WordPress avec de vrais clients (développement, maintenance, évolutions — exactement les expertices affichées par l'agence), (2) la maîtrise du headless WordPress avec un frontend Vue.js/Nuxt qui colle au projet Etna France et au positionnement 'Headless' de l'agence, (3) la disponibilité immédiate (CSP) et la proximité Paris 20e / Paris 10e. Ne PAS se présenter comme développeur full-stack Symfony : Opus revendique le sur-mesure WordPress 'cousu main' et rejette les architectures surdimensionnées. Mentionner la mission bénévole Symfony 7.4 avec PHPStan/PHPUnit uniquement comme preuve de rigueur qualité, et proposer de monter en compétence sur le RGAA pour répondre aux projets accessibilité de l'agence.",
-        "fit_summary": "Opus est une agence purement WordPress (sur-mesure, headless, maintenance, RGAA) d'une quinzaine de personnes à Paris 10e, ce qui correspond bien au profil WordPress du candidat : freelance WordPress/WooCommerce avec clients réels, projet headless en cours (La Magicieuse) et solides compétences frontend Vue.js/React adaptées au headless. L'adéquation métier est réelle mais atténuée par trois facteurs : aucune offre d'emploi visible dans les pages fournies (candidature spontanée), l'absence de compétence RGAA affichée par le candidat alors que l'agence met l'accessibilité en avant sur plusieurs projets, et un profil partiellement orienté Symfony/full-stack que le positionnement artisanal de l'agence ne valorise pas. Les pages ne décrivent ni les postes, ni la stack technique interne exacte, ni les rémunérations, ce qui limite l'évaluation.",
-        "fit_score": 7,
-        "confidence": "moyenne",
+        "application_angle": "Candidater sur un positionnement d'intégrateur/développeur WordPress (et WooCommerce), en mettant en avant les sites WordPress livrés à des clients réels et l'expérience de WordPress headless. Ne pas se présenter comme full-stack applicatif : l'agence communique uniquement sur la création de sites WordPress pour TPE & PME. Demander en amont des précisions sur le lieu de travail (Seine-et-Marne ou Nantes) et les modalités de télétravail.",
+        "fit_summary": "L'adéquation technique est plausible : l'agence se présente comme créatrice de sites WordPress pour TPE & PME, et le candidat a une expérience WordPress/WooCommerce en freelance avec des sites clients. Toutefois, les pages fournies sont presque exclusivement composées de code CSS/JS et ne décrivent ni l'équipe, ni les méthodes, ni d'éventuels besoins de recrutement ; aucune offre d'emploi n'apparaît et la localisation (Seine-et-Marne / Nantes) n'est pas précisée par une adresse. L'évaluation repose donc sur les seuls intitulés de pages, ce qui limite fortement la portée du jugement.",
+        "fit_score": 6,
+        "confidence": "faible",
         "category": "agence",
         "evidence_urls": [
-          "https://opus.paris/",
-          "https://opus.paris/a-propos",
-          "https://opus.paris/realisations",
-          "https://opus.paris/contact"
+          "https://pineapple-squad.com/",
+          "https://pineapple-squad.com/agence",
+          "https://pineapple-squad.com/a-propos",
+          "https://pineapple-squad.com/realisations"
         ],
         "issues": [],
-        "provider": "glm",
-        "model": "glm-5.3",
-        "fingerprint": "c2553c11e64b3d82b6e279aeed210b69bca5a57d6eb2865f204c65766e9ebaac",
-        "analyzed_at": "2026-09-23T09:06:59",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash",
+        "fingerprint": "142e33c04ee7bc30842164bdb0d3f02330627918fdba719e56710419d73691ff",
+        "analyzed_at": "2026-09-25T10:07:20",
         "prompt_version": "2",
-        "cache": "hit"
+        "cache": "miss"
       }
     }
   ]

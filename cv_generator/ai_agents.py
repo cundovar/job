@@ -568,6 +568,10 @@ def _truth_context(master: Dict[str, Any], role: str) -> Dict[str, Any]:
         "evidence_catalog": master.get("evidence_catalog", {}),
         "experience_groups": master.get("experience_groups", {}),
         "layout_constraints": master.get("layout_constraints", {}),
+        # Le titre du CV est choisi parmi ces variants par l'analyste. Sans eux,
+        # le vérificateur refusait un titre pourtant autorisé par la source :
+        # le positionnement est la référence légitime pour juger un titre.
+        "title_variants": (master.get("positioning", {}) or {}).get("title_variants", {}),
     }
 
     if role == "analyzer":

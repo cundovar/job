@@ -103,9 +103,9 @@ text_normalization:
 
 # Postes Recherchés (ordre de priorité)
 target_positions:
-  # --- PRIORITÉ 1 : dev backend Symfony / PHP ---
+  # --- PRIORITÉ 2 : dev backend Symfony / PHP (dépriorisé 10/2026) ---
   - name: "Développeur Backend PHP / Symfony"
-    priority: 1
+    priority: 2
     keywords:
       - "developpeur symfony"
       - "dev symfony"
@@ -125,26 +125,12 @@ target_positions:
       - "developpeur ia"
       - "developpeur intelligence artificielle"
       - "prompt engineer"
-    score_weight: 78
+    score_weight: 66
 
-  # --- PRIORITÉ 1 : dev frontend Vue.js / React / intégration ---
-  - name: "Développeur Frontend React / Vue.js / Intégrateur"
+  # --- PRIORITÉ 1 : intégrateur web / HTML / emailing (position dédiée, re-scoring 10/2026) ---
+  - name: "Intégrateur web / HTML / emailing"
     priority: 1
     keywords:
-      - "developpeur react"
-      - "dev react"
-      - "react developer"
-      - "developpeur vue"
-      - "dev vue"
-      - "vue developer"
-      - "developpeur vuejs"
-      - "developpeur vue.js"
-      - "developpeur front"
-      - "developpeur frontend"
-      - "dev front"
-      - "dev frontend"
-      - "frontend developer"
-      - "front-end developer"
       - "integrateur web"
       - "intégrateur web"
       - "integrateur html"
@@ -175,13 +161,31 @@ target_positions:
       - "frontend integrator"
       - "email integrator"
       - "emailing integrator"
+    score_weight: 76
+
+  # --- PRIORITÉ 2 : dev frontend pur (React / Vue.js) — dépriorisé 10/2026 ---
+  - name: "Développeur Frontend React / Vue.js"
+    priority: 2
+    keywords:
+      - "developpeur react"
+      - "dev react"
+      - "react developer"
+      - "developpeur vue"
+      - "dev vue"
+      - "vue developer"
+      - "developpeur vuejs"
+      - "developpeur vue.js"
+      - "developpeur front"
+      - "developpeur frontend"
+      - "dev front"
+      - "dev frontend"
+      - "frontend developer"
+      - "front-end developer"
       - "developpeur javascript"
       - "dev javascript"
       - "developpeur typescript"
       - "dev typescript"
-      - "developpeur wordpress"
-      - "developpeur cms"
-    score_weight: 76
+    score_weight: 68
 
   # --- PRIORITÉ 1 : webmaster / webmestre / administrateur web ---
   - name: "Webmaster / webmestre / administrateur web"
@@ -213,7 +217,7 @@ target_positions:
       - "seo technique"
       - "site institutionnel"
       - "portail web"
-    score_weight: 76
+    score_weight: 80
 
   # --- PRIORITÉ 1 : formateur web ou formateur IA ---
   - name: "Formateur web / formateur IA"
@@ -252,7 +256,7 @@ target_positions:
       - "centre de formation"
       - "organisme de formation"
       - "ecole numerique"
-    score_weight: 74
+    score_weight: 78
 
   # --- PRIORITÉ 2 : CMS / intégration web plus généraliste ---
   - name: "Développeur web orienté CMS / intégration"
@@ -357,7 +361,7 @@ target_positions:
       - "e-learning"
       - "lms"
       - "moodle"
-    score_weight: 72
+    score_weight: 76
 
   - name: "Accessibilité numérique / Référent RGAA"
     priority: 1
@@ -509,21 +513,23 @@ skills_matching:
       points: 6
       variants: ["microsoft 365", "office 365", "m365", "sharepoint", "teams"]
 
-    # Stack dev : augmentés pour favoriser les annonces dev
+    # Stack dev : réduits le 10/2026 — les annonces dev sont dépriorisées,
+    # les gros bonus faisaient remonter backend/frontend au-dessus de
+    # webmaster/formateur/intégrateur malgré les poids de target_positions.
     - skill: "symfony"
-      points: 12
+      points: 6
       variants: ["symfony", "symfony 5", "symfony 6", "symfony 7"]
     - skill: "react"
-      points: 8
+      points: 5
       variants: ["react", "reactjs", "react.js"]
     - skill: "vue"
-      points: 8
+      points: 5
       variants: ["vue", "vuejs", "vue.js", "nuxt", "nuxtjs"]
     - skill: "php"
-      points: 8
+      points: 5
       variants: ["php", "php8", "php 8", "php7"]
     - skill: "javascript"
-      points: 8
+      points: 5
       variants: ["javascript", "js", "es6", "typescript", "ts"]
     - skill: "sql"
       points: 5
@@ -783,8 +789,9 @@ red_flags:
       points: -10
     - keyword: "bac +5"
       points: -10
-    - keyword: "master"
-      points: -10
+    # NB : le malus « master » a été retiré le 10/2026 — il matchait en
+    # sous-chaîne et pénalisait « webmaster » de -10. Le diplôme Bac+5 reste
+    # couvert par « bac+5 » ici et par le juge IA (Bac+5 strict → PASSER).
     - keyword: "ingenieur diplome"
       points: -12
 
