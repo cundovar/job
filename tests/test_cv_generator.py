@@ -2239,3 +2239,37 @@ def test_exigence_nommee_dans_une_puce_visible_est_prouvee():
         p.get("code") == "SKILL_WITHOUT_EVIDENCE" and "Git" in p.get("problem", "")
         for p in review["problems"]
     )
+
+
+def _pdf_text(path):
+    return "\n".join(page.extract_text() or "" for page in PdfReader(path).pages)
+
+
+def test_design_pdf_liens_cliquables_et_realisations_en_ligne(tmp_path):
+    final_cv = {
+        "base_variant": "webmaster",
+        "cv": {
+            "title": "Responsable digital",
+            "profile": "Profil.",
+            "contact": {"email": "contact@varascundo.com", "portfolio": "https://varascundo.com/"},
+            "skills": [{"title": "Web", "items": ["WordPress"]}],
+            "experiences": [{"period": "2023 – 2024", "organization": "Freelance", "title": "Développeur web",
+                             "bullets": ["Refonte."], "links": ["https://www.la-magicieuse.org/"]}],
+            "projects": [{"title": "DevDoc — plateforme", "description": "Cours.", "technologies": ["Symfony"],
+                          "links": ["https://devdoc.varascundo.com/docs/"]}],
+            "education": [{"title": "2022 — Développeur Web et Web Mobile, Bac+2 — Doranco"}],
+            "languages": [{"name": "Français", "level": "courant"}],
+        },
+    }
+    pdf = tmp_path / "cv.pdf"
+    cv_to_pdf(final_cv, pdf)
+    reader = PdfReader(pdf)
+    assert len(reader.pages) == 1
+    uris = {a.get_object()["/A"]["/URI"] for a in reader.pages[0].get("/Annots", [])}
+    assert "https://www.la-magicieuse.org/" in uris
+    assert "mailto:contact@varascundo.com" in uris
+    assert "RÉALISATIONS EN LIGNE" in _pdf_text(pdf).upper()
+
+    final_cv["base_variant"] = "accueil"
+    cv_to_pdf(final_cv, pdf)
+    assert "RÉALISATIONS EN LIGNE" not in _pdf_text(pdf).upper()
