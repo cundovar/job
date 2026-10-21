@@ -68,3 +68,33 @@ def test_unknown_target_leaves_every_register_empty():
     assert measured["value"]["excluded"] == []
     assert measured["value"]["known"] == []
     assert "aucun doublon" in measured["evidence"]
+
+
+def test_generic_placeholder_name_never_matches_by_name():
+    """« Entreprise de l'annonce » est posé par l'interface quand le champ reste vide."""
+    assert normalize_name("Entreprise de l'annonce") == ""
+    assert (
+        same_organisation("", "Entreprise de l'annonce", "", "Entreprise de l'annonce") == ""
+    )
+
+
+def test_generic_placeholder_does_not_block_a_real_name():
+    assert (
+        same_organisation("", "Ligue de l'Enseignement", "", "Entreprise de l'annonce") == ""
+    )
+
+
+def test_generic_placeholder_still_matches_by_domain():
+    reason = same_organisation(
+        "https://econovia.fr", "Entreprise de l'annonce", "https://www.econovia.fr/jobs", "Econovia"
+    )
+    assert "econovia.fr" in reason
+
+
+def test_check_ignores_contacted_placeholder_company():
+    measured = duplicate_check(
+        "",
+        "Entreprise de l'annonce",
+        contacted=[{"company": "Entreprise de l'annonce", "url": ""}],
+    )
+    assert measured["value"]["contacted"] == []

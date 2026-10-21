@@ -26,6 +26,12 @@ LEGAL_FORMS = ("sarl", "sarlu", "sas", "sasu", "sa", "eurl", "scop", "scic", "sc
 
 EXCLUDED_STATUS = "ecartee"
 
+# Noms de remplissage posés par l'interface quand le champ « Entreprise » reste
+# vide (front/src/ManualCvView.jsx). Ils n'identifient aucune organisation :
+# deux annonces collées sans nom ne sont pas la même entreprise. Forme déjà
+# normalisée (casse et ponctuation neutralisées), comme la sortie de normalize_name.
+GENERIC_NAMES = ("entreprise de l annonce",)
+
 
 def domain_of(url: str) -> str:
     """Domaine normalisé, ou chaîne vide si l'URL n'en livre aucun.
@@ -45,7 +51,10 @@ def normalize_name(name: str) -> str:
     """Nom comparable : casse, ponctuation et forme juridique neutralisées."""
     flattened = re.sub(r"[^\w\s]", " ", str(name or ""), flags=re.UNICODE).casefold()
     words = [word for word in flattened.split() if word not in LEGAL_FORMS]
-    return " ".join(words)
+    normalized = " ".join(words)
+    # Un nom de remplissage vaut « je ne sais pas » : chaîne vide, donc jamais
+    # de rapprochement par le nom (le domaine garde la main).
+    return "" if normalized in GENERIC_NAMES else normalized
 
 
 def same_organisation(url_a: str, name_a: str, url_b: str, name_b: str) -> str:
