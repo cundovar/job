@@ -82,6 +82,61 @@ class ExperienceView:
 # --------------------------------------------------------------------------- #
 
 
+CANDIDATE_SOURCE = "consignes_candidat"
+
+
+def candidate_statements(text: Any) -> List[str]:
+    """Découpe les consignes du candidat en déclarations citables (une par ligne ou phrase)."""
+    raw = str(text or "").replace("\r", "\n")
+    parts: List[str] = []
+    for line in raw.split("\n"):
+        line = line.strip(" -•*\t")
+        if not line:
+            continue
+        parts.extend(chunk.strip() for chunk in re.split(r"(?<=[.!?;])\s+", line) if chunk.strip())
+    return parts[:60]
+
+
+def with_candidate_statements(master: Dict[str, Any], instructions: Any) -> Dict[str, Any]:
+    """Copie du profil maître enrichie des consignes du candidat (source de vérité supérieure).
+
+    Règle Cundo (21/10/2026) : ce que le candidat écrit au moment de la génération
+    fait foi, même sans preuve dans le profil. Les puces peuvent citer
+    « consignes_candidat:N » et les compétences nommées dans les consignes sont
+    autorisées.
+    """
+    statements = candidate_statements(instructions)
+    if not statements:
+        return master
+    enriched = dict(master)
+    enriched["candidate_statements"] = statements
+    enriched["candidate_instructions_text"] = str(instructions or "")
+    return enriched
+
+
+def _candidate_text(master: Dict[str, Any]) -> str:
+    return normalize(master.get("candidate_instructions_text") or " ".join(master.get("candidate_statements", []) or []))
+
+
+_REMOVAL = re.compile(r"\b(retire\w*|enl[eè]ve\w*|supprime\w*|sans|pas de|pas d'|masque\w*|cache\w*|ne mets? pas)\b")
+
+
+def candidate_excludes(master: Dict[str, Any], experience_id: str) -> bool:
+    """Le candidat a-t-il demandé de retirer cette expérience dans ses consignes ?
+
+    Les consignes priment sur les règles du profil maître : une expérience
+    obligatoire que le candidat demande d'enlever n'est plus imposée.
+    """
+    item = (master.get("experience_catalog", {}) or {}).get(experience_id) or {}
+    names = {normalize(experience_id.replace("_", " ")), normalize(item.get("organization"))}
+    names = {n for n in names if n and len(n) > 2}
+    for statement in master.get("candidate_statements", []) or []:
+        text = normalize(statement)
+        if _REMOVAL.search(text) and any(name in text for name in names):
+            return True
+    return False
+
+
 def allowed_skill_labels(master: Dict[str, Any]) -> Dict[str, str]:
     """Libellés de compétence autorisés, indexés par forme normalisée."""
     labels: List[str] = list(master.get("skills_confidence", {}).keys())
@@ -352,6 +407,19 @@ def _validate_bullets(
                 )
                 continue
             kind, identifier, index = parsed
+            if identifier == CANDIDATE_SOURCE:
+                statements = master.get("candidate_statements", []) or []
+                if index is None or index >= len(statements):
+                    issues.append(
+                        TruthIssue(
+                            "SOURCE_OUT_OF_RANGE",
+                            TRUTH,
+                            bullet.path,
+                            f"Aucune déclaration du candidat n°{index} ({len(statements)} disponible(s)).",
+                            raw,
+                        )
+                    )
+                continue
             if kind == "project":
                 if identifier not in projects:
                     issues.append(
@@ -426,7 +494,8 @@ def _validate_skills(
             total += 1
             path = f"skills[{position}].items[{item_index}]"
             key = normalize(item)
-            if key not in allowed:
+            candidate = _candidate_text(master)
+            if key not in allowed and not (key and candidate and key in candidate):
                 issues.append(
                     TruthIssue(
                         "UNKNOWN_SKILL",
@@ -764,6 +833,8 @@ def validate_cv_content(
     for required in rules.get(variant_id, rules.get("*", [])) if variant_id or "*" in rules else []:
         options = [required] if isinstance(required, str) else [str(x) for x in required]
         options = [x for x in options if x in catalog and not catalog[x].get("retired")]
+        if any(candidate_excludes(master, x) for x in options):
+            continue
         if options and not any(x in shown_ids for x in options):
             issues.append(
                 TruthIssue(

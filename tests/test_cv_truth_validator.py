@@ -499,3 +499,33 @@ def test_experience_obligatoire_manquante_signalee():
     cv = {"base_variant": "webmaster", "cv": {"experiences": [{"id": "b", "bullets": [{"text": "B", "sources": ["b:0"]}]}]}}
     codes = [i["code"] for i in validate_cv_content(cv, master)["issues"]]
     assert "MISSING_REQUIRED_EXPERIENCE" in codes
+
+
+def test_consignes_candidat_font_foi():
+    from cv_generator.cv_truth_validator import validate_cv_content, with_candidate_statements
+    master = {
+        "experience_catalog": {"a": {"highlights": ["A"], "period": {"start": "2025-01", "end": "2026-03"}}},
+        "skills_confidence": {"Git": "pratique"},
+    }
+    master = with_candidate_statements(master, "J'ai animé des ateliers Canva pour des seniors.\nAjoute Figma.")
+    cv = {"cv": {
+        "skills": [{"title": "Outils", "items": ["Figma", "Git"]}],
+        "experiences": [{"id": "a", "bullets": [{"text": "Ateliers Canva pour des seniors.", "sources": ["consignes_candidat:0"]}]}],
+    }}
+    codes = {i["code"] for i in validate_cv_content(cv, master)["issues"]}
+    assert "UNKNOWN_SKILL" not in codes
+    assert "SOURCE_OUTSIDE_EXPERIENCE" not in codes
+    assert "SOURCE_OUT_OF_RANGE" not in codes
+
+
+def test_consigne_de_retrait_l_emporte_sur_l_obligation():
+    from cv_generator.cv_truth_validator import validate_cv_content, with_candidate_statements
+    master = {
+        "experience_catalog": {"pole_s": {"organization": "Pôle S", "highlights": ["A"], "period": {"start": "2025-01", "end": "2026-03"}},
+                               "b": {"highlights": ["B"], "period": {"start": "2023", "end": "2024"}}},
+        "layout_constraints": {"required_experiences_by_variant": {"*": ["pole_s", "b"]}},
+    }
+    master = with_candidate_statements(master, "Retire le Pôle S de ce CV.")
+    cv = {"base_variant": "webmaster", "cv": {"experiences": [{"id": "b", "bullets": [{"text": "B", "sources": ["b:0"]}]}]}}
+    codes = [i["code"] for i in validate_cv_content(cv, master)["issues"]]
+    assert "MISSING_REQUIRED_EXPERIENCE" not in codes

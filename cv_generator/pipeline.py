@@ -18,6 +18,7 @@ from .ats_exporter import cv_to_ats_html, cv_to_ats_pdf
 from .ats_validator import validate_ats_pdf
 from .cv_assessment import build_cv_assessment
 from .exporters import cv_to_html, cv_to_pdf
+from .cv_truth_validator import with_candidate_statements
 from .utils import load_json, save_json
 
 #: Trois passes de correction au maximum : assez pour réparer, trop peu pour
@@ -257,7 +258,7 @@ def prepare_custom_cv(
     llm_client: AgentClient | None = None,
 ) -> Dict[str, Any]:
     """Construit un CV sourcé via cinq rôles IA, sous garde-fous Python non modificatifs."""
-    master = load_json(master_path)
+    master = with_candidate_statements(load_json(master_path), job.get("candidate_instructions"))
     output_dir = Path(application_dir) / "cv"
     output_dir.mkdir(parents=True, exist_ok=True)
 

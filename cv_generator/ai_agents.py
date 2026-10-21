@@ -15,6 +15,7 @@ from cv_generator.cv_creator import build_structural_shell
 from cv_generator.cv_quality_checker import review_cv as review_cv_rules
 from cv_generator.cv_truth_validator import ALLOWED_SECTIONS, validate_cv_content
 from cv_generator.job_analyzer import analyze_job_for_cv as analyze_job_rules
+from cv_generator.cv_truth_validator import candidate_excludes
 from cv_generator.utils import compact_items, flatten_skills, normalize, period_to_text
 from utils.ai_role_routing import AIRouteStep, legacy_route, load_role_route
 from utils.cli_agent_bridge import CLIAgentBridgeClient
@@ -305,9 +306,7 @@ Le titre cible et le positionnement peuvent être adaptés, sans augmenter le ni
 La préanalyse Python est purement consultative: aucun de ses éléments n'est imposé. Python ne
 réinjectera aucune expérience que tu écartes et n'imposera aucun nombre minimum. Tu as la
 responsabilité entière de la sélection, de l'ordre et du regroupement.
-Les consignes_candidat sont des préférences éditoriales prioritaires, séparées de l'annonce.
-Respecte-les lorsqu'elles sont réalisables avec la source de vérité. Si elles demandent une
-affirmation absente, contradictoire ou interdite, refuse cette partie et ajoute un avertissement.
+Les consignes_candidat sont écrites par le candidat lui-même : elles sont la source de vérité la plus haute, au-dessus du profil maître. Toute information qu'elles affirment (expérience, mission, outil, compétence, intitulé, date, résultat) est vraie et utilisable même sans preuve dans le profil ; toute consigne de présentation (retirer, regrouper, renommer, réordonner) s'applique. En cas de contradiction avec le profil maître, la consigne l'emporte. Une puce qui s'appuie sur une consigne cite la source « consignes_candidat:N », N étant l'indice de la déclaration dans declarations_candidat.
 N'inclus une expérience que si elle apporte une preuve explicite à un critère de l'annonce.
 Il est préférable de retenir moins d'expériences plutôt que de remplir les emplacements avec
 des expériences faibles ou hors sujet. Respecte la visibilité conditionnelle de la source.
@@ -376,8 +375,7 @@ Tu décides seul du contenu final. Python ne complète rien: une expérience que
 absente, une puce que tu n'écris pas ne sera pas fabriquée, et l'ordre que tu donnes est celui
 qui sera rendu. Sélectionne, omets et réordonne librement expériences, compétences, projets et
 formations, à condition que chaque élément existe dans la source de vérité.
-Applique les consignes_candidat comme préférences éditoriales prioritaires. Elles ne peuvent
-jamais autoriser une expérience, une compétence ou un niveau absent de la source de vérité.
+Les consignes_candidat sont écrites par le candidat lui-même : elles sont la source de vérité la plus haute, au-dessus du profil maître. Toute information qu'elles affirment (expérience, mission, outil, compétence, intitulé, date, résultat) est vraie et utilisable même sans preuve dans le profil ; toute consigne de présentation (retirer, regrouper, renommer, réordonner) s'applique. En cas de contradiction avec le profil maître, la consigne l'emporte. Une puce qui s'appuie sur une consigne cite la source « consignes_candidat:N », N étant l'indice de la déclaration dans declarations_candidat.
 Présente les expériences retenues dans un ordre antéchronologique cohérent. Utilise
 skills_confidence pour ne jamais présenter des bases ou notions comme une maîtrise solide.
 Pour une annonce large de développement web, conserve une stack projet représentative de
@@ -423,7 +421,10 @@ vraie ailleurs dans la source de vérité : la preuve citée doit être la bonne
 Vérifie de la même façon l'accroche, le titre, les compétences affichées et les descriptions
 de projets. Le contrôle Python joint liste déjà les références introuvables : tu traites ce que
 Python ne peut pas voir, c'est-à-dire l'écart de sens entre une preuve et sa reformulation.
-Sois strict : dans le doute, `unsupported`, en expliquant précisément ce qui manque.
+Les declarations_candidat (consignes écrites par le candidat) sont une source de vérité supérieure
+au profil maître : une affirmation qu'elles contiennent est `supported`, qu'elle cite
+« consignes_candidat:N » ou une autre preuve. Sois strict pour tout le reste : dans le doute,
+`unsupported`, en expliquant précisément ce qui manque.
 
 JSON attendu:
 {
@@ -445,8 +446,7 @@ l'annonce absente du profil est un écart, pas une compétence à ajouter. Signa
 chaque problème et propose une correction fondée sur la source. Tu es responsable du verdict,
 du score qualité et du score ATS. Le contrôle Python joint sert uniquement à signaler les
 erreurs factuelles ou techniques; il ne décide pas de la pertinence éditoriale.
-Vérifie aussi que les consignes_candidat réalisables ont été respectées. Signale précisément
-toute consigne oubliée, mais ne pénalise pas le CV pour une demande impossible ou non sourcée.
+Les consignes_candidat sont écrites par le candidat lui-même : elles sont la source de vérité la plus haute, au-dessus du profil maître. Toute information qu'elles affirment (expérience, mission, outil, compétence, intitulé, date, résultat) est vraie et utilisable même sans preuve dans le profil ; toute consigne de présentation (retirer, regrouper, renommer, réordonner) s'applique. En cas de contradiction avec le profil maître, la consigne l'emporte. Une puce qui s'appuie sur une consigne cite la source « consignes_candidat:N », N étant l'indice de la déclaration dans declarations_candidat. Vérifie que chaque consigne a été appliquée et signale précisément toute consigne oubliée ou mal appliquée ; ne la qualifie jamais de « non sourcée ».
 Pour une annonce hybride de formation web et IA, renseigne les cinq piliers de couverture.
 Chaque preuve doit citer uniquement un identifiant d'expérience ou de projet existant dans la
 source. Un pilier manquant doit produire une correction concrète et influencer ton verdict.\nVérifie que les expériences sont présentées dans un ordre antéchronologique et signale toute\ninversion. Pour chaque exigence critique du plan, vérifie qu'une expérience ou un projet visible\napporte une preuve. Une technologie, une mission ou une responsabilité demandée mais absente de la source (par
@@ -489,8 +489,7 @@ les vrais intitulés d'expérience. Préserve la provenance de chaque puce dans 
 "experience_id:index" ou "project_id". Une puce sans source est refusée. N'ajoute que des compétences dont le libellé exact existe dans la source.
 Tu peux ajouter, retirer ou réordonner tout élément sourcé; aucune sélection Python n'est
 obligatoire. Le jugement IA décide de la pertinence, Python ne contrôle que la vérité et le format.
-Applique les consignes_candidat et les corrections du juge ensemble. Si une consigne contredit
-la source de vérité ou exige une invention, ignore seulement cette partie et reste factuel.
+Les consignes_candidat sont écrites par le candidat lui-même : elles sont la source de vérité la plus haute, au-dessus du profil maître. Toute information qu'elles affirment (expérience, mission, outil, compétence, intitulé, date, résultat) est vraie et utilisable même sans preuve dans le profil ; toute consigne de présentation (retirer, regrouper, renommer, réordonner) s'applique. En cas de contradiction avec le profil maître, la consigne l'emporte. Une puce qui s'appuie sur une consigne cite la source « consignes_candidat:N », N étant l'indice de la déclaration dans declarations_candidat. Applique les consignes_candidat et les corrections du juge ensemble ; en cas de conflit, la consigne l'emporte.
 Respecte les niveaux de skills_confidence et l'ordre antéchronologique. Une exigence de l'annonce
 absente de la source reste un écart honnête; elle ne doit jamais être transformée en compétence.
 Utilise evidence_coverage du jugement pour combler chaque pilier partiel ou manquant avec les
@@ -575,6 +574,9 @@ def _truth_context(master: Dict[str, Any], role: str) -> Dict[str, Any]:
         # le vérificateur refusait un titre pourtant autorisé par la source :
         # le positionnement est la référence légitime pour juger un titre.
         "title_variants": (master.get("positioning", {}) or {}).get("title_variants", {}),
+        # Consignes du candidat : source de vérité supérieure (règle Cundo 21/10/2026),
+        # citables par les puces sous « consignes_candidat:N ».
+        "declarations_candidat": list(enumerate(master.get("candidate_statements", []) or [])),
     }
 
     if role == "analyzer":
@@ -781,6 +783,8 @@ def _validate_plan(
         options = [x for x in options if x in catalog and not catalog[x].get("retired")]
         if not options or any(x in seen for x in options):
             continue
+        if any(candidate_excludes(master, x) for x in options):
+            continue  # le candidat a demandé de la retirer : sa consigne l'emporte
         exp_id = options[0]
         highlights = catalog[exp_id].get("highlights", [])
         indexes = list(range(min(len(highlights), 3)))
