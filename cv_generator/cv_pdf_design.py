@@ -23,6 +23,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Tuple
 from urllib.parse import urlparse
 
+from cv_generator.rules import is_retired_link, shown_links
+
 FONT_DIR = Path(__file__).resolve().parent.parent / "assets" / "fonts"
 
 # Palette : vert sapin sobre sur fond blanc, colonne gauche légèrement teintée.
@@ -122,25 +124,41 @@ CHANT_ORTIES_GUIDE = ("Chant d'Orties — guide", "https://tuto-des-orties.varas
 
 
 def _online_work(cv: Dict[str, Any]) -> List[Tuple[str, str]]:
-    """Liens vers des travaux publics, dans l'ordre du CV, sans doublon."""
+    """Liens vers des travaux publics, dans l'ordre du CV, sans doublon.
+
+    ``cv["online_work"]`` (liste de {label, url}) remplace la sélection
+    automatique. Un lien retiré (``rules.RETIRED_LINK_HOSTS``) n'apparaît dans
+    aucun des deux cas.
+    """
+    override = cv.get("online_work")
+    if isinstance(override, list):
+        return [
+            (str(i.get("label")), str(i.get("url")))
+            for i in override
+            if isinstance(i, dict) and i.get("url") and not is_retired_link(i.get("url"))
+        ]
     items: List[Tuple[str, str]] = []
-    seen = set(ONLINE_WORK_EXCLUDED)
+    excluded_hosts = set(ONLINE_WORK_EXCLUDED)
+    seen: set[str] = set()
 
     def add(label: str, url: str) -> None:
-        key = _display_url(url).split("/")[0]
-        if url and key not in seen:
-            seen.add(key)
-            items.append((label, url))
+        # Le doublon se juge sur l'adresse entière, pas sur le domaine :
+        # devdoc.varascundo.com et devdoc.varascundo.com/docs sont deux pages.
+        key = _display_url(url)
+        if not url or key in seen or key.split("/")[0] in excluded_hosts or is_retired_link(url):
+            return
+        seen.add(key)
+        items.append((label, url))
 
     if any("orties" in str(exp.get("organization", "")).lower() for exp in cv.get("experiences", [])):
         add(*CHANT_ORTIES_GUIDE)
-    seen.add("chantdorties.pages-perso.free.fr")
+    excluded_hosts.add("chantdorties.pages-perso.free.fr")
 
     for exp in cv.get("experiences", []):
-        for link in exp.get("links", [])[:2]:
-            add(_display_url(link).split("/")[0], str(link))
+        for link in shown_links(exp.get("links"))[:2]:
+            add(_display_url(link), str(link))
     for project in cv.get("projects", [])[:2]:
-        links = project.get("links", [])
+        links = shown_links(project.get("links"))
         if links:
             add(_split_title(str(project.get("title", "")))[0] or _display_url(links[0]), str(links[-1]))
     return items[:5]
@@ -299,7 +317,7 @@ def render_cv_pdf(
                 y = ty - 0.6 * s
                 # Organisation puis liens cliquables, sur la même ligne si possible.
                 org = str(exp.get("organization", ""))
-                links = [str(link) for link in exp.get("links", [])[:2]]
+                links = shown_links(exp.get("links"))[:2]
                 segments: List[Tuple[str, Any, str | None]] = [(org, soft, None)] if org else []
                 for link in links:
                     segments.append((_display_url(link), accent, _href(link)))
@@ -356,7 +374,7 @@ def render_cv_pdf(
                 y -= 11 * s
                 y = pen.para(str(project.get("description", "")), main_x, y, main_w, regular, body, lead, body_c)
                 tech = ", ".join(str(t) for t in project.get("technologies", []))
-                links = [str(link) for link in project.get("links", [])[:2]]
+                links = shown_links(project.get("links"))[:2]
                 cx = main_x
                 if tech:
                     cx += pen.text(tech, cx, y, regular, small, soft)
