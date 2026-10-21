@@ -536,7 +536,20 @@ def _validate_projects(
         return issues
     catalog = master.get("project_catalog", {})
     forbidden = set(rules.forbidden_projects(master, variant_id))
-    max_projects = int(constraints.get("max_projects", 1))
+    max_projects = rules.max_projects(master, variant_id)
+    shown_ids = {str(project.get("id") or "") for project in projects if isinstance(project, dict)}
+    for required in rules.required_projects(master, variant_id):
+        if required in master.get("project_catalog", {}) and required not in shown_ids:
+            issues.append(
+                TruthIssue(
+                    "MISSING_REQUIRED_PROJECT",
+                    FORMAT,
+                    "projects",
+                    f"Le projet « {required} » est obligatoire sur un CV {variant_id} "
+                    "(règle du candidat, adaptation_rules.required_projects_by_variant) : l'ajouter.",
+                    required,
+                )
+            )
     if len(projects) > max_projects:
         issues.append(
             TruthIssue(

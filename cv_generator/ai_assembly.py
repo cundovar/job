@@ -211,6 +211,7 @@ def _assemble_cv_content(
             }
         experiences.append(entry)
 
+    variant_id = str(plan.get("selected_base_variant") or "")
     projects: List[Dict[str, Any]] = []
     for item in proposed.get("projects") or []:
         if not isinstance(item, dict):
@@ -229,7 +230,11 @@ def _assemble_cv_content(
                 "description": re.sub(
                     r"\s+", " ", str(item.get("description") or source.get("description", ""))
                 ).strip(),
-                "technologies": (
+                # Affichage décidé par le candidat (comme le statut VAE) : le
+                # projet garde ses technologies dans le profil, pas sur ce CV.
+                "technologies": [] if candidate_rules.hides_project_technologies(
+                    master, variant_id, project_id
+                ) else (
                     [str(technology) for technology in requested]
                     if isinstance(requested, list)
                     else source.get("technologies", [])
@@ -239,7 +244,6 @@ def _assemble_cv_content(
         )
 
     person = master.get("person", {})
-    variant_id = str(plan.get("selected_base_variant") or "")
     education_catalog = {
         normalize(entry.get("title")): entry
         for entry in person.get("education", [])
@@ -263,6 +267,9 @@ def _assemble_cv_content(
         "education": education,
         "languages": person.get("languages", []),
     }
+    online = candidate_rules.online_work(master, variant_id)
+    if online is not None:
+        cv["online_work"] = online
 
     content = {
         "agent": agent_name,
