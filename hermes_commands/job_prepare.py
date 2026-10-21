@@ -25,7 +25,7 @@ def main() -> None:
         output_dir=args.output_dir,
         user_profile=criteria.get("user_profile", {}),
     )
-    record = ApplicationTracker(args.tracker).mark_ready(job, package)
+    record = ApplicationTracker(args.tracker).mark_ready(getattr(package, "job", None) or job, package)
 
     print(
         "\n".join(

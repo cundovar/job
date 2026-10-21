@@ -236,8 +236,13 @@ export default function ManualCvView({ onOpenCandidatures }) {
     setStage('preparing')
 
     const firstLine = description.split(/\r?\n/).map(line => line.trim()).find(Boolean) || ''
+    // Sans intitulé saisi, la première ligne n'est qu'un titre provisoire
+    // (souvent « Description du poste ») : le serveur le remplace par
+    // l'intitulé que l'analyse lit dans l'annonce.
+    const titleInferred = !form.title.trim()
     const job = {
       title: form.title.trim() || firstLine.slice(0, 140) || 'Annonce personnalisée',
+      title_inferred: titleInferred,
       company: form.company.trim() || "Entreprise de l'annonce",
       location: form.location.trim(),
       url: form.url.trim(),

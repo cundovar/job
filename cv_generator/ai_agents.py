@@ -325,8 +325,15 @@ Respecte les préférences permanentes du candidat listées dans
 adaptation_rules.standing_experience_preferences_by_variant pour la variante retenue : elles
 désignent une preuve humaine complémentaire, jamais une preuve métier centrale.
 
+Lis aussi l'annonce elle-même : son intitulé exact, l'employeur, le lieu, le contrat et sa
+famille de poste, choisie dans familles_de_poste. Ces champs décrivent l'annonce, pas le
+candidat : laisse vide ce que l'annonce ne dit pas, n'invente jamais un employeur. Un texte
+collé commence souvent par un titre de rubrique (« Description du poste », « Vos missions »)
+qui n'est pas l'intitulé du poste.
+
 JSON attendu:
 {
+  "annonce": {"intitule":"...","entreprise":"","lieu":"","contrat":"","famille":"une valeur de familles_de_poste"},
   "selected_base_variant": "id existant",
   "target_title": "titre du CV",
   "positioning": "accroche proposée",
@@ -718,6 +725,18 @@ def _filter_skills_whitelist(
     return sections
 
 
+def _validate_announcement(raw: Any) -> Dict[str, str]:
+    """Ce que l'agent a lu dans l'annonce : des champs courts, une famille connue."""
+    raw = raw if isinstance(raw, dict) else {}
+    return {
+        "intitule": _clip(raw.get("intitule"), 140),
+        "entreprise": _clip(raw.get("entreprise"), 90),
+        "lieu": _clip(raw.get("lieu"), 90),
+        "contrat": _clip(raw.get("contrat"), 40),
+        "famille": candidate_rules.normalize_family(raw.get("famille")),
+    }
+
+
 def _validate_plan(
     proposed: Dict[str, Any],
     rule_plan: Dict[str, Any],
@@ -841,6 +860,7 @@ def _validate_plan(
     return {
         "agent": "cv_job_analyzer_ai",
         "agent_run": _agent_run(run),
+        "annonce": _validate_announcement(proposed.get("annonce")),
         "selected_base_variant": variant_id,
         "target_title": _clip(proposed.get("target_title"), 90),
         "positioning": _clip(
@@ -1819,6 +1839,7 @@ class AICVPipeline:
             {
                 "annonce_complete": _announcement_context(job),
                 "consignes_candidat": _candidate_instructions(job),
+                "familles_de_poste": list(candidate_rules.JOB_FAMILIES),
                 "source_verite": _truth_context(master, "analyzer"),
                 "preanalyse_python": rule_plan,
             },

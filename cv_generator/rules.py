@@ -127,3 +127,45 @@ def statement_removes(statement: str, names: List[str]) -> bool:
         if re.search(pattern, text):
             return True
     return False
+
+
+# ── Famille de poste : décidée une seule fois, par l'analyse de l'annonce ────
+
+#: Familles que l'agent analyste peut attribuer à une annonce. Le CV, la lettre
+#: et les règles éditoriales lisent cette valeur au lieu de deviner la nature
+#: du poste chacun de leur côté (regex sur le titre, mots-clés...).
+JOB_FAMILIES = (
+    "developpement",
+    "webmaster",
+    "formation",
+    "mediation_numerique",
+    "mediation_sociale",
+    "accueil",
+    "logistique",
+    "surveillance",
+    "autre",
+)
+MEDIATION_FAMILIES = frozenset({"mediation_numerique", "mediation_sociale"})
+
+_MEDIATION_TITLE_RE = re.compile(
+    r"m[ée]diat(?:eur|rice|ion)|conseill[eè]re?s?\s+(?:num[ée]rique|emploi)|"
+    r"inclusion\s+num[ée]rique|accompagnement\s+num[ée]rique|animat\w*\s+num[ée]rique",
+    re.IGNORECASE,
+)
+
+
+def normalize_family(value: Any) -> str:
+    family = normalize(value).replace(" ", "_")
+    return family if family in JOB_FAMILIES else "autre"
+
+
+def is_mediation_job(job: Dict[str, Any]) -> bool:
+    """Vrai pour un poste de médiation (numérique ou sociale).
+
+    La famille attribuée par l'analyse de l'annonce fait foi. Sans elle
+    (annonce jamais analysée, analyse en échec), on retombe sur l'intitulé.
+    """
+    family = str((job or {}).get("job_family") or "")
+    if family in JOB_FAMILIES and family != "autre":
+        return family in MEDIATION_FAMILIES
+    return bool(_MEDIATION_TITLE_RE.search(str((job or {}).get("title") or "")))

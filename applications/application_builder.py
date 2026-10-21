@@ -4,18 +4,31 @@ Build local application packages for selected job offers.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import unicodedata
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 from agents.application_email_agent import generate_application_email
 from agents.motivation_letter_agent import generate_motivation_letter_with_report
 from agents.summary_agent import summarize_job
+from cv_generator import rules as candidate_rules
+from cv_generator.offer_analysis import analyze_offer, save_offer_analysis
 
-from .cv_selector import CVRecommendation, recommend_cv
+from .cv_selector import (
+    CVRecommendation,
+    load_master_profile,
+    recommend_cv,
+    recommendation_from_plan,
+)
+
+_LOG = logging.getLogger(__name__)
+
+#: Nom de remplissage du formulaire « annonce collée » quand l'entreprise n'est pas saisie.
+PLACEHOLDER_COMPANY = "Entreprise de l'annonce"
 
 
 @dataclass(frozen=True)
@@ -27,6 +40,9 @@ class ApplicationPackage:
     application_email_path: str
     metadata_path: str
     recommended_cv: CVRecommendation
+    #: L'offre telle qu'enregistrée, complétée par l'analyse de l'annonce :
+    #: c'est elle que le suivi des candidatures doit enregistrer.
+    job: Dict[str, Any] | None = None
 
 
 def _slugify(value: str, max_length: int = 80) -> str:
@@ -89,23 +105,47 @@ def _offer_resume_markdown(job: Dict[str, Any]) -> str:
     )
 
 
-def _write_letter_pdf(motivation_letter_path: Path, directory: Path, job_title: str = "") -> Path | None:
+def _write_letter_pdf(motivation_letter_path: Path, directory: Path, job: Dict[str, Any]) -> Path | None:
     # Le PDF part en pièce jointe avec le CV : un échec d'export ne fait pas
     # échouer le dossier, le .md reste la source de vérité de la lettre.
     lettre_pdf_path = directory / "lettre_motivation.pdf"
     try:
-        from agents.motivation_letter_agent import is_mediation_poste
         from cv_generator.exporters import lettre_to_pdf
 
         kwargs: Dict[str, Any] = {}
-        # Poste médiation numérique : pas de portfolio dans le bandeau du PDF
+        # Poste de médiation : pas de portfolio dans le bandeau du PDF
         # (mediateur.varascundo.com est cité dans le corps de la lettre).
-        if is_mediation_poste(job_title):
+        if candidate_rules.is_mediation_job(job):
             kwargs["contact_line"] = "Paris 20e · contact@varascundo.com"
         lettre_to_pdf(motivation_letter_path, lettre_pdf_path, **kwargs)
     except Exception:
+        _LOG.exception("Export PDF de la lettre impossible : %s", lettre_pdf_path)
         return None
     return lettre_pdf_path
+
+
+def enrich_job_from_analysis(job: Dict[str, Any], plan: Dict[str, Any] | None) -> Dict[str, Any]:
+    """Complète l'offre avec ce que l'agent a lu dans l'annonce.
+
+    Ne remplace que ce que l'utilisateur n'a pas saisi : un intitulé deviné
+    depuis la première ligne collée (``title_inferred``), une entreprise vide
+    ou de remplissage, un lieu ou un contrat absents. La famille de poste,
+    elle, vient toujours de l'analyse.
+    """
+    annonce = (plan or {}).get("annonce") or {}
+    enriched = dict(job)
+    if annonce.get("intitule") and (job.get("title_inferred") or not str(job.get("title") or "").strip()):
+        enriched["title"] = annonce["intitule"]
+    company = str(job.get("company") or "").strip()
+    if annonce.get("entreprise") and company in {"", PLACEHOLDER_COMPANY}:
+        enriched["company"] = annonce["entreprise"]
+    if annonce.get("lieu") and not str(job.get("location") or "").strip():
+        enriched["location"] = annonce["lieu"]
+    if annonce.get("contrat") and not str(job.get("contract_type") or "").strip():
+        enriched["contract_type"] = annonce["contrat"]
+    if annonce.get("famille"):
+        enriched["job_family"] = annonce["famille"]
+    return enriched
 
 
 def _consignes_metadata(job: Dict[str, Any], report: Dict[str, Any]) -> Dict[str, Any]:
@@ -122,10 +162,25 @@ def build_application_package(
     job: Dict[str, Any],
     output_dir: str = "output/applications",
     user_profile: Dict[str, Any] | None = None,
+    master: Dict[str, Any] | None = None,
+    analyze: Callable[[Dict[str, Any], Dict[str, Any]], Dict[str, Any] | None] = analyze_offer,
 ) -> ApplicationPackage:
+    """Prépare un dossier de candidature à partir d'une seule lecture de l'annonce.
+
+    L'agent analyste lit l'annonce d'abord : intitulé, employeur, famille de
+    poste et variante de CV. La lettre, le mail, le nom du dossier et la clé de
+    suivi partent de cette lecture, et le plan est conservé pour que la chaîne
+    CV le réutilise au lieu de relire l'annonce. Si l'analyse échoue, la
+    sélection par mots-clés prend le relais pour la lettre.
+    """
     created_at = datetime.now(timezone.utc)
-    recommendation = recommend_cv(job)
+    master = master if master is not None else load_master_profile()
+    plan = analyze(job, master)
+    job = enrich_job_from_analysis(job, plan)
+    recommendation = recommendation_from_plan(plan, master) if plan else recommend_cv(job, master)
     directory = _build_application_dir(job, output_dir, created_at)
+    if plan:
+        save_offer_analysis(directory, job, plan)
 
     job_path = directory / "job.json"
     resume_path = directory / "offre_resume.md"
@@ -135,9 +190,9 @@ def build_application_package(
 
     job_path.write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
     resume_path.write_text(_offer_resume_markdown(job), encoding="utf-8")
-    letter, report = generate_motivation_letter_with_report(job, recommendation, user_profile)
+    letter, report = generate_motivation_letter_with_report(job, recommendation, user_profile, master=master)
     motivation_letter_path.write_text(letter, encoding="utf-8")
-    lettre_pdf_path = _write_letter_pdf(motivation_letter_path, directory, str(job.get("title") or ""))
+    lettre_pdf_path = _write_letter_pdf(motivation_letter_path, directory, job)
     application_email_path.write_text(
         generate_application_email(job, recommendation, user_profile),
         encoding="utf-8",
@@ -162,6 +217,8 @@ def build_application_package(
         "status": "ready_to_apply",
         "created_at": created_at.isoformat(),
         "recommended_cv": asdict(recommendation),
+        "job_family": job.get("job_family") or "",
+        "offer_analysis": "agent" if plan else "mots-cles",
         "files": files,
         "consignes": _consignes_metadata(job, report),
     }
@@ -175,6 +232,7 @@ def build_application_package(
         application_email_path=str(application_email_path),
         metadata_path=str(metadata_path),
         recommended_cv=recommendation,
+        job=job,
     )
 
 
@@ -232,7 +290,7 @@ def regenerate_letter_and_email(
     motivation_letter_path = directory / "lettre_motivation.md"
     motivation_letter_path.write_text(letter, encoding="utf-8")
     (directory / "mail_candidature.md").write_text(email, encoding="utf-8")
-    lettre_pdf_path = _write_letter_pdf(motivation_letter_path, directory)
+    lettre_pdf_path = _write_letter_pdf(motivation_letter_path, directory, job)
 
     files = metadata.get("files") if isinstance(metadata.get("files"), dict) else {}
     if lettre_pdf_path is not None:

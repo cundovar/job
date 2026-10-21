@@ -34,7 +34,7 @@ def main() -> None:
         PROJECT / "output" / "applications",
         PROJECT / "front" / "public" / "data" / "candidatures.json",
     )
-    record = ApplicationTracker("data/applications_tracker.json").mark_ready(job, package)
+    record = ApplicationTracker("data/applications_tracker.json").mark_ready(getattr(package, "job", None) or job, package)
 
     directory = Path(package.directory)
     result = {

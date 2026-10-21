@@ -3,6 +3,7 @@ Track application status and follow-ups in local JSON.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -27,7 +28,16 @@ class ApplicationTracker:
         self.path.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def job_key(self, job: Dict[str, Any]) -> str:
-        return str(job.get("url") or f"{job.get('title', '')}-{job.get('company', '')}")
+        if job.get("url"):
+            return str(job["url"])
+        key = f"{job.get('title', '')}-{job.get('company', '')}"
+        # Une annonce collée n'a pas de lien : deux annonces différentes au même
+        # intitulé générique (« Description du poste ») se seraient écrasées.
+        # L'empreinte du texte les distingue ; les offres scrapées gardent leur clé.
+        if job.get("source") == "annonce_manuelle" and job.get("description"):
+            digest = hashlib.sha1(str(job["description"]).encode("utf-8")).hexdigest()[:10]
+            key = f"{key}#{digest}"
+        return key
 
     def mark_ready(
         self,
