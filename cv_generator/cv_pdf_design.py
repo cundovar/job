@@ -114,16 +114,27 @@ def _education_parts(edu: Dict[str, Any]) -> Tuple[str, str, str]:
     return year, title, extra
 
 
+# « Réalisations en ligne » (décision Cundo 21/10/2026) : nat.varascundo.com
+# n'y figure jamais ; le guide Chant d'Orties y est mis en avant dès que la
+# mission apparaît sur le CV. Le lien reste visible dans le bloc d'expérience.
+ONLINE_WORK_EXCLUDED = {"nat.varascundo.com"}
+CHANT_ORTIES_GUIDE = ("Chant d'Orties — guide", "https://tuto-des-orties.varascundo.com/")
+
+
 def _online_work(cv: Dict[str, Any]) -> List[Tuple[str, str]]:
     """Liens vers des travaux publics, dans l'ordre du CV, sans doublon."""
     items: List[Tuple[str, str]] = []
-    seen = set()
+    seen = set(ONLINE_WORK_EXCLUDED)
 
     def add(label: str, url: str) -> None:
         key = _display_url(url).split("/")[0]
         if url and key not in seen:
             seen.add(key)
             items.append((label, url))
+
+    if any("orties" in str(exp.get("organization", "")).lower() for exp in cv.get("experiences", [])):
+        add(*CHANT_ORTIES_GUIDE)
+    seen.add("chantdorties.pages-perso.free.fr")
 
     for exp in cv.get("experiences", []):
         for link in exp.get("links", [])[:2]:
