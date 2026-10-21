@@ -93,7 +93,6 @@ def _codes(content, master, plan):
 
 # ── Étape 2 : règles éditoriales appliquées en Python ────────────────────────
 
-@_todo("2", "hide_vae_status_variants n'est lu par aucun code ; le statut est recopié du catalogue")
 def test_la_mention_vae_est_masquee_pour_une_variante_mediation(master):
     content, _ = _assemble(master, "mediation_numerique")
     cda = next(e for e in content["cv"]["education"] if e["title"] == CDA)
@@ -106,13 +105,11 @@ def test_la_mention_vae_reste_pour_une_variante_dev(master):
     assert cda.get("status") == "VAE en cours"
 
 
-@_todo("2", "required_education_by_variant n'est vérifié par aucun code")
 def test_un_diplome_obligatoire_manquant_est_signale(master):
     content, plan = _assemble(master, "mediation_numerique", education=[CDA])
     assert "MISSING_REQUIRED_EDUCATION" in _codes(content, master, plan)
 
 
-@_todo("2", "aucune règle n'interdit un projet par variante dans le CV")
 def test_un_projet_interdit_pour_la_variante_est_signale(master):
     content, plan = _assemble(
         master, "mediation_numerique", projects=[{"id": "projet_documentation", "description": "Doc."}]
@@ -142,40 +139,42 @@ def test_les_experiences_obligatoires_ne_s_imposent_pas_a_la_mediation_sociale(m
     assert "MISSING_REQUIRED_EXPERIENCE" in _codes(content_dev, master, plan_dev)
 
 
-@_todo("2", "le prompt de l'analyseur impose DevDoc en dur pour toute annonce de documentation")
 def test_le_prompt_de_l_analyseur_ne_nomme_aucun_projet_en_dur():
     assert "DevDoc" not in ANALYZER_PROMPT
 
 
-@_todo("2", "le prompt affirme qu'aucune expérience n'est réinjectée, alors que _validate_plan le fait")
 def test_le_prompt_de_l_analyseur_ne_contredit_pas_les_experiences_obligatoires():
     assert "aucun identifiant d'expérience n'est obligatoire" not in ANALYZER_PROMPT
     assert "Python ne\nréinjectera aucune expérience" not in ANALYZER_PROMPT
 
 
 def test_le_paragraphe_des_consignes_n_existe_qu_une_fois_dans_le_code():
-    source = Path(ai_agents.__file__).read_text(encoding="utf-8")
-    occurrences = source.count("source de vérité la plus haute")
-    if occurrences > 1:
-        pytest.xfail(f"Étape 2 du plan : paragraphe recopié {occurrences} fois dans ai_agents.py")
-    assert occurrences == 1
+    from cv_generator import ai_agents as agents_module
+    from cv_generator.rules import CANDIDATE_INSTRUCTIONS_CLAUSE
+
+    source = Path(agents_module.__file__).read_text(encoding="utf-8")
+    assert "source de vérité la plus haute" not in source
+    for prompt in (
+        agents_module.ANALYZER_PROMPT,
+        agents_module.CREATOR_PROMPT,
+        agents_module.REVIEWER_PROMPT,
+        agents_module.REVISER_PROMPT,
+    ):
+        assert CANDIDATE_INSTRUCTIONS_CLAUSE in prompt
 
 
 # ── Étape 2 : consignes du candidat (candidate_excludes) ─────────────────────
 
-@_todo("2", "« sans » ailleurs dans la phrase suffit à retirer l'expérience nommée")
 def test_mettre_en_avant_une_experience_ne_la_retire_pas(master):
     m = with_candidate_statements(master, "Mettre en avant Agence Exemple, sans cacher la formation.")
     assert candidate_excludes(m, "agence_exemple") is False
 
 
-@_todo("2", "une consigne qui retire une autre chose retire aussi l'expérience citée")
 def test_retirer_un_autre_element_ne_retire_pas_l_experience_citee(master):
     m = with_candidate_statements(master, "Pas de mention du projet, insister sur Agence Exemple.")
     assert candidate_excludes(m, "agence_exemple") is False
 
 
-@_todo("2", "un nom usuel plus court que l'organisation (« & Associés ») n'est pas reconnu")
 def test_retirer_une_experience_par_son_nom_usuel(master):
     m = with_candidate_statements(master, "Retire Le Petit Studio.")
     assert candidate_excludes(m, "studio_fictif") is True

@@ -26,6 +26,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
+from . import rules
 from .job_analyzer import _period_sort_key
 from .utils import flatten_skills, normalize
 
@@ -118,23 +119,20 @@ def _candidate_text(master: Dict[str, Any]) -> str:
     return normalize(master.get("candidate_instructions_text") or " ".join(master.get("candidate_statements", []) or []))
 
 
-_REMOVAL = re.compile(r"\b(retire\w*|enl[eè]ve\w*|supprime\w*|sans|pas de|pas d'|masque\w*|cache\w*|ne mets? pas)\b")
-
-
 def candidate_excludes(master: Dict[str, Any], experience_id: str) -> bool:
     """Le candidat a-t-il demandé de retirer cette expérience dans ses consignes ?
 
     Les consignes priment sur les règles du profil maître : une expérience
-    obligatoire que le candidat demande d'enlever n'est plus imposée.
+    obligatoire que le candidat demande d'enlever n'est plus imposée. Le verbe
+    de retrait doit porter sur l'expérience elle-même (voir
+    ``rules.statement_removes``) : « mettre en avant X, sans cacher la
+    formation » ne retire pas X.
     """
-    item = (master.get("experience_catalog", {}) or {}).get(experience_id) or {}
-    names = {normalize(experience_id.replace("_", " ")), normalize(item.get("organization"))}
-    names = {n for n in names if n and len(n) > 2}
-    for statement in master.get("candidate_statements", []) or []:
-        text = normalize(statement)
-        if _REMOVAL.search(text) and any(name in text for name in names):
-            return True
-    return False
+    names = rules.experience_names(master, experience_id)
+    return any(
+        rules.statement_removes(statement, names)
+        for statement in master.get("candidate_statements", []) or []
+    )
 
 
 def allowed_skill_labels(master: Dict[str, Any]) -> Dict[str, str]:
@@ -531,12 +529,14 @@ def _validate_projects(
     cv: Dict[str, Any],
     master: Dict[str, Any],
     constraints: Dict[str, Any],
+    variant_id: str = "",
 ) -> List[TruthIssue]:
     issues: List[TruthIssue] = []
     projects = cv.get("projects")
     if not isinstance(projects, list):
         return issues
     catalog = master.get("project_catalog", {})
+    forbidden = set(rules.forbidden_projects(master, variant_id))
     max_projects = int(constraints.get("max_projects", 1))
     if len(projects) > max_projects:
         issues.append(
@@ -552,6 +552,17 @@ def _validate_projects(
         if not isinstance(project, dict):
             continue
         project_id = str(project.get("id") or "")
+        if project_id in forbidden:
+            issues.append(
+                TruthIssue(
+                    "FORBIDDEN_PROJECT_FOR_VARIANT",
+                    FORMAT,
+                    path,
+                    f"Le projet « {project_id} » ne s'affiche jamais sur un CV {variant_id} "
+                    "(règle du candidat, adaptation_rules.forbidden_projects_by_variant) : le retirer.",
+                    project_id,
+                )
+            )
         source = catalog.get(project_id)
         if source is None:
             issues.append(
@@ -605,10 +616,28 @@ def _validate_education(
     cv: Dict[str, Any],
     master: Dict[str, Any],
     constraints: Dict[str, Any],
+    variant_id: str = "",
 ) -> List[TruthIssue]:
     issues: List[TruthIssue] = []
     education = cv.get("education")
     if not isinstance(education, list):
+        education = []
+    shown = {
+        normalize(item.get("title") if isinstance(item, dict) else item) for item in education
+    }
+    for required in rules.required_education(master, variant_id):
+        if normalize(required) not in shown and not any(normalize(required) in title for title in shown):
+            issues.append(
+                TruthIssue(
+                    "MISSING_REQUIRED_EDUCATION",
+                    FORMAT,
+                    "education",
+                    f"Le diplôme « {required} » doit figurer sur tout CV {variant_id} "
+                    "(règle du candidat, layout_constraints.required_education_by_variant).",
+                    required,
+                )
+            )
+    if not education:
         return issues
     catalog = allowed_education_titles(master)
     max_items = int(constraints.get("max_education_items", 4))
@@ -829,8 +858,7 @@ def validate_cv_content(
     for view in views:
         shown_ids.add(view.id)
         shown_ids.update(view.member_ids)
-    rules = constraints.get("required_experiences_by_variant", {}) or {}
-    for required in rules.get(variant_id, rules.get("*", [])) if variant_id or "*" in rules else []:
+    for required in rules.required_experiences(master, variant_id):
         options = [required] if isinstance(required, str) else [str(x) for x in required]
         options = [x for x in options if x in catalog and not catalog[x].get("retired")]
         if any(candidate_excludes(master, x) for x in options):
@@ -913,8 +941,8 @@ def validate_cv_content(
     issues.extend(_validate_source_dates(views, master))
     issues.extend(_validate_order(views, master))
     issues.extend(_validate_skills(cv, master, variant_id, constraints))
-    issues.extend(_validate_projects(cv, master, constraints))
-    issues.extend(_validate_education(cv, master, constraints))
+    issues.extend(_validate_projects(cv, master, constraints, variant_id))
+    issues.extend(_validate_education(cv, master, constraints, variant_id))
 
     profile = str(cv.get("profile") or "")
     max_profile = int(constraints.get("max_profile_chars", 240))
