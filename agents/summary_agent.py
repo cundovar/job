@@ -3,10 +3,9 @@ Job offer summary — keyword-based, tuned for Cundo's current profile.
 """
 from __future__ import annotations
 
-import re
-import unicodedata
 from dataclasses import dataclass
 from typing import Any, Dict, List
+from utils.text import normalize
 
 
 @dataclass(frozen=True)
@@ -39,14 +38,7 @@ class JobSummary:
         return "\n".join(lines)
 
 
-def _normalize(value: str) -> str:
-    without_accents = "".join(
-        char
-        for char in unicodedata.normalize("NFKD", value)
-        if not unicodedata.combining(char)
-    )
-    lowered = without_accents.lower()
-    return re.sub(r"\s+", " ", lowered).strip()
+_normalize = normalize
 
 
 def _text(job: Dict[str, Any]) -> str:

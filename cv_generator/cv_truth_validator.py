@@ -27,8 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 from . import rules
-from .job_analyzer import _period_sort_key
-from .utils import flatten_skills, normalize
+from .utils import flatten_skills, normalize, period_bounds
 
 TRUTH = "truth"
 FORMAT = "format"
@@ -753,23 +752,7 @@ def _start_sort_key(period: Dict[str, Any] | None) -> Tuple[str, str]:
     (`_period_sort_key`, par fin, avec ongoing d'abord) reste inchangé pour les
     autres usages ; ici seul l'ordre affiché au recruteur est jugé.
     """
-    if not isinstance(period, dict):
-        return ("0000-00", "0000-00")
-
-    def normalized(value: Any, month: str) -> str:
-        raw = str(value or "").strip()
-        if not raw:
-            return "0000-00"
-        return raw if "-" in raw else f"{raw}-{month}"
-
-    start = normalized(period.get("start"), "01")
-    if period.get("end"):
-        end = normalized(period.get("end"), "12")
-    elif period.get("ongoing") is True:
-        end = "9999-12"
-    else:
-        end = start
-    return (start, end)
+    return period_bounds(period, ongoing_needs_start=False)
 
 
 def _validate_order(

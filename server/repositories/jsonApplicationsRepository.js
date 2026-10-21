@@ -116,7 +116,10 @@ export default class JsonApplicationsRepository extends ApplicationsRepository {
   _saveTracker(records) {
     const dir = path.dirname(TRACKER_PATH);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(TRACKER_PATH, JSON.stringify(records, null, 2), 'utf-8');
+    // Écriture atomique : les scripts Python lisent ce fichier en parallèle.
+    const temporary = `${TRACKER_PATH}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(temporary, JSON.stringify(records, null, 2), 'utf-8');
+    fs.renameSync(temporary, TRACKER_PATH);
   }
 
   /** Charge la liste des candidatures préparées (lecture seule). */

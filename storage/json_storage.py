@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List
+from utils.json_files import write_json_atomic
 
 
 class JSONStorage:
@@ -39,10 +40,10 @@ class JSONStorage:
             return []
 
     def _save(self, jobs: List[Dict]) -> None:
-        self.path.write_text(json.dumps(jobs, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_json_atomic(self.path, jobs)
 
     def _save_sent(self, sent_jobs: List[Dict]) -> None:
-        self.sent_path.write_text(json.dumps(sent_jobs, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_json_atomic(self.sent_path, sent_jobs)
 
     def _job_key(self, job: Dict) -> str:
         return job.get("url") or f"{job.get('title', '')}-{job.get('company', '')}"

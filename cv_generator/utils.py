@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import re
-import unicodedata
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Tuple
+from utils.json_files import write_json_atomic
+from utils.text import normalize  # noqa: F401  (réexporté : cv_generator.utils.normalize)
+from urllib.parse import urlparse
 
 
 def load_json(path: str | Path) -> Dict[str, Any]:
@@ -12,20 +14,9 @@ def load_json(path: str | Path) -> Dict[str, Any]:
 
 
 def save_json(path: str | Path, data: Dict[str, Any]) -> None:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_json_atomic(path, data)
 
 
-def normalize(value: Any) -> str:
-    raw = str(value or "")
-    without_accents = "".join(
-        char
-        for char in unicodedata.normalize("NFKD", raw)
-        if not unicodedata.combining(char)
-    )
-    lowered = without_accents.lower()
-    return re.sub(r"\s+", " ", lowered).strip()
 
 
 def job_text(job: Dict[str, Any]) -> str:
@@ -95,3 +86,37 @@ def flatten_skills(skills: Dict[str, Any]) -> List[str]:
         if isinstance(value, list):
             flat.extend(str(item) for item in value)
     return flat
+
+
+def display_url(value: Any) -> str:
+    """Lien lisible sur un CV : « https://www.exemple.fr/page/ » → « exemple.fr/page »."""
+    raw = str(value or "").strip()
+    parsed = urlparse(raw)
+    label = f"{parsed.netloc}{parsed.path}" if parsed.netloc else raw
+    return label.removeprefix("www.").rstrip("/")
+
+
+def period_bounds(period: Dict[str, Any] | None, *, ongoing_needs_start: bool = True) -> Tuple[str, str]:
+    """Bornes triables (début, fin) d'une période du profil maître, au format AAAA-MM.
+
+    Une année seule devient janvier pour un début et décembre pour une fin.
+    « En cours » se déclare (``ongoing``) et vaut ``9999-12`` ; une fin
+    simplement absente est une inconnue, qui vaut la date de début.
+    """
+    if not isinstance(period, dict):
+        return ("0000-00", "0000-00")
+
+    def as_month(value: Any, month: str) -> str:
+        raw = str(value or "").strip()
+        if not raw:
+            return "0000-00"
+        return raw if "-" in raw else f"{raw}-{month}"
+
+    start = as_month(period.get("start"), "01")
+    if period.get("end"):
+        end = as_month(period.get("end"), "12")
+    elif period.get("ongoing") is True and (period.get("start") or not ongoing_needs_start):
+        end = "9999-12"
+    else:
+        end = start
+    return (start, end)

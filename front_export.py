@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import json
 import re
-import unicodedata
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from utils.text import words
 
 FRONT_DATA_DIR = Path(__file__).resolve().parent / "front" / "public" / "data"
 
@@ -64,10 +64,7 @@ TRACKING_QUERY_KEYS = {
 }
 
 
-def _normalize_text(value: Any) -> str:
-    text = unicodedata.normalize("NFKD", str(value or ""))
-    text = text.encode("ascii", "ignore").decode("ascii").casefold()
-    return " ".join(re.sub(r"[^a-z0-9]+", " ", text).split())
+_normalize_text = words
 
 
 def _matches_any(text: str, keywords: List[str]) -> bool:

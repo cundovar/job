@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import re
-import unicodedata
 from typing import Any, Dict, List, Tuple
 
-from .utils import compact_items, contains_any, flatten_skills, job_text, normalize
+from utils.text import strip_accents
+
+from .utils import compact_items, contains_any, flatten_skills, job_text, normalize, period_bounds
 
 
 def _period_sort_key(period: Dict[str, Any] | None) -> Tuple[str, str]:
@@ -15,28 +16,8 @@ def _period_sort_key(period: Dict[str, Any] | None) -> Tuple[str, str]:
     expérience ancienne au-dessus des missions récentes — c'est ce qui plaçait
     un freelance commencé en 2023 en première ligne du CV.
     """
-    if not isinstance(period, dict):
-        return ("0000-00", "0000-00")
-
-    def normalized(value: Any, month: str) -> str:
-        raw = str(value or "").strip()
-        if not raw:
-            return "0000-00"
-        return raw if "-" in raw else f"{raw}-{month}"
-
-    start = normalized(period.get("start"), "01")
-    if period.get("end"):
-        end = normalized(period.get("end"), "12")
-    elif period.get("ongoing") is True and period.get("start"):
-        end = "9999-12"
-    else:
-        # Fin inconnue : on ne promeut rien, la date de début fait foi.
-        end = start
+    start, end = period_bounds(period)
     return (end, start)
-
-
-def _strip_accents(value: str) -> str:
-    return "".join(char for char in unicodedata.normalize("NFKD", value) if not unicodedata.combining(char))
 
 
 def _variant_matches(text: str, variant: Dict[str, Any], master: Dict[str, Any]) -> Tuple[int, List[str]]:
@@ -51,12 +32,12 @@ def _variant_matches(text: str, variant: Dict[str, Any], master: Dict[str, Any])
         needle = normalize(keyword)
         # Un mot-clé compte une fois, quelles que soient sa casse ou ses accents
         # (« integration » et « intégration » sont le même mot pour l'annonce).
-        if not needle or needle in seen or _strip_accents(needle) in seen:
+        if not needle or needle in seen or strip_accents(needle) in seen:
             continue
-        seen.update({needle, _strip_accents(needle)})
+        seen.update({needle, strip_accents(needle)})
         # Mot entier : « ia » ne doit pas compter dans « social », ni « css » dans « accessible ».
         if re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", text) or re.search(
-            rf"(?<!\w){re.escape(_strip_accents(needle))}(?!\w)", _strip_accents(text)
+            rf"(?<!\w){re.escape(strip_accents(needle))}(?!\w)", strip_accents(text)
         ):
             score += 3 if keyword in rules.get(variant.get("id", ""), []) else 1
             if keyword not in matched:

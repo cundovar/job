@@ -4,16 +4,14 @@ Score jobs based on criteria weights.
 from __future__ import annotations
 
 import re
-import unicodedata
 from datetime import datetime, timezone
 from typing import Dict, Tuple
+from utils.text import fold
 
 
-def _normalize(text: object) -> str:
-    """Normalise n'importe quelle valeur : certaines sources (APEC) renvoient des
-    codes numeriques la ou on attend une chaine."""
-    normalized = unicodedata.normalize("NFKD", str(text if text is not None else "").lower())
-    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+# Certaines sources (APEC) renvoient des codes numériques là où on attend une
+# chaîne : ``fold`` accepte n'importe quelle valeur.
+_normalize = fold
 
 
 def _contains(text: str, keyword: str) -> bool:
