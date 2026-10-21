@@ -103,3 +103,13 @@ def test_quality_checker_falls_back_from_deepseek_to_codex(monkeypatch):
     assert result.provider == "codex_cli"
     assert deepseek_calls == ["deepseek-v4-flash"]
     assert calls == [("codex", "gpt-5.6-sol", "medium")]
+
+
+def test_la_doc_du_routage_concorde_avec_la_config():
+    from pathlib import Path
+
+    from tools.routing_table import routing_table
+
+    doc = (Path(__file__).resolve().parents[1] / "docs" / "CV_CLI_BRIDGE.md").read_text(encoding="utf-8")
+    block = doc.split("<!-- routage:debut", 1)[1].split("<!-- routage:fin -->", 1)[0]
+    assert routing_table() in block, "Regénérer le tableau : python -m tools.routing_table"
