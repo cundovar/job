@@ -162,3 +162,7 @@ Les agents décident du contenu éditorial, Python vérifie la vérité, le form
 ## Dette connue
 
 Hors chaîne CV, plusieurs suites lisent encore `data/` en dur et ne tournent pas sur un clone neuf : `tests/test_cv_selector.py`, `tests/test_application_builder.py`, `tests/test_application_tracker.py`, `tests/test_hermes_commands.py`, `tests/test_hermes_mcp_server.py`. La chaîne CV, elle, est entièrement hors-ligne depuis `tests/fixtures/careco_cv_case.json`.
+
+## Cas de référence du refactor
+
+`tests/test_reference_cases.py` décrit le comportement attendu de la chaîne CV et lettre, sur un profil fictif, sans appel IA. Les défauts connus y sont marqués `xfail(strict=True)` avec l'étape du plan qui les corrige. Une correction qui fait passer un de ces tests rend la suite rouge tant que la marque n'est pas retirée : c'est voulu, on retire la marque dans le même commit que la correction.
