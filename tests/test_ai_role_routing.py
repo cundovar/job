@@ -16,10 +16,12 @@ def test_role_matrix_matches_approved_provider_order():
     assert _route_signature("job_offer_analyzer") == [
         ("deepseek", "deepseek-v4-flash", None),
         ("codex_cli", "gpt-5.6-sol", 'low'),
+        ("glm", "glm-5.3", None),
     ]
     assert _route_signature("cv_job_analyzer") == [
         ("deepseek", "deepseek-v4-flash", None),
         ("codex_cli", "gpt-5.6-sol", 'low'),
+        ("glm", "glm-5.3", None),
     ]
     assert _route_signature("cv_creator") == [
         ("codex_cli", "gpt-5.6-terra", 'medium'),
@@ -29,10 +31,12 @@ def test_role_matrix_matches_approved_provider_order():
     assert _route_signature("cv_truth_checker") == [
         ("deepseek", "deepseek-v4-flash", None),
         ("codex_cli", "gpt-5.6-sol", 'medium'),
+        ("glm", "glm-5.3", None),
     ]
     assert _route_signature("cv_quality_checker") == [
         ("deepseek", "deepseek-v4-flash", None),
         ("codex_cli", "gpt-5.6-sol", 'medium'),
+        ("glm", "glm-5.3", None),
     ]
     assert _route_signature("cv_style_reviser") == [
         ("codex_cli", "gpt-5.6-terra", 'medium'),
@@ -47,6 +51,7 @@ def test_role_matrix_matches_approved_provider_order():
     assert _route_signature("company_verifier") == [
         ("deepseek", "deepseek-v4-flash", None),
         ("codex_cli", "gpt-5.6-sol", 'medium'),
+        ("glm", "glm-5.3", None),
     ]
     assert _route_signature("agency_fit") == [
         ("deepseek", "deepseek-v4-flash", None),

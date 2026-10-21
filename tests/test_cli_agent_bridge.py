@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tools.cv_cli_bridge import CLIAgentBridge, create_server
+from tools.cv_cli_bridge import CLIAgentBridge, _safe_cli_error, create_server
 from utils.cli_agent_bridge import CLIAgentBridgeClient
 
 
@@ -215,3 +215,17 @@ def test_cli_commands_apply_requested_model_and_codex_effort(tmp_path, monkeypat
     assert 'model_reasoning_effort="medium"' in commands[0]
     assert claude["model"] == "opus"
     assert "--model" in commands[1] and "opus" in commands[1]
+
+
+@pytest.mark.parametrize(
+    "stderr, expected",
+    [
+        ("ERROR: exceeded retry limit, last status: 429 Too Many Requests", "limite d'utilisation atteinte"),
+        ("You've hit your usage limit.", "limite d'utilisation atteinte"),
+        ("Please run codex login", "session d'authentification indisponible"),
+        ("segfault", "erreur d'exécution 1"),
+    ],
+)
+def test_cli_error_classifies_quota_exhaustion(stderr, expected):
+    result = SimpleNamespace(stderr=stderr, stdout="", returncode=1)
+    assert _safe_cli_error("Codex CLI", result) == f"Codex CLI: {expected}"

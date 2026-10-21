@@ -86,7 +86,16 @@ def _safe_cli_error(provider: str, result: subprocess.CompletedProcess[str]) -> 
     combined = "\n".join(part for part in (result.stderr, result.stdout) if part).lower()
     if "oauth" in combined or "authenticat" in combined or "login" in combined:
         reason = "session d'authentification indisponible"
-    elif "rate limit" in combined or "usage limit" in combined or "quota" in combined:
+    elif (
+        "rate limit" in combined
+        or "usage limit" in combined
+        or "quota" in combined
+        # Codex CLI rend « exceeded retry limit, last status: 429 Too Many
+        # Requests » quand le quota du modèle est épuisé : sans ce cas, la
+        # limite passait pour une panne (« erreur d'exécution 1 »).
+        or "429" in combined
+        or "too many requests" in combined
+    ):
         reason = "limite d'utilisation atteinte"
     else:
         reason = f"erreur d'exécution {result.returncode}"
