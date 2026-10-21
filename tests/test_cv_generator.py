@@ -2112,15 +2112,20 @@ def test_education_inconnue_passe_au_validateur_sans_etre_inventee():
 
 # ── Le vérificateur juge le texte rédigé, pas la recopie de Python ────────
 
-def test_le_verificateur_recoit_les_coordonnees_du_profil():
-    """Sans elles, il refusait le bloc contact « faute de source »."""
-    from cv_generator.ai_agents import _truth_context
+def test_aucun_agent_ne_recoit_les_coordonnees_du_profil():
+    """Python recopie le contact dans le CV : les agents n'en reçoivent pas.
+
+    Le vérificateur refusait autrefois le bloc contact « faute de source »
+    parce que le CV qu'on lui soumettait le portait ; le CV soumis n'en porte
+    plus (without_contact), le contexte non plus.
+    """
+    from cv_generator.ai_agents import _truth_context, without_contact
 
     master = {"person": {"display_name": "X", "contact": {"email": "x@example.invalid"}}}
     for role in ("creator", "reviewer", "analyzer", "reviser"):
-        assert _truth_context(master, role)["person"]["contact"] == {
-            "email": "x@example.invalid"
-        }
+        assert "contact" not in _truth_context(master, role)["person"]
+    assert without_contact({"cv": {"title": "T", "contact": {"email": "x"}}}) == {"cv": {"title": "T"}}
+    assert without_contact({"contact": {}, "location": "L"}) == {"location": "L"}
 
 
 def test_un_contact_declare_sans_preuve_ne_bloque_plus_la_publication():

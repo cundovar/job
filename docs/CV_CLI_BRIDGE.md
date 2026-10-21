@@ -1,16 +1,23 @@
 # Bridge IA Codex / Claude sur Netcup
 
 Le générateur utilise un ordre différent pour chaque rôle. La configuration de
-référence se trouve dans `config/ai_role_routing.json`.
+référence est `config/ai_role_routing.json` ; le tableau ci-dessous en est
+généré et un test vérifie qu'il concorde. Une variable `CV_AI_PROVIDER_ORDER`
+définie dans l'environnement remplace cet ordre pour tous les rôles CV.
 
-| Rôle | Principal | Secours 1 | Secours 2 |
-|---|---|---|---|
-| Filtrage des annonces | DeepSeek | Codex faible | Claude Sonnet |
-| Analyse CV et sélection des expériences | Claude Sonnet | Codex moyen | DeepSeek |
-| Rédaction du CV | Codex Sol moyen | Claude Sonnet | DeepSeek |
-| Juge qualité | Claude Opus 5 | Codex Sol élevé | DeepSeek |
-| Correction finale | Codex Sol moyen | Claude Sonnet | DeepSeek |
-| Lettre de motivation | Claude Opus 5 | Codex Sol moyen | DeepSeek |
+<!-- routage:debut — généré par `python -m tools.routing_table`, ne pas éditer à la main -->
+| Rôle | Ordre d'essai (principal, puis secours) |
+|---|---|
+| Filtrage des annonces (`job_offer_analyzer`) | deepseek `deepseek-v4-flash` → codex_cli `gpt-5.6-sol` (low) |
+| Analyse de l'annonce (plan du CV, famille de poste) (`cv_job_analyzer`) | deepseek `deepseek-v4-flash` → codex_cli `gpt-5.6-sol` (low) |
+| Rédaction du CV (`cv_creator`) | codex_cli `gpt-5.6-terra` (medium) → glm `glm-5.3` → deepseek `deepseek-v4-flash` |
+| Vérification de véracité (`cv_truth_checker`) | deepseek `deepseek-v4-flash` → codex_cli `gpt-5.6-sol` (medium) |
+| Juge qualité (`cv_quality_checker`) | deepseek `deepseek-v4-flash` → codex_cli `gpt-5.6-sol` (medium) |
+| Correction (révision) (`cv_style_reviser`) | codex_cli `gpt-5.6-terra` (medium) → glm `glm-5.3` → deepseek `deepseek-v4-flash` |
+| Lettre de motivation (`agent_redacteur_lettres`) | codex_cli `gpt-5.6-sol` (medium) → glm `glm-5.3` → deepseek `deepseek-v4-flash` |
+| Vérification d'entreprise (`company_verifier`) | deepseek `deepseek-v4-flash` → codex_cli `gpt-5.6-sol` (medium) |
+| Adéquation d'agence (`agency_fit`) | deepseek `deepseek-v4-flash` → glm `glm-5.3` |
+<!-- routage:fin -->
 
 Le résumé d'annonce et le mail standard restent entièrement déterministes en
 Python. Ils ne consomment aucun appel IA.

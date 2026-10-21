@@ -367,3 +367,42 @@ def test_le_pdf_de_lettre_du_serveur_suit_les_regles_du_dossier(tmp_path, monkey
     assert seen["job"]["title"] == "Chargé de médiation sociale"
     with pytest.raises(FileNotFoundError):
         letter_pdf.write_dossier_letter_pdf(tmp_path / "absent")
+
+
+# ── Étape 6 : les coordonnées ne partent pas aux fournisseurs d'IA ───────────
+
+def test_telephone_et_email_ne_partent_a_aucun_agent(master):
+    from cv_generator.ai_agents import AICVPipeline
+
+    phone = master["person"]["contact"]["phone"]
+    email = master["person"]["contact"]["email"]
+    payloads = []
+
+    class Recorder:
+        def complete_json(self, *, agent_name, system_prompt, payload):
+            payloads.append((agent_name, json.dumps(payload, ensure_ascii=False)))
+            if agent_name == "cv_job_analyzer":
+                return {"selected_base_variant": "fullstack", "experience_plan": [{"experience_id": "agence_exemple"}]}
+            if agent_name == "cv_truth_checker":
+                return {"verdict": "accepted", "claims": []}
+            if agent_name == "cv_quality_checker":
+                return {"status": "validated", "problems": [], "quality_score": 90, "ats_score": 90}
+            return {
+                "title": "Titre",
+                "profile": "Accroche.",
+                "skills": [],
+                "experiences": [{"id": "agence_exemple", "bullets": [{"text": "Puce.", "sources": ["agence_exemple:0"]}]}],
+                "projects": [],
+                "education": [],
+            }
+
+    agents = AICVPipeline(Recorder())
+    job = {"title": "Développeur", "description": "PHP Symfony"}
+    plan = agents.analyze(job, master)
+    draft = agents.create(job, master, plan)
+    assert draft["cv"]["contact"]["email"] == email  # Python les remet dans le CV
+    agents.verify(job, master, plan, draft)
+    agents.review(job, master, plan, draft)
+    assert {name for name, _ in payloads} >= {"cv_job_analyzer", "cv_creator", "cv_truth_checker", "cv_quality_checker"}
+    for name, text in payloads:
+        assert phone not in text and email not in text, name

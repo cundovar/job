@@ -99,3 +99,10 @@ temp/
 # Sauvegardes d'environnement : contiennent des clés
 .env.bak*
 .env.*.bak
+
+# Copies de sauvegarde faites à la main avant une modification : Git garde
+# l'historique, ces copies ne se versionnent pas.
+*.before-*
+*.bak
+*.bak-*
+*.backup-*
