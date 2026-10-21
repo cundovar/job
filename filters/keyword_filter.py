@@ -3,13 +3,11 @@ Keyword filtering for job titles and descriptions.
 """
 from __future__ import annotations
 
-import unicodedata
 from typing import Dict, List
+from utils.text import fold
 
 
-def _normalize(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", text.lower())
-    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+_normalize = fold
 
 
 def _text(job: Dict) -> str:

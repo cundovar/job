@@ -7,7 +7,6 @@ import re
 from html import escape
 from pathlib import Path
 from typing import Any, Dict, List
-from urllib.parse import urlparse
 
 from .layout import (
     IDENTITY_TITLE_MAX_WIDTH,
@@ -16,6 +15,7 @@ from .layout import (
     sparse_main_vertical_offset,
     wrap_tracked_title,
 )
+from .utils import display_url
 
 
 DEFAULT_DESIGN_SYSTEM = "config/cv_design_system.json"
@@ -31,11 +31,7 @@ def _project_text(project) -> str:
     return description or tech
 
 
-def _display_url(value: Any) -> str:
-    raw = str(value or "").strip()
-    parsed = urlparse(raw)
-    label = f"{parsed.netloc}{parsed.path}" if parsed.netloc else raw
-    return label.removeprefix("www.").rstrip("/")
+_display_url = display_url
 
 
 def _identity_baselines(top: float, portrait_diameter: float = PDF_PORTRAIT_DIAMETER) -> tuple[float, float]:

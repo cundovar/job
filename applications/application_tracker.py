@@ -9,6 +9,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List
 
+from utils.json_files import write_json_atomic
+
 
 class ApplicationTracker:
     def __init__(self, path: str = "data/applications_tracker.json") -> None:
@@ -25,7 +27,7 @@ class ApplicationTracker:
         return data if isinstance(data, dict) else {}
 
     def _save(self, records: Dict[str, Dict[str, Any]]) -> None:
-        self.path.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_json_atomic(self.path, records)
 
     def job_key(self, job: Dict[str, Any]) -> str:
         if job.get("url"):

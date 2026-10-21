@@ -5,8 +5,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
-import unicodedata
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +14,7 @@ from agents.application_email_agent import generate_application_email
 from agents.motivation_letter_agent import generate_motivation_letter_with_report
 from agents.summary_agent import summarize_job
 from cv_generator import rules as candidate_rules
+from utils.text import slugify
 from cv_generator.offer_analysis import analyze_offer, save_offer_analysis
 
 from .cv_selector import (
@@ -46,14 +45,7 @@ class ApplicationPackage:
 
 
 def _slugify(value: str, max_length: int = 80) -> str:
-    without_accents = "".join(
-        char
-        for char in unicodedata.normalize("NFKD", value)
-        if not unicodedata.combining(char)
-    )
-    lowered = without_accents.lower()
-    cleaned = re.sub(r"[^a-z0-9]+", "-", lowered).strip("-")
-    return (cleaned or "candidature")[:max_length].strip("-")
+    return slugify(value, max_length)
 
 
 def _job_value(job: Dict[str, Any], key: str, default: str = "") -> str:

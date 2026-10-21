@@ -3,7 +3,7 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 from typing import Any, Dict, Iterable
-from urllib.parse import urlparse
+from .utils import display_url
 
 
 def _payload(final_cv: Dict[str, Any]) -> Dict[str, Any]:
@@ -24,11 +24,7 @@ def _education_text(education: Dict[str, Any]) -> str:
     )
 
 
-def _display_url(value: Any) -> str:
-    raw = str(value or "").strip()
-    parsed = urlparse(raw)
-    label = f"{parsed.netloc}{parsed.path}" if parsed.netloc else raw
-    return label.removeprefix("www.").rstrip("/")
+_display_url = display_url
 
 
 def cv_to_ats_html(final_cv: Dict[str, Any], candidate_name: str = "Facundo Varas") -> str:
