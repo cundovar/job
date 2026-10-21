@@ -461,3 +461,29 @@ def test_ongoing_claim_invented_by_the_agent_is_a_truth_error(master):
         "TEMPORAL_CLAIM_NOT_IN_SOURCE"
     ]
     assert report["source_issues"] == []
+
+
+def test_groupe_always_group_interdit_les_blocs_separes():
+    from cv_generator.cv_truth_validator import validate_cv_content
+    master = {
+        "experience_catalog": {
+            "a": {"highlights": ["Mission A"], "period": {"start": "2026-03", "end": "2026-08"}},
+            "b": {"highlights": ["Mission B"], "period": {"start": "2026-04", "end": "2026-06"}},
+        },
+        "experience_groups": {"g": {"member_ids": ["a", "b"], "min_selected_members": 2, "always_group": True}},
+    }
+    cv = {"cv": {"experiences": [
+        {"id": "b", "bullets": [{"text": "Mission B", "sources": ["b:0"]}]},
+        {"id": "a", "bullets": [{"text": "Mission A", "sources": ["a:0"]}]},
+    ]}}
+    codes = {issue["code"] for issue in validate_cv_content(cv, master)["issues"]}
+    assert "GROUP_REQUIRED" in codes
+
+
+def test_plan_regroupe_toujours_un_groupe_always_group():
+    from cv_generator.ai_agents import _validate_presentation_strategy
+    master = {"experience_groups": {"g": {"member_ids": ["a", "b", "c"], "min_selected_members": 2,
+                                          "always_group": True, "allowed_variants": []}}}
+    strategy = _validate_presentation_strategy({"experience_display_mode": "individual"}, "webmaster", ["a", "c", "x"], master)
+    assert strategy["experience_group_id"] == "g"
+    assert strategy["member_ids"] == ["a", "c"]

@@ -736,6 +736,26 @@ def validate_cv_content(
             )
         )
 
+    # Règle candidat (21/10/2026) : les missions d'un groupe « always_group »
+    # ne s'affichent jamais en blocs séparés quand au moins
+    # min_selected_members d'entre elles figurent sur le CV.
+    standalone = [view.id for view in views if not view.is_group]
+    for group_id, group in (master.get("experience_groups", {}) or {}).items():
+        if not isinstance(group, dict) or not group.get("always_group"):
+            continue
+        apart = [member for member in group.get("member_ids", []) if member in standalone]
+        if len(apart) >= int(group.get("min_selected_members", 2)):
+            issues.append(
+                TruthIssue(
+                    "GROUP_REQUIRED",
+                    FORMAT,
+                    "experiences",
+                    f"Les missions {', '.join(apart)} doivent être regroupées dans un seul bloc "
+                    f"« {group_id} » (source_experience_ids), pas affichées séparément.",
+                    group_id,
+                )
+            )
+
     max_bullets = int(constraints.get("max_bullets_per_experience", 3))
     seen: set[str] = set()
     for view in views:

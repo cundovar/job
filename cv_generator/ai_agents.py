@@ -842,8 +842,22 @@ def _validate_presentation_strategy(
     """Accepte le regroupement demandé par l'agent s'il est déclaré et cohérent.
 
     Python ne décide plus de grouper : il refuse un groupe impossible et laisse
-    l'agent seul juge de l'opportunité de le faire.
+    l'agent seul juge de l'opportunité de le faire — sauf pour un groupe marqué
+    ``always_group`` dans le profil maître (règle candidat du 21/10/2026) : dès
+    que l'agent retient assez de ses missions, elles sont regroupées, quelle que
+    soit la variante.
     """
+    planned = set(planned_ids)
+    for forced_id, forced in (master.get("experience_groups", {}) or {}).items():
+        if not isinstance(forced, dict) or not forced.get("always_group"):
+            continue
+        members = [mid for mid in forced.get("member_ids", []) if mid in planned]
+        if len(members) >= int(forced.get("min_selected_members", 2)):
+            return {
+                "experience_display_mode": forced.get("display_mode", "grouped_missions"),
+                "experience_group_id": forced_id,
+                "member_ids": members,
+            }
     if not isinstance(proposed, dict):
         return {"experience_display_mode": "individual"}
     if str(proposed.get("experience_display_mode") or "individual") != "grouped_missions":
