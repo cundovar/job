@@ -16,6 +16,7 @@ from cv_generator.cv_quality_checker import review_cv as review_cv_rules
 from cv_generator.cv_truth_validator import ALLOWED_SECTIONS, validate_cv_content
 from cv_generator.job_analyzer import analyze_job_for_cv as analyze_job_rules
 from cv_generator.cv_truth_validator import candidate_excludes
+from cv_generator import rules as candidate_rules
 from cv_generator.utils import compact_items, flatten_skills, normalize, period_to_text
 from utils.ai_role_routing import AIRouteStep, legacy_route, load_role_route
 from utils.cli_agent_bridge import CLIAgentBridgeClient
@@ -297,29 +298,32 @@ class CVLLMClient:
         raise CVAgentError("Aucun agent IA disponible. " + " | ".join(errors))
 
 
-ANALYZER_PROMPT = """
+ANALYZER_PROMPT = ("""
 Tu es l'agent d'analyse d'annonce pour un générateur de CV français.
 Lis toute l'annonce et la source de vérité du candidat. Produis un plan d'adaptation précis.
 Tu peux sélectionner et hiérarchiser, jamais inventer. Les identifiants d'expériences et les
 indices de preuves doivent exister dans source_verite. Conserve les vrais intitulés de poste.
 Le titre cible et le positionnement peuvent être adaptés, sans augmenter le niveau réel.
-La préanalyse Python est purement consultative: aucun de ses éléments n'est imposé. Python ne
-réinjectera aucune expérience que tu écartes et n'imposera aucun nombre minimum. Tu as la
-responsabilité entière de la sélection, de l'ordre et du regroupement.
-Les consignes_candidat sont écrites par le candidat lui-même : elles sont la source de vérité la plus haute, au-dessus du profil maître. Toute information qu'elles affirment (expérience, mission, outil, compétence, intitulé, date, résultat) est vraie et utilisable même sans preuve dans le profil ; toute consigne de présentation (retirer, regrouper, renommer, réordonner) s'applique. En cas de contradiction avec le profil maître, la consigne l'emporte. Une puce qui s'appuie sur une consigne cite la source « consignes_candidat:N », N étant l'indice de la déclaration dans declarations_candidat.
+La préanalyse Python est purement consultative. Une seule exception : les expériences listées
+pour la variante retenue dans layout_constraints.required_experiences_by_variant (clé "*" par
+défaut, liste vide = aucune) sont ajoutées par Python si tu les omets, sauf si les consignes du
+candidat demandent de les retirer. Hors elles, tu as la responsabilité entière de la sélection,
+de l'ordre et du regroupement, sans nombre minimum.
+""" + candidate_rules.CANDIDATE_INSTRUCTIONS_CLAUSE + """
 N'inclus une expérience que si elle apporte une preuve explicite à un critère de l'annonce.
 Il est préférable de retenir moins d'expériences plutôt que de remplir les emplacements avec
 des expériences faibles ou hors sujet. Respecte la visibilité conditionnelle de la source.
 Quand l'annonce exige de la documentation, des procédures ou des guides utilisateurs,
-sélectionne en priorité un projet de documentation du catalogue (DevDoc) avec ses liens
-publics, plutôt qu'un projet d'automatisation sans rapport avec cette exigence.
+sélectionne en priorité une preuve de documentation du catalogue avec ses liens publics,
+plutôt qu'un projet d'automatisation sans rapport avec cette exigence. Ne propose jamais un
+projet listé pour la variante retenue dans adaptation_rules.forbidden_projects_by_variant.
 Quand l'annonce combine formation, développement web et IA, couvre trois piliers avec des
 preuves distinctes: pédagogie auprès du public visé, réalisation technique réelle et pratique
 de l'IA. Recherche aussi une réalisation publique pertinente quand la source fournit un lien.
-Choisis librement les meilleures preuves: aucun identifiant d'expérience n'est obligatoire.
-Préférence permanente du candidat: pour toute variante de formateur, conserve l'expérience
-mairie_chelles comme preuve humaine complémentaire d'animation, de projets pédagogiques et de
-travail avec des groupes. Cette préférence vient du candidat, pas d'une décision Python.
+Choisis librement les meilleures preuves, dans le respect des règles ci-dessus.
+Respecte les préférences permanentes du candidat listées dans
+adaptation_rules.standing_experience_preferences_by_variant pour la variante retenue : elles
+désignent une preuve humaine complémentaire, jamais une preuve métier centrale.
 
 JSON attendu:
 {
@@ -339,7 +343,7 @@ JSON attendu:
   "skills_to_reduce": ["..."],
   "warnings": ["..."]
 }
-""".strip()
+""").strip()
 
 
 def _standing_preference_clause(master, plan, role: str) -> str:
@@ -367,7 +371,7 @@ def _standing_preference_clause(master, plan, role: str) -> str:
     )
 
 
-CREATOR_PROMPT = """
+CREATOR_PROMPT = ("""
 Tu es l'agent rédacteur du CV. Rédige un CV ciblé et crédible en français à partir du plan,
 du brouillon structurel et de la source de vérité. Tu peux reformuler une preuve, mais pas
 ajouter de mission, résultat, chiffre, outil, niveau, date ou diplôme absent de la source.
@@ -375,7 +379,7 @@ Tu décides seul du contenu final. Python ne complète rien: une expérience que
 absente, une puce que tu n'écris pas ne sera pas fabriquée, et l'ordre que tu donnes est celui
 qui sera rendu. Sélectionne, omets et réordonne librement expériences, compétences, projets et
 formations, à condition que chaque élément existe dans la source de vérité.
-Les consignes_candidat sont écrites par le candidat lui-même : elles sont la source de vérité la plus haute, au-dessus du profil maître. Toute information qu'elles affirment (expérience, mission, outil, compétence, intitulé, date, résultat) est vraie et utilisable même sans preuve dans le profil ; toute consigne de présentation (retirer, regrouper, renommer, réordonner) s'applique. En cas de contradiction avec le profil maître, la consigne l'emporte. Une puce qui s'appuie sur une consigne cite la source « consignes_candidat:N », N étant l'indice de la déclaration dans declarations_candidat.
+""" + candidate_rules.CANDIDATE_INSTRUCTIONS_CLAUSE + """
 Présente les expériences retenues dans un ordre antéchronologique cohérent. Utilise
 skills_confidence pour ne jamais présenter des bases ou notions comme une maîtrise solide.
 Pour une annonce large de développement web, conserve une stack projet représentative de
@@ -406,7 +410,7 @@ JSON attendu:
   "projects":[{"id":"...","description":"reformulation fidèle","technologies":["sous-ensemble exact"]}],
   "education":["intitulé exact présent dans person.education"]
 }
-""".strip()
+""").strip()
 
 
 TRUTH_CHECKER_PROMPT = """
@@ -438,7 +442,7 @@ JSON attendu:
 """.strip()
 
 
-REVIEWER_PROMPT = """
+REVIEWER_PROMPT = ("""
 Tu es l'agent juge du CV. Sois sévère et factuel. Compare l'annonce, le CV, le plan et la
 source de vérité. Évalue: adéquation réelle, mots-clés ATS, absence d'invention, respect des
 intitulés, crédibilité du niveau, clarté, concision et contraintes Canva. Une compétence de
@@ -446,7 +450,7 @@ l'annonce absente du profil est un écart, pas une compétence à ajouter. Signa
 chaque problème et propose une correction fondée sur la source. Tu es responsable du verdict,
 du score qualité et du score ATS. Le contrôle Python joint sert uniquement à signaler les
 erreurs factuelles ou techniques; il ne décide pas de la pertinence éditoriale.
-Les consignes_candidat sont écrites par le candidat lui-même : elles sont la source de vérité la plus haute, au-dessus du profil maître. Toute information qu'elles affirment (expérience, mission, outil, compétence, intitulé, date, résultat) est vraie et utilisable même sans preuve dans le profil ; toute consigne de présentation (retirer, regrouper, renommer, réordonner) s'applique. En cas de contradiction avec le profil maître, la consigne l'emporte. Une puce qui s'appuie sur une consigne cite la source « consignes_candidat:N », N étant l'indice de la déclaration dans declarations_candidat. Vérifie que chaque consigne a été appliquée et signale précisément toute consigne oubliée ou mal appliquée ; ne la qualifie jamais de « non sourcée ».
+""" + candidate_rules.CANDIDATE_INSTRUCTIONS_CLAUSE + """ Vérifie que chaque consigne a été appliquée et signale précisément toute consigne oubliée ou mal appliquée ; ne la qualifie jamais de « non sourcée ».
 Pour une annonce hybride de formation web et IA, renseigne les cinq piliers de couverture.
 Chaque preuve doit citer uniquement un identifiant d'expérience ou de projet existant dans la
 source. Un pilier manquant doit produire une correction concrète et influencer ton verdict.\nVérifie que les expériences sont présentées dans un ordre antéchronologique et signale toute\ninversion. Pour chaque exigence critique du plan, vérifie qu'une expérience ou un projet visible\napporte une preuve. Une technologie, une mission ou une responsabilité demandée mais absente de la source (par
@@ -480,16 +484,16 @@ JSON attendu:
   "status":"validated|needs_minor_revision|needs_revision",
   "verdict":"..."
 }
-""".strip()
+""").strip()
 
 
-REVISER_PROMPT = """
+REVISER_PROMPT = ("""
 Tu es l'agent réviseur final. Applique les corrections du juge sans inventer et sans modifier
 les vrais intitulés d'expérience. Préserve la provenance de chaque puce dans "sources", au format
 "experience_id:index" ou "project_id". Une puce sans source est refusée. N'ajoute que des compétences dont le libellé exact existe dans la source.
 Tu peux ajouter, retirer ou réordonner tout élément sourcé; aucune sélection Python n'est
 obligatoire. Le jugement IA décide de la pertinence, Python ne contrôle que la vérité et le format.
-Les consignes_candidat sont écrites par le candidat lui-même : elles sont la source de vérité la plus haute, au-dessus du profil maître. Toute information qu'elles affirment (expérience, mission, outil, compétence, intitulé, date, résultat) est vraie et utilisable même sans preuve dans le profil ; toute consigne de présentation (retirer, regrouper, renommer, réordonner) s'applique. En cas de contradiction avec le profil maître, la consigne l'emporte. Une puce qui s'appuie sur une consigne cite la source « consignes_candidat:N », N étant l'indice de la déclaration dans declarations_candidat. Applique les consignes_candidat et les corrections du juge ensemble ; en cas de conflit, la consigne l'emporte.
+""" + candidate_rules.CANDIDATE_INSTRUCTIONS_CLAUSE + """ Applique les consignes_candidat et les corrections du juge ensemble ; en cas de conflit, la consigne l'emporte.
 Respecte les niveaux de skills_confidence et l'ordre antéchronologique. Une exigence de l'annonce
 absente de la source reste un écart honnête; elle ne doit jamais être transformée en compétence.
 Utilise evidence_coverage du jugement pour combler chaque pilier partiel ou manquant avec les
@@ -504,7 +508,7 @@ experiences, projects et education à la racine. N'imbrique jamais ta réponse s
 Chaque puce garde la forme {text, sources}, un bloc groupé garde source_experience_ids et une
 puce par mission, projects garde un sous-ensemble de technologies exactes, et education les
 intitulés exacts.
-""".strip()
+""").strip()
 
 
 def _agent_call(
@@ -878,9 +882,7 @@ def _candidate_title(item: Dict[str, Any], master: Dict[str, Any]) -> str:
 
 def _required_experiences(master: Dict[str, Any], variant_id: str) -> List[Any]:
     """Expériences obligatoires de la variante (``"*"`` = valeur par défaut)."""
-    rules = (master.get("layout_constraints", {}) or {}).get("required_experiences_by_variant", {}) or {}
-    value = rules.get(variant_id, rules.get("*", []))
-    return value if isinstance(value, list) else []
+    return candidate_rules.required_experiences(master, variant_id)
 
 
 def _validate_presentation_strategy(
@@ -989,6 +991,7 @@ def _filter_education_by_variant(
     proposed: Any,
     education_catalog: Dict[str, Dict[str, Any]],
     variant_id: str,
+    master: Dict[str, Any] | None = None,
 ) -> List[Dict[str, Any]]:
     """N'affiche qu'un diplôme autorisé pour la variante retenue.
 
@@ -1007,7 +1010,7 @@ def _filter_education_by_variant(
             allowed = entry.get("present_on_variants")
             if allowed and variant_id not in allowed:
                 continue
-            education.append(entry)
+            education.append(candidate_rules.displayed_education_entry(entry, master or {}, variant_id))
         else:
             education.append({"title": str(title)})
     return education
@@ -1160,7 +1163,7 @@ def _assemble_cv_content(
         if isinstance(entry, dict) and normalize(entry.get("title"))
     }
     education = _filter_education_by_variant(
-        proposed.get("education"), education_catalog, variant_id
+        proposed.get("education"), education_catalog, variant_id, master
     )
 
     cv = {
