@@ -762,11 +762,15 @@ def test_quality_checker_flags_long_identity_title():
 def test_hybrid_trainer_prompts_balance_real_work_pedagogy_and_ai():
     assert "trois piliers" in ANALYZER_PROMPT
     assert "réalisation technique réelle" in ANALYZER_PROMPT
-    assert "aucun identifiant d'expérience n'est obligatoire" in ANALYZER_PROMPT
+    # Les expériences obligatoires et les préférences permanentes viennent du
+    # profil maître : le prompt les désigne, il ne les recopie ni ne les nie.
+    assert "required_experiences_by_variant" in ANALYZER_PROMPT
+    assert "sans nombre minimum" in ANALYZER_PROMPT
+    assert "standing_experience_preferences_by_variant" in ANALYZER_PROMPT
+    assert "mairie_chelles" not in ANALYZER_PROMPT
     assert "skills_confidence" in CREATOR_PROMPT
     assert "ordre antéchronologique" in CREATOR_PROMPT
     assert "formations en ligne ou à distance" in CREATOR_PROMPT
-    assert "mairie_chelles" in ANALYZER_PROMPT
     assert "human_group_facilitation" in REVIEWER_PROMPT
     assert "écart honnête" in REVISER_PROMPT
 
