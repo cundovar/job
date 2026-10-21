@@ -12,10 +12,12 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import math
 import os
 import re
+import socket
 import sqlite3
 import subprocess
 import sys
@@ -261,13 +263,55 @@ def _site_name(soup: BeautifulSoup) -> str:
     return re.sub(r"\s+", " ", name).strip()[:80]
 
 
+#: Redirections suivies au plus, chacune contrôlée comme l'URL de départ.
+MAX_REDIRECTS = 5
+
+
+class UnsafeHostError(requests.RequestException):
+    """L'URL désigne (directement ou par redirection) une adresse non publique."""
+
+
+def assert_public_url(url: str) -> None:
+    """Refuse une URL dont l'hôte se résout vers une adresse non publique.
+
+    ``_PRIVATE_HOST`` ne regarde que le nom écrit : un nom public qui pointe
+    vers 127.0.0.1 (« 127.0.0.1.nip.io »), ou une IP écrite autrement, passait.
+    Le serveur héberge des services internes (n8n, Coolify, Qdrant) : c'est
+    l'adresse réellement jointe qui doit être publique.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise UnsafeHostError(f"URL non acceptée : {url}")
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
+    except socket.gaierror as exc:
+        raise UnsafeHostError(f"Hôte introuvable : {parsed.hostname}") from exc
+    for info in infos:
+        address = ipaddress.ip_address(info[4][0])
+        if not address.is_global or address.is_multicast:
+            raise UnsafeHostError(f"Hôte non accepté : {parsed.hostname} ({address})")
+
+
+def safe_get(client: requests.Session, url: str, timeout: int = 8) -> requests.Response:
+    """GET qui contrôle l'adresse de départ et celle de chaque redirection."""
+    current = url
+    for _ in range(MAX_REDIRECTS + 1):
+        assert_public_url(current)
+        response = client.get(current, timeout=timeout, allow_redirects=False)
+        if response.is_redirect and response.headers.get("location"):
+            current = urljoin(current, response.headers["location"])
+            continue
+        return response
+    raise requests.TooManyRedirects(f"Plus de {MAX_REDIRECTS} redirections depuis {url}")
+
+
 def fetch_site_text(url: str) -> tuple[str, list[str], list[str], str]:
     """Texte de l'accueil + d'une page secondaire, les URLs lues, les emails
     masqués décodés depuis le HTML brut (Cloudflare cfemail, mailto), et le nom
     que le site se donne."""
     with requests.Session() as client:
         client.headers["User-Agent"] = UA
-        home = client.get(url, timeout=8)
+        home = safe_get(client, url, timeout=8)
         home.raise_for_status()
         home_text, soup = _clean(home.content)
         pages = [str(home.url)]
@@ -279,7 +323,7 @@ def fetch_site_text(url: str) -> tuple[str, list[str], list[str], str]:
             parsed = urlparse(href)
             if parsed.netloc == base_host and any(h in parsed.path.lower() for h in SECOND_PAGE_HINTS):
                 try:
-                    r = client.get(href, timeout=8)
+                    r = safe_get(client, href, timeout=8)
                     if r.status_code == 200:
                         second_text = _clean(r.content)[0]
                         html_pages.append(r.text)

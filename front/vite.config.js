@@ -27,13 +27,16 @@ export default defineConfig({
         // Ne jamais mettre en cache /api ni /data : statuts et recherches doivent rester frais.
         navigateFallbackDenylist: [/^\/api/, /^\/data/],
         globIgnores: ['**/data/**'],
+        // Workbox compare une expression régulière à l'URL complète
+        // (https://…), jamais au seul chemin : /^\/api\// ne correspondait à
+        // rien. On teste donc le chemin, explicitement.
         runtimeCaching: [
           {
-            urlPattern: /^\/api\//,
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
             handler: 'NetworkOnly',
           },
           {
-            urlPattern: /^\/data\//,
+            urlPattern: ({ url }) => url.pathname.startsWith('/data/'),
             handler: 'NetworkOnly',
           },
         ],
