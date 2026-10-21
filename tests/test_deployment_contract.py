@@ -3,6 +3,23 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
+#: L'API est répartie entre plusieurs routeurs (candidatures, envoi, agences)
+#: et les fonctions de dossier qu'ils partagent : un contrat sur « le serveur »
+#: porte sur leur ensemble.
+ROUTE_FILES = (
+    "routes/applications.js",
+    "routes/sending.js",
+    "routes/agencies.js",
+    "services/applicationFiles.js",
+)
+
+
+def _all_routes() -> str:
+    return "\n".join(
+        (PROJECT_ROOT / "server" / name).read_text(encoding="utf-8") for name in ROUTE_FILES
+    )
+
+
 
 def test_agency_scout_view_carries_target_button_and_task_resume():
     # Le scout V3 doit pouvoir candidater : bouton Retenir & préparer branché
@@ -15,7 +32,7 @@ def test_agency_scout_view_carries_target_button_and_task_resume():
     assert "'/api/agencies/target'" in jsx
     assert "/api/agencies/target/status/" in jsx
 
-    server = (PROJECT_ROOT / "server/routes/applications.js").read_text(encoding="utf-8")
+    server = _all_routes()
     assert "source === 'scout'" in server
     assert "findScoutAgencyByDomain" in server
     assert "'-m', 'agency_scout', 'list'" in server
@@ -65,7 +82,7 @@ def test_le_tri_retenu_ecarte_est_partage_par_les_deux_onglets():
     assert "data/agency_decisions.json" in service
     assert "function writeDecision" in service
 
-    routes = (PROJECT_ROOT / "server/routes/applications.js").read_text(encoding="utf-8")
+    routes = _all_routes()
     assert "/agencies/decisions/:domain" in routes
     # Préparer une candidature, c'est retenir.
     assert "writeDecision(normalizedDomain, 'retenu', 'preparation')" in routes
@@ -103,7 +120,7 @@ def test_le_choix_de_joindre_la_lettre_traverse_les_trois_couches():
     Le choix vit dans `metadata.json`, le seul fichier que lit `applications/send.py` :
     un drapeau écrit ailleurs ne changerait rien à ce qui part réellement.
     """
-    server = (PROJECT_ROOT / "server/routes/applications.js").read_text(encoding="utf-8")
+    server = _all_routes()
     assert "/applications/:id/send-options" in server
     assert "metadata.send_include_lettre = req.body.include_lettre" in server
     # Changer ce qui partira retire l'approbation, comme pour les destinataires.
@@ -159,9 +176,7 @@ def test_agency_target_uses_runtime_python_binary():
 
 
 def test_agency_target_uses_an_async_task_contract():
-    routes = (
-        PROJECT_ROOT / "server" / "routes" / "applications.js"
-    ).read_text(encoding="utf-8")
+    routes = _all_routes()
     app = (PROJECT_ROOT / "front" / "src" / "App.jsx").read_text(encoding="utf-8")
 
     assert "enqueueAgencyTask" in routes
@@ -222,9 +237,7 @@ def test_agency_search_history_is_exposed_by_routes_not_only_static_files():
     Un 404 sur un fichier statique ne dit ni l'un ni l'autre : d'où des routes
     JSON dédiées, avec `latest.json` conservé en repli de compatibilité.
     """
-    routes = (
-        PROJECT_ROOT / "server" / "routes" / "applications.js"
-    ).read_text(encoding="utf-8")
+    routes = _all_routes()
     service = (
         PROJECT_ROOT / "server" / "services" / "agenciesService.js"
     ).read_text(encoding="utf-8")
@@ -280,7 +293,7 @@ def test_agencies_view_carries_the_search_context():
 def test_department_search_contract_is_explicit_end_to_end():
     resolver = (PROJECT_ROOT / "tools" / "city_resolver.py").read_text(encoding="utf-8")
     prospecting = (PROJECT_ROOT / "tools" / "agency_prospecting_v2.py").read_text(encoding="utf-8")
-    routes = (PROJECT_ROOT / "server" / "routes" / "applications.js").read_text(encoding="utf-8")
+    routes = _all_routes()
     service = (PROJECT_ROOT / "server" / "services" / "agenciesService.js").read_text(encoding="utf-8")
     app = (PROJECT_ROOT / "front" / "src" / "App.jsx").read_text(encoding="utf-8")
 
