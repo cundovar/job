@@ -95,3 +95,7 @@ temp/
 
 # Outillage local Claude Code (settings.local.json, launch.json)
 .claude/
+
+# Sauvegardes d'environnement : contiennent des clés
+.env.bak*
+.env.*.bak

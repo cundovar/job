@@ -10,7 +10,8 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { PORT } from './config.js';
+import { PORT, PROJECT_ROOT } from './config.js';
+import { createAuthMiddleware } from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -25,9 +26,14 @@ import { createScoutRouter } from './routes/scout.js';
 
 const app = express();
 
-// CORS : en prod, accepte les requêtes du même origin (VPS)
+// Mot de passe obligatoire sur tout le site (front, /data et API) sauf
+// /api/health : l'app est publique sur internet. Voir server/auth.js.
+app.use(createAuthMiddleware(PROJECT_ROOT));
+
+// CORS : en production le front est servi par ce même serveur (même origine),
+// aucun autre site ne doit pouvoir appeler l'API. En dev, le serveur Vite.
 const corsOrigin = process.env.NODE_ENV === 'production'
-  ? '*'
+  ? false
   : 'http://localhost:5173';
 app.use(cors({ origin: corsOrigin }));
 app.use(express.json());

@@ -221,6 +221,23 @@ def _job_search_base_url() -> str:
 JOB_SEARCH_API = _job_search_base_url()
 
 
+def _api_auth_header() -> Dict[str, str]:
+    """Identifiants du mot de passe de l'app (voir server/auth.js), mêmes sources."""
+    import base64
+
+    user, password = os.getenv("APP_USER"), os.getenv("APP_PASSWORD")
+    if not (user and password):
+        try:
+            stored = json.loads((ROOT / "data" / ".app_auth.json").read_text(encoding="utf-8"))
+            user, password = stored.get("user"), stored.get("password")
+        except (OSError, ValueError, AttributeError):
+            return {}
+    if not (user and password):
+        return {}
+    token = base64.b64encode(f"{user}:{password}".encode("utf-8")).decode("ascii")
+    return {"Authorization": f"Basic {token}"}
+
+
 def _api(method: str, path: str, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
     import urllib.error
     import urllib.request
@@ -230,7 +247,7 @@ def _api(method: str, path: str, payload: Dict[str, Any] | None = None) -> Dict[
         f"{JOB_SEARCH_API}{path}",
         data=data,
         method=method,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", **_api_auth_header()},
     )
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
