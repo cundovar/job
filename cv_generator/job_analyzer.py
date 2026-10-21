@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Tuple
 
 from .utils import compact_items, contains_any, flatten_skills, job_text, normalize
@@ -41,7 +42,9 @@ def _variant_matches(text: str, variant: Dict[str, Any], master: Dict[str, Any])
     score = 0
     matched: List[str] = []
     for keyword in keywords:
-        if normalize(keyword) in text:
+        needle = normalize(keyword)
+        # Mot entier : « ia » ne doit pas compter dans « social », ni « css » dans « accessible ».
+        if needle and re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", text):
             score += 3 if keyword in rules.get(variant.get("id", ""), []) else 1
             if keyword not in matched:
                 matched.append(keyword)

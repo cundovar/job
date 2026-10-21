@@ -163,7 +163,7 @@ def build_application_package(
     output_dir: str = "output/applications",
     user_profile: Dict[str, Any] | None = None,
     master: Dict[str, Any] | None = None,
-    analyze: Callable[[Dict[str, Any], Dict[str, Any]], Dict[str, Any] | None] = analyze_offer,
+    analyze: Callable[[Dict[str, Any], Dict[str, Any]], Dict[str, Any] | None] | None = None,
 ) -> ApplicationPackage:
     """Prépare un dossier de candidature à partir d'une seule lecture de l'annonce.
 
@@ -175,7 +175,7 @@ def build_application_package(
     """
     created_at = datetime.now(timezone.utc)
     master = master if master is not None else load_master_profile()
-    plan = analyze(job, master)
+    plan = (analyze or analyze_offer)(job, master)
     job = enrich_job_from_analysis(job, plan)
     recommendation = recommendation_from_plan(plan, master) if plan else recommend_cv(job, master)
     directory = _build_application_dir(job, output_dir, created_at)
