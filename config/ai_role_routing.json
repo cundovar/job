@@ -54,11 +54,13 @@
   "roles": {
     "job_offer_analyzer": [
       "deepseek_job",
-      "codex_low"
+      "codex_low",
+      "glm_cv"
     ],
     "cv_job_analyzer": [
       "deepseek_cv",
-      "codex_low"
+      "codex_low",
+      "glm_cv"
     ],
     "cv_creator": [
       "codex_terra_medium",
@@ -67,11 +69,13 @@
     ],
     "cv_truth_checker": [
       "deepseek_cv",
-      "codex_medium"
+      "codex_medium",
+      "glm_cv"
     ],
     "cv_quality_checker": [
       "deepseek_cv",
-      "codex_medium"
+      "codex_medium",
+      "glm_cv"
     ],
     "cv_style_reviser": [
       "codex_terra_medium",
@@ -85,7 +89,8 @@
     ],
     "company_verifier": [
       "deepseek_job",
-      "codex_medium"
+      "codex_medium",
+      "glm_cv"
     ],
     "agency_fit": [
       "deepseek_job",

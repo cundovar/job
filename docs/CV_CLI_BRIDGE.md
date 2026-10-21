@@ -8,19 +8,47 @@ définie dans l'environnement remplace cet ordre pour tous les rôles CV.
 <!-- routage:debut — généré par `python -m tools.routing_table`, ne pas éditer à la main -->
 | Rôle | Ordre d'essai (principal, puis secours) |
 |---|---|
-| Filtrage des annonces (`job_offer_analyzer`) | deepseek `deepseek-v4-flash` → codex_cli `gpt-5.6-sol` (low) |
-| Analyse de l'annonce (plan du CV, famille de poste) (`cv_job_analyzer`) | deepseek `deepseek-v4-flash` → codex_cli `gpt-5.6-sol` (low) |
+| Filtrage des annonces (`job_offer_analyzer`) | deepseek `deepseek-v4-flash` → codex_cli `gpt-5.6-sol` (low) → glm `glm-5.3` |
+| Analyse de l'annonce (plan du CV, famille de poste) (`cv_job_analyzer`) | deepseek `deepseek-v4-flash` → codex_cli `gpt-5.6-sol` (low) → glm `glm-5.3` |
 | Rédaction du CV (`cv_creator`) | codex_cli `gpt-5.6-terra` (medium) → glm `glm-5.3` → deepseek `deepseek-v4-flash` |
-| Vérification de véracité (`cv_truth_checker`) | deepseek `deepseek-v4-flash` → codex_cli `gpt-5.6-sol` (medium) |
-| Juge qualité (`cv_quality_checker`) | deepseek `deepseek-v4-flash` → codex_cli `gpt-5.6-sol` (medium) |
+| Vérification de véracité (`cv_truth_checker`) | deepseek `deepseek-v4-flash` → codex_cli `gpt-5.6-sol` (medium) → glm `glm-5.3` |
+| Juge qualité (`cv_quality_checker`) | deepseek `deepseek-v4-flash` → codex_cli `gpt-5.6-sol` (medium) → glm `glm-5.3` |
 | Correction (révision) (`cv_style_reviser`) | codex_cli `gpt-5.6-terra` (medium) → glm `glm-5.3` → deepseek `deepseek-v4-flash` |
 | Lettre de motivation (`agent_redacteur_lettres`) | codex_cli `gpt-5.6-sol` (medium) → glm `glm-5.3` → deepseek `deepseek-v4-flash` |
-| Vérification d'entreprise (`company_verifier`) | deepseek `deepseek-v4-flash` → codex_cli `gpt-5.6-sol` (medium) |
+| Vérification d'entreprise (`company_verifier`) | deepseek `deepseek-v4-flash` → codex_cli `gpt-5.6-sol` (medium) → glm `glm-5.3` |
 | Adéquation d'agence (`agency_fit`) | deepseek `deepseek-v4-flash` → glm `glm-5.3` |
 <!-- routage:fin -->
 
 Le résumé d'annonce et le mail standard restent entièrement déterministes en
 Python. Ils ne consomment aucun appel IA.
+
+## Mesures du routage (22 octobre 2026)
+
+Banc rejoué sur le serveur avec le profil maître réel, sans rien écrire dans le
+dépôt : 37 appels IA au total (9 pings, 28 mesures).
+
+- **Analyse de l'annonce**, 3 annonces collées sans titre ni entreprise
+  (Coallia, Comptoir des Voyages, mairie d'Argenteuil) : DeepSeek, Codex sol,
+  Codex terra et GLM extraient tous correctement famille, entreprise, lieu et
+  contrat (le lieu de Comptoir est laissé vide par tous : l'annonce n'en donne
+  pas). Durée moyenne : DeepSeek ~40 s, Codex ~60 s, GLM ~130 s.
+- **Vérification de véracité**, 2 CV réels avec 3 défauts plantés chacun
+  (diplôme inventé, responsabilité inventée sous une référence valide, chiffre
+  et certification ajoutés) : tous les fournisseurs qui ont répondu attrapent
+  3/3 sur chaque CV, et signalent les mêmes affirmations sur les CV non
+  modifiés. DeepSeek reste le plus rapide (19–46 s).
+- **Codex sol** a échoué sur 4 appels sur 11 avec `429 Too Many Requests` :
+  le quota du modèle sur l'abonnement, pas une panne. Le pont le classe
+  désormais en « limite d'utilisation atteinte ». Codex terra n'a pas échoué.
+- **Claude CLI** n'est pas authentifié sur le pont : il n'est dans aucune route.
+
+Conséquences : les premiers choix ne changent pas (aucun écart d'exactitude ne
+le justifie, et DeepSeek est le plus rapide sur les rôles de contrôle). GLM, de
+nouveau disponible, devient le dernier secours des rôles qui n'avaient que
+DeepSeek puis Codex sol : une limite Codex ne laisse plus ces rôles sans
+fournisseur. La rédaction (CV, révision, lettre) n'a pas été mesurée : elle
+demande de générer des CV complets, et rien dans les incidents récents ne
+désigne son fournisseur.
 
 ## Architecture
 
