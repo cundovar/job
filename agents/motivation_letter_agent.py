@@ -17,6 +17,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Dict
 
+from cv_generator import rules as candidate_rules
+from cv_generator.utils import period_to_text
 from utils.cli_agent_bridge import CLIAgentBridgeClient
 
 AGENT_NAME = "agent_redacteur_lettres"
@@ -24,27 +26,27 @@ PROMPT_FILE = "agent_redacteur_lettres.md"
 
 _LOG = logging.getLogger(__name__)
 
-# Postes médiation numérique / conseiller numérique : règles éditoriales
-# propres à cette famille (Mediateur et non DevDoc, pas de ligne Portfolio).
-_MEDIATION_POSTE_RE = re.compile(
-    r"m[ée]diateur|m[ée]diation\s+num[ée]rique|conseiller\s+num[ée]rique|"
-    r"conseiller\s+emploi|inclusion\s+num[ée]rique|accompagnement\s+num[ée]rique",
-    re.IGNORECASE,
-)
-
-# Le seul projet pédagogique citable dans les lettres médiation numérique.
+# Le seul projet pédagogique citable dans les lettres de médiation.
 _MEDIATION_PROJET = "Mediateur"
 # Projet interdit dans ces lettres : détecté pour avertissement, jamais
 # réécrit en silence (une réécriture mécanique inventerait des faits).
 _PROJET_INTERDIT = "DevDoc"
 
+#: Champs de config/criteria.yaml qui ne regardent pas l'employeur : ils ne
+#: partent jamais aux fournisseurs d'IA (statut CSP, tarif, salaire visé).
+_PRIVATE_PROFILE_KEYS = frozenset({"status", "tjm_cible", "salaire_cible"})
 
-def is_mediation_poste(job_title: str) -> bool:
-    """Vrai si l'intitulé relève de la médiation / du conseil numérique."""
-    return bool(_MEDIATION_POSTE_RE.search(job_title or ""))
+
+def _as_job(job: Any) -> Dict[str, Any]:
+    return job if isinstance(job, dict) else {"title": str(job or "")}
 
 
-def apply_mediation_poste_rules(letter: str, job_title: str) -> str:
+def is_mediation_poste(job: Any) -> bool:
+    """Vrai pour un poste de médiation : famille de l'analyse, sinon intitulé."""
+    return candidate_rules.is_mediation_job(_as_job(job))
+
+
+def apply_mediation_poste_rules(letter: str, job: Any) -> str:
     """Règles mécaniques des lettres médiation numérique, indépendantes de l'IA.
 
     - La ligne « Portfolio : … » est retirée de la signature (l'email reste ;
@@ -53,7 +55,7 @@ def apply_mediation_poste_rules(letter: str, job_title: str) -> str:
       n'est PAS réécrite automatiquement, c'est un signe que le prompt n'a pas
       été suivi et que la lettre doit être refaite avant envoi.
     """
-    if not is_mediation_poste(job_title):
+    if not is_mediation_poste(job):
         return letter
     lines = letter.splitlines()
     kept = [line for line in lines if not line.strip().lower().startswith("portfolio")]
@@ -136,11 +138,72 @@ def _load_system_prompt() -> str:
     )
 
 
+def candidate_profile(master: Dict[str, Any], variant_id: str) -> Dict[str, Any]:
+    """Extrait du profil maître pour la lettre : les faits, rien de privé.
+
+    La lettre lisait config/criteria.yaml et les faits écrits dans son prompt,
+    qui divergeaient du profil maître (périodes, expériences absentes comme
+    l'accueil). Les expériences retirées et les projets interdits pour la
+    variante sont écartés ; les diplômes s'affichent comme sur le CV.
+    """
+    person = master.get("person", {}) or {}
+    positioning = master.get("positioning", {}) or {}
+    forbidden = set(candidate_rules.forbidden_projects(master, variant_id))
+    experiences = [
+        {
+            "id": exp_id,
+            "organisation": item.get("organization", ""),
+            "intitule": item.get("title", ""),
+            "periode": period_to_text(item.get("period")),
+            "faits": list(item.get("highlights", []) or []),
+            "liens": list(item.get("links", []) or [])[:2],
+        }
+        for exp_id, item in (master.get("experience_catalog", {}) or {}).items()
+        if isinstance(item, dict) and not item.get("retired")
+    ]
+    projects = [
+        {
+            "id": project_id,
+            "titre": item.get("title", ""),
+            "description": item.get("description", ""),
+            "liens": list(item.get("links", []) or [])[:2],
+        }
+        for project_id, item in (master.get("project_catalog", {}) or {}).items()
+        if isinstance(item, dict) and project_id not in forbidden
+    ]
+    education = [
+        {key: entry[key] for key in ("year", "title", "level", "school", "status") if key in entry}
+        for entry in (
+            candidate_rules.displayed_education_entry(item, master, variant_id)
+            for item in person.get("education", []) or []
+            if isinstance(item, dict)
+        )
+    ]
+    return {
+        "nom": person.get("display_name", ""),
+        "email": (person.get("contact", {}) or {}).get("email", ""),
+        "localisation": person.get("location", ""),
+        "positionnement": (positioning.get("title_variants", {}) or {}).get(variant_id, ""),
+        "accroche": (positioning.get("summary_variants", {}) or {}).get(variant_id, ""),
+        "experiences": experiences,
+        "projets": projects,
+        "formation": education,
+        "langues": person.get("languages", []),
+        "formulations_interdites": list(master.get("forbidden_claims", []) or []),
+    }
+
+
+def _public_profile(user_profile: Dict[str, Any] | None) -> Dict[str, Any]:
+    return {key: value for key, value in (user_profile or {}).items() if key not in _PRIVATE_PROFILE_KEYS}
+
+
 def _build_payload(
     job: Dict[str, Any],
     recommendation: Any,
     user_profile: Dict[str, Any] | None,
+    master: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
+    variant_id = str(getattr(recommendation, "cv_id", "") or "")
     return {
         "offre": {
             key: job.get(key)
@@ -166,7 +229,8 @@ def _build_payload(
             "nom": getattr(recommendation, "cv_name", ""),
             "raison": getattr(recommendation, "reason", ""),
         },
-        "profil": user_profile or {},
+        "famille_poste": str(job.get("job_family") or ""),
+        "profil": candidate_profile(master, variant_id) if master else _public_profile(user_profile),
     }
 
 
@@ -210,12 +274,23 @@ def generate_motivation_letter(
     recommendation: Any,
     user_profile: Dict[str, Any] | None = None,
     bridge_client: CLIAgentBridgeClient | None = None,
+    master: Dict[str, Any] | None = None,
 ) -> str:
     """Ask the CLI bridge to write the letter. Raises MotivationLetterError on failure."""
     letter, _report = generate_motivation_letter_with_report(
-        job, recommendation, user_profile, bridge_client=bridge_client
+        job, recommendation, user_profile, bridge_client=bridge_client, master=master
     )
     return letter
+
+
+def _load_master_or_none() -> Dict[str, Any] | None:
+    try:
+        from applications.cv_selector import load_master_profile
+
+        return load_master_profile()
+    except (OSError, ValueError):
+        _LOG.warning("Profil maître illisible : la lettre part du profil de config/criteria.yaml.")
+        return None
 
 
 def generate_motivation_letter_with_report(
@@ -223,9 +298,12 @@ def generate_motivation_letter_with_report(
     recommendation: Any,
     user_profile: Dict[str, Any] | None = None,
     bridge_client: CLIAgentBridgeClient | None = None,
+    master: Dict[str, Any] | None = None,
 ) -> tuple[str, Dict[str, Any]]:
     """Comme ``generate_motivation_letter``, plus le rapport sur les consignes."""
-    payload = _build_payload(job, recommendation, user_profile)
+    if master is None:
+        master = _load_master_or_none()
+    payload = _build_payload(job, recommendation, user_profile, master)
     system_prompt = _load_system_prompt()
     from cv_generator.ai_agents import CVAgentError, CVLLMClient
 
@@ -242,7 +320,5 @@ def generate_motivation_letter_with_report(
     if not letter:
         raise MotivationLetterError("L'agent IA n'a pas renvoyé de lettre.")
     report = _consignes_report(payload["consignes_candidat"], result.data)
-    letter = apply_mediation_poste_rules(
-        _stamp_place_and_date(letter), str(job.get("title") or "")
-    )
+    letter = apply_mediation_poste_rules(_stamp_place_and_date(letter), job)
     return letter, report

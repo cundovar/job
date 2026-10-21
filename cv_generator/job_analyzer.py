@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 from typing import Any, Dict, List, Tuple
 
 from .utils import compact_items, contains_any, flatten_skills, job_text, normalize
@@ -33,19 +35,45 @@ def _period_sort_key(period: Dict[str, Any] | None) -> Tuple[str, str]:
     return (end, start)
 
 
-def _score_variant(text: str, variant: Dict[str, Any], master: Dict[str, Any]) -> int:
+def _strip_accents(value: str) -> str:
+    return "".join(char for char in unicodedata.normalize("NFKD", value) if not unicodedata.combining(char))
+
+
+def _variant_matches(text: str, variant: Dict[str, Any], master: Dict[str, Any]) -> Tuple[int, List[str]]:
     rules = master.get("adaptation_rules", {}).get("variant_selection", {})
     keywords = list(rules.get(variant.get("id", ""), []))
     keywords.extend(variant.get("tags", []))
     keywords.extend(flatten_skills(variant.get("skills", {})))
     score = 0
+    matched: List[str] = []
+    seen: set[str] = set()
     for keyword in keywords:
-        if normalize(keyword) in text:
+        needle = normalize(keyword)
+        # Un mot-clé compte une fois, quelles que soient sa casse ou ses accents
+        # (« integration » et « intégration » sont le même mot pour l'annonce).
+        if not needle or needle in seen or _strip_accents(needle) in seen:
+            continue
+        seen.update({needle, _strip_accents(needle)})
+        # Mot entier : « ia » ne doit pas compter dans « social », ni « css » dans « accessible ».
+        if re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", text) or re.search(
+            rf"(?<!\w){re.escape(_strip_accents(needle))}(?!\w)", _strip_accents(text)
+        ):
             score += 3 if keyword in rules.get(variant.get("id", ""), []) else 1
-    return score
+            if keyword not in matched:
+                matched.append(keyword)
+    return score, matched
 
 
-def _select_variant(job: Dict[str, Any], master: Dict[str, Any]) -> Dict[str, Any]:
+def _score_variant(text: str, variant: Dict[str, Any], master: Dict[str, Any]) -> int:
+    return _variant_matches(text, variant, master)[0]
+
+
+def select_variant(job: Dict[str, Any], master: Dict[str, Any]) -> Tuple[Dict[str, Any], int, List[str]]:
+    """Variante par mots-clés, quand l'analyse IA de l'annonce n'est pas disponible.
+
+    C'est la seule sélection déterministe du projet : la préanalyse du CV et
+    la recommandation affichée par Hermes la partagent.
+    """
     text = job_text(job)
     variants = master.get("cv_variants", [])
 
@@ -54,15 +82,26 @@ def _select_variant(job: Dict[str, Any], master: Dict[str, Any]) -> Dict[str, An
     teaching_terms = ["formateur", "formation", "enseignant", "apprenants", "pédagogie", "pedagogie"]
     web_development_terms = ["developpement web", "développement web", "html", "css", "javascript", "react", "php", "symfony", "wordpress"]
     if contains_any(text, teaching_terms) and contains_any(text, web_development_terms):
-        return next((variant for variant in variants if variant.get("id") == "formateur_developpement_web"), {})
+        teaching = next((variant for variant in variants if variant.get("id") == "formateur_developpement_web"), None)
+        if teaching is not None:
+            score, matched = _variant_matches(text, teaching, master)
+            return teaching, score, matched
 
-    scored: List[Tuple[int, int, Dict[str, Any]]] = []
+    scored: List[Tuple[int, int, Dict[str, Any], List[str]]] = []
     default_priority = master.get("positioning", {}).get("default_priority", [])
     for variant in variants:
         priority_penalty = default_priority.index(variant["id"]) if variant.get("id") in default_priority else 99
-        scored.append((_score_variant(text, variant, master), -priority_penalty, variant))
+        score, matched = _variant_matches(text, variant, master)
+        scored.append((score, -priority_penalty, variant, matched))
     scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    return scored[0][2] if scored else {}
+    if not scored:
+        return {}, 0, []
+    best = scored[0]
+    return best[2], best[0], best[3]
+
+
+def _select_variant(job: Dict[str, Any], master: Dict[str, Any]) -> Dict[str, Any]:
+    return select_variant(job, master)[0]
 
 
 def _priority_keywords(job: Dict[str, Any], selected: Dict[str, Any], master: Dict[str, Any]) -> List[str]:

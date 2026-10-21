@@ -195,19 +195,140 @@ def test_les_postes_de_mediation_reconnus_aujourd_hui(title):
     assert is_mediation_poste(title) is True
 
 
-@_todo("3", "la famille de poste est devinée par une regex sur le seul titre")
 @pytest.mark.parametrize("title", ["Chargé de médiation sociale", "Animateur numérique en médiathèque"])
-def test_les_postes_de_mediation_non_reconnus(title):
+def test_les_postes_de_mediation_autrefois_non_reconnus(title):
     assert is_mediation_poste(title) is True
+
+
+def test_la_famille_de_l_analyse_prime_sur_l_intitule():
+    assert is_mediation_poste({"title": "Description de la mission", "job_family": "mediation_sociale"})
+    assert not is_mediation_poste({"title": "Médiateur", "job_family": "developpement"})
+
+
+PLAN = {
+    "annonce": {
+        "intitule": "Médiateur social",
+        "entreprise": "Association Fictive",
+        "lieu": "Ville-Exemple",
+        "contrat": "CDD",
+        "famille": "mediation_sociale",
+    },
+    "selected_base_variant": "mediation_sociale",
+    "priority_keywords": ["accueil", "orientation"],
+    "experience_plan": [{"experience_id": "agence_exemple"}],
+}
+
+
+def test_l_analyse_complete_une_annonce_collee_sans_ecraser_la_saisie():
+    from applications.application_builder import enrich_job_from_analysis
+
+    pasted = {"title": "Description du poste", "title_inferred": True, "company": "Entreprise de l'annonce"}
+    enriched = enrich_job_from_analysis(pasted, PLAN)
+    assert enriched["title"] == "Médiateur social"
+    assert enriched["company"] == "Association Fictive"
+    assert enriched["contract_type"] == "CDD"
+    assert enriched["job_family"] == "mediation_sociale"
+    typed = {"title": "Chargé d'accueil", "company": "Mairie Fictive", "location": "Ailleurs"}
+    kept = enrich_job_from_analysis(typed, PLAN)
+    assert (kept["title"], kept["company"], kept["location"]) == ("Chargé d'accueil", "Mairie Fictive", "Ailleurs")
+
+
+def _prepare(tmp_path, monkeypatch, master, analyze):
+    from applications import application_builder
+
+    letters = []
+
+    def fake_letter(job, recommendation, profile, master=None):
+        letters.append((job, recommendation, master))
+        return "Lettre.", {"etat": "absent"}
+
+    monkeypatch.setattr(application_builder, "generate_motivation_letter_with_report", fake_letter)
+    monkeypatch.setattr(application_builder, "generate_application_email", lambda *a, **k: "Mail.")
+    monkeypatch.setattr(application_builder, "summarize_job", lambda job: type("S", (), {"to_markdown": lambda self: ""})())
+    monkeypatch.setattr(application_builder, "_write_letter_pdf", lambda *a, **k: None)
+    job = {
+        "title": "Description du poste",
+        "title_inferred": True,
+        "company": "Entreprise de l'annonce",
+        "source": "annonce_manuelle",
+        "description": "Accueil, orientation et ateliers pour des résidents.",
+    }
+    package = application_builder.build_application_package(
+        job, output_dir=str(tmp_path), master=master, analyze=analyze
+    )
+    return package, letters
+
+
+def test_la_lettre_et_le_cv_partent_de_la_meme_lecture_de_l_annonce(tmp_path, monkeypatch, master):
+    from cv_generator.offer_analysis import load_offer_analysis
+
+    package, letters = _prepare(tmp_path, monkeypatch, master, lambda job, m: PLAN)
+    job, recommendation, given_master = letters[0]
+    assert recommendation.cv_id == "mediation_sociale"
+    assert job["job_family"] == "mediation_sociale"
+    assert given_master is master
+    assert "association-fictive_mediateur-social" in package.directory
+    assert package.job["title"] == "Médiateur social"
+    assert load_offer_analysis(package.directory, package.job)["selected_base_variant"] == "mediation_sociale"
+
+
+def test_sans_analyse_la_lettre_retombe_sur_les_mots_cles(tmp_path, monkeypatch, master):
+    package, letters = _prepare(tmp_path, monkeypatch, master, lambda job, m: None)
+    assert letters[0][1].cv_id in {v["id"] for v in master["cv_variants"]}
+    assert not (Path(package.directory) / "cv" / "offer_analysis.json").exists()
+
+
+def test_le_plan_n_est_reutilise_que_pour_la_meme_annonce(tmp_path):
+    from cv_generator.offer_analysis import load_offer_analysis, save_offer_analysis
+
+    job = {"description": "Annonce A", "candidate_instructions": "Mettre en avant l'accueil."}
+    save_offer_analysis(tmp_path, job, PLAN)
+    assert load_offer_analysis(tmp_path, job) == PLAN
+    assert load_offer_analysis(tmp_path, {**job, "description": "Annonce B"}) is None
+    assert load_offer_analysis(tmp_path, {**job, "candidate_instructions": "Autre consigne."}) is None
+
+
+def test_deux_annonces_collees_au_meme_intitule_ne_s_ecrasent_pas(tmp_path):
+    from applications.application_tracker import ApplicationTracker
+
+    tracker = ApplicationTracker(str(tmp_path / "tracker.json"))
+    a = {"title": "Description du poste", "company": "X", "source": "annonce_manuelle", "description": "A"}
+    b = {**a, "description": "B"}
+    assert tracker.job_key(a) != tracker.job_key(b)
+    scraped = {"title": "Poste", "company": "X", "description": "A"}
+    assert tracker.job_key(scraped) == "Poste-X"
+
+
+def test_la_lettre_recoit_le_profil_maitre_sans_donnees_privees(master):
+    from agents.motivation_letter_agent import _build_payload
+    from applications.cv_selector import recommendation_from_plan
+
+    master["experience_catalog"]["boutique_imaginaire"]["retired"] = True
+    recommendation = recommendation_from_plan(PLAN, master)
+    payload = _build_payload(
+        {"title": "Médiateur social", "job_family": "mediation_sociale"},
+        recommendation,
+        {"status": "CSP", "salaire_cible": "40 k€", "email": "x"},
+        master,
+    )
+    profil = payload["profil"]
+    text = json.dumps(payload, ensure_ascii=False)
+    assert "CSP" not in text and "40 k€" not in text
+    assert payload["famille_poste"] == "mediation_sociale"
+    assert "boutique_imaginaire" not in {e["id"] for e in profil["experiences"]}
+    assert "projet_documentation" not in {p["id"] for p in profil["projets"]}
+    assert all("status" not in e for e in profil["formation"])
+    sans_master = _build_payload({"title": "x"}, recommendation, {"status": "CSP", "email": "x"}, None)
+    assert sans_master["profil"] == {"email": "x"}
 
 
 # ── Étape 5 : PDF de la lettre ───────────────────────────────────────────────
 
-@_todo("5", "regenerate_letter_and_email produit le PDF sans le titre du poste")
 def test_regenerer_une_lettre_de_mediation_garde_le_bandeau_sans_portfolio(tmp_path, monkeypatch):
     from applications import application_builder
 
-    (tmp_path / "job.json").write_text(json.dumps({"title": "Médiateur numérique"}), encoding="utf-8")
+    job = {"title": "Description de la mission", "job_family": "mediation_sociale"}
+    (tmp_path / "job.json").write_text(json.dumps(job), encoding="utf-8")
     (tmp_path / "metadata.json").write_text(json.dumps({"files": {}}), encoding="utf-8")
     monkeypatch.setattr(
         application_builder,
@@ -220,7 +341,9 @@ def test_regenerer_une_lettre_de_mediation_garde_le_bandeau_sans_portfolio(tmp_p
     monkeypatch.setattr(
         application_builder,
         "_write_letter_pdf",
-        lambda path, directory, job_title="": seen.setdefault("title", job_title),
+        lambda path, directory, job: seen.setdefault("job", job),
     )
     application_builder.regenerate_letter_and_email(tmp_path, "", "")
-    assert seen["title"] == "Médiateur numérique"
+    from cv_generator.rules import is_mediation_job
+
+    assert is_mediation_job(seen["job"])

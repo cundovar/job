@@ -18,6 +18,7 @@ from .ats_exporter import cv_to_ats_html, cv_to_ats_pdf
 from .ats_validator import validate_ats_pdf
 from .cv_assessment import build_cv_assessment
 from .exporters import cv_to_html, cv_to_pdf
+from .offer_analysis import load_offer_analysis
 from .cv_truth_validator import with_candidate_statements
 from .utils import load_json, save_json
 
@@ -264,7 +265,9 @@ def prepare_custom_cv(
 
     agents = AICVPipeline(llm_client)
     _write_progress(output_dir, "analysis")
-    plan = agents.analyze(job, master)
+    # La préparation de la candidature a déjà lu cette annonce : son plan sert
+    # tant que l'annonce et les consignes n'ont pas changé.
+    plan = load_offer_analysis(application_dir, job) or agents.analyze(job, master)
 
     _write_progress(output_dir, "writing", detail=f"Variante : {plan.get('selected_base_variant')}")
     try:

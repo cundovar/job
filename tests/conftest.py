@@ -19,13 +19,16 @@ def stub_hermes_letter(request, monkeypatch):
     monkeypatch.setattr(
         motivation_letter_agent,
         "generate_motivation_letter",
-        lambda job, recommendation, user_profile=None: "# Lettre de motivation\n\nMadame, Monsieur,\n",
+        lambda job, recommendation, user_profile=None, **kwargs: "# Lettre de motivation\n\nMadame, Monsieur,\n",
     )
     import applications.application_builder as builder
+    # Aucune analyse IA d'annonce pendant les tests : la préparation retombe
+    # sur la sélection par mots-clés, comme quand l'agent est indisponible.
+    monkeypatch.setattr(builder, "analyze_offer", lambda job, master: None)
     monkeypatch.setattr(
         builder,
         "generate_motivation_letter_with_report",
-        lambda job, recommendation, user_profile=None: (
+        lambda job, recommendation, user_profile=None, **kwargs: (
             "# Lettre de motivation\n\nMadame, Monsieur,\n",
             {"etat": "sans_consigne", "suivies": [], "ecartees": []},
         ),
