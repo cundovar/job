@@ -487,3 +487,15 @@ def test_plan_regroupe_toujours_un_groupe_always_group():
     strategy = _validate_presentation_strategy({"experience_display_mode": "individual"}, "webmaster", ["a", "c", "x"], master)
     assert strategy["experience_group_id"] == "g"
     assert strategy["member_ids"] == ["a", "c"]
+
+
+def test_experience_obligatoire_manquante_signalee():
+    from cv_generator.cv_truth_validator import validate_cv_content
+    master = {
+        "experience_catalog": {"a": {"highlights": ["A"], "period": {"start": "2025-01", "end": "2026-03"}},
+                               "b": {"highlights": ["B"], "period": {"start": "2023", "end": "2024"}}},
+        "layout_constraints": {"required_experiences_by_variant": {"*": ["a", "b"]}},
+    }
+    cv = {"base_variant": "webmaster", "cv": {"experiences": [{"id": "b", "bullets": [{"text": "B", "sources": ["b:0"]}]}]}}
+    codes = [i["code"] for i in validate_cv_content(cv, master)["issues"]]
+    assert "MISSING_REQUIRED_EXPERIENCE" in codes

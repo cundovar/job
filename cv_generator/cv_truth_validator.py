@@ -756,6 +756,26 @@ def validate_cv_content(
                 )
             )
 
+    shown_ids = set()
+    for view in views:
+        shown_ids.add(view.id)
+        shown_ids.update(view.member_ids)
+    rules = constraints.get("required_experiences_by_variant", {}) or {}
+    for required in rules.get(variant_id, rules.get("*", [])) if variant_id or "*" in rules else []:
+        options = [required] if isinstance(required, str) else [str(x) for x in required]
+        options = [x for x in options if x in catalog and not catalog[x].get("retired")]
+        if options and not any(x in shown_ids for x in options):
+            issues.append(
+                TruthIssue(
+                    "MISSING_REQUIRED_EXPERIENCE",
+                    FORMAT,
+                    "experiences",
+                    f"L'expérience obligatoire « {' ou '.join(options)} » manque : elle doit figurer sur "
+                    "tous les CV de cette variante pour garder un parcours continu.",
+                    options[0],
+                )
+            )
+
     max_bullets = int(constraints.get("max_bullets_per_experience", 3))
     seen: set[str] = set()
     for view in views:

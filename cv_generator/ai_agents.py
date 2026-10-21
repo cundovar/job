@@ -747,7 +747,7 @@ def _validate_plan(
         exp_id = str(item.get("experience_id") or "")
         if exp_id in seen:
             continue
-        if exp_id not in catalog:
+        if exp_id not in catalog or catalog[exp_id].get("retired"):
             unknown.append(exp_id)
             continue
         highlights = catalog[exp_id].get("highlights", [])
@@ -771,6 +771,31 @@ def _validate_plan(
             "Aucune expérience proposée par l'agent analyste n'existe dans le profil "
             f"maître (reçu : {', '.join(unknown) or 'rien'})."
         )
+
+    # Règle candidat (21/10/2026) : certaines expériences forment la colonne
+    # vertébrale du parcours et figurent sur tous les CV de la variante, pour
+    # que la chronologie 2023 → aujourd'hui reste continue. Chaque entrée est
+    # un identifiant, ou une liste d'alternatives dont une seule suffit.
+    for required in _required_experiences(master, variant_id):
+        options = [required] if isinstance(required, str) else [str(x) for x in required]
+        options = [x for x in options if x in catalog and not catalog[x].get("retired")]
+        if not options or any(x in seen for x in options):
+            continue
+        exp_id = options[0]
+        highlights = catalog[exp_id].get("highlights", [])
+        indexes = list(range(min(len(highlights), 3)))
+        experience_plan.append(
+            {
+                "experience_id": exp_id,
+                "priority": 0,
+                "selection_role": catalog[exp_id].get("cv_role", "core"),
+                "reason": "Expérience obligatoire pour cette variante (règle du profil maître).",
+                "highlight_indexes": indexes,
+                "highlights": [highlights[index] for index in indexes],
+                "required": True,
+            }
+        )
+        seen.add(exp_id)
 
     presentation_strategy = _validate_presentation_strategy(
         proposed.get("presentation_strategy"), variant_id, seen, master
@@ -831,6 +856,13 @@ def _validate_plan(
         "warnings": _as_string_list(proposed.get("warnings"), limit=8),
         "unknown_experience_ids": unknown,
     }
+
+
+def _required_experiences(master: Dict[str, Any], variant_id: str) -> List[Any]:
+    """Expériences obligatoires de la variante (``"*"`` = valeur par défaut)."""
+    rules = (master.get("layout_constraints", {}) or {}).get("required_experiences_by_variant", {}) or {}
+    value = rules.get(variant_id, rules.get("*", []))
+    return value if isinstance(value, list) else []
 
 
 def _validate_presentation_strategy(
