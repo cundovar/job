@@ -5,26 +5,26 @@
  *   POST /api/scout/add       → ajoute une structure repérée à la main, depuis l'URL de son site.
  */
 import { Router } from 'express';
-import { execFile } from 'child_process';
-import { PROJECT_ROOT } from '../config.js';
+import { runPython } from '../services/python.js';
 
 const PYTHON_BIN = process.env.PYTHON_BIN || 'python3';
 
 function runScout(args, timeout = 20000) {
-  return new Promise((resolve, reject) => {
-    execFile(PYTHON_BIN, ['-m', 'agency_scout', ...args], { cwd: PROJECT_ROOT, timeout, maxBuffer: 20 * 1024 * 1024 },
-      (err, stdout, stderr) => {
-        let payload = null;
-        try { payload = JSON.parse(stdout); } catch { /* sortie non JSON */ }
-        if (err) {
-          const error = new Error(payload?.error || (stderr || err.message).slice(-500));
-          error.payload = payload;
-          return reject(error);
-        }
-        if (payload) return resolve(payload);
-        reject(new Error(`Réponse illisible : ${stdout.slice(0, 200)}`));
-      });
-  });
+  return runPython(['-m', 'agency_scout', ...args], { bin: PYTHON_BIN, timeout }).then(
+    stdout => {
+      let payload = null;
+      try { payload = JSON.parse(stdout); } catch { /* sortie non JSON */ }
+      if (payload) return payload;
+      throw new Error(`Réponse illisible : ${stdout.slice(0, 200)}`);
+    },
+    err => {
+      let payload = null;
+      try { payload = JSON.parse(err.stdout || ''); } catch { /* sortie non JSON */ }
+      const error = new Error(payload?.error || err.message.slice(-500));
+      error.payload = payload;
+      throw error;
+    }
+  );
 }
 
 export function createScoutRouter() {

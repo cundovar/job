@@ -20,6 +20,8 @@ import JsonApplicationsRepository from './repositories/jsonApplicationsRepositor
 // Pour passer à SQL plus tard : import SqlApplicationsRepository from './repositories/sqlApplicationsRepository.js'
 
 import createApplicationsRouter from './routes/applications.js';
+import createSendingRouter from './routes/sending.js';
+import createAgenciesRouter from './routes/agencies.js';
 import createSearchRouter from './routes/search.js';
 import createHermesRouter from './routes/hermes.js';
 import { createScoutRouter } from './routes/scout.js';
@@ -61,6 +63,8 @@ app.use(express.static(frontDistPath));
 // Routes API
 app.use('/api/scout', createScoutRouter());
 app.use('/api', createApplicationsRouter(repo));
+app.use('/api', createSendingRouter());
+app.use('/api', createAgenciesRouter());
 app.use('/api/search', createSearchRouter());
 app.use('/api/hermes', createHermesRouter());
 

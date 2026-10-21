@@ -236,9 +236,11 @@ def test_toute_route_qui_ecrit_lettre_ou_mail_reconstruit_lindex():
     """
     import re
 
-    source = (
-        Path(__file__).resolve().parents[1] / "server/routes/applications.js"
-    ).read_text(encoding="utf-8")
+    routes_dir = Path(__file__).resolve().parents[1] / "server" / "routes"
+    source = "\n".join(
+        (routes_dir / name).read_text(encoding="utf-8")
+        for name in ("applications.js", "sending.js", "agencies.js")
+    )
 
     routes = (
         "router.put('/applications/:id/doc/:kind'",
