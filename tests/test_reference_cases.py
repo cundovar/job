@@ -347,3 +347,23 @@ def test_regenerer_une_lettre_de_mediation_garde_le_bandeau_sans_portfolio(tmp_p
     from cv_generator.rules import is_mediation_job
 
     assert is_mediation_job(seen["job"])
+
+
+# ── Étape 5 : un seul chemin pour le PDF de la lettre côté serveur ───────────
+
+def test_le_pdf_de_lettre_du_serveur_suit_les_regles_du_dossier(tmp_path, monkeypatch):
+    from applications import letter_pdf
+
+    (tmp_path / "lettre_motivation.md").write_text("Lettre.", encoding="utf-8")
+    (tmp_path / "job.json").write_text(json.dumps({"title": "Chargé de médiation sociale"}), encoding="utf-8")
+    seen = {}
+
+    def fake_write(letter, directory, job):
+        seen["job"] = job
+        return directory / "lettre_motivation.pdf"
+
+    monkeypatch.setattr(letter_pdf, "_write_letter_pdf", fake_write)
+    letter_pdf.write_dossier_letter_pdf(tmp_path)
+    assert seen["job"]["title"] == "Chargé de médiation sociale"
+    with pytest.raises(FileNotFoundError):
+        letter_pdf.write_dossier_letter_pdf(tmp_path / "absent")
