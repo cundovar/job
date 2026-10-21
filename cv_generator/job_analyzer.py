@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any, Dict, List, Tuple
 
 from .utils import compact_items, contains_any, flatten_skills, job_text, normalize
@@ -34,6 +35,10 @@ def _period_sort_key(period: Dict[str, Any] | None) -> Tuple[str, str]:
     return (end, start)
 
 
+def _strip_accents(value: str) -> str:
+    return "".join(char for char in unicodedata.normalize("NFKD", value) if not unicodedata.combining(char))
+
+
 def _variant_matches(text: str, variant: Dict[str, Any], master: Dict[str, Any]) -> Tuple[int, List[str]]:
     rules = master.get("adaptation_rules", {}).get("variant_selection", {})
     keywords = list(rules.get(variant.get("id", ""), []))
@@ -41,10 +46,18 @@ def _variant_matches(text: str, variant: Dict[str, Any], master: Dict[str, Any])
     keywords.extend(flatten_skills(variant.get("skills", {})))
     score = 0
     matched: List[str] = []
+    seen: set[str] = set()
     for keyword in keywords:
         needle = normalize(keyword)
+        # Un mot-clé compte une fois, quelles que soient sa casse ou ses accents
+        # (« integration » et « intégration » sont le même mot pour l'annonce).
+        if not needle or needle in seen or _strip_accents(needle) in seen:
+            continue
+        seen.update({needle, _strip_accents(needle)})
         # Mot entier : « ia » ne doit pas compter dans « social », ni « css » dans « accessible ».
-        if needle and re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", text):
+        if re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", text) or re.search(
+            rf"(?<!\w){re.escape(_strip_accents(needle))}(?!\w)", _strip_accents(text)
+        ):
             score += 3 if keyword in rules.get(variant.get("id", ""), []) else 1
             if keyword not in matched:
                 matched.append(keyword)
