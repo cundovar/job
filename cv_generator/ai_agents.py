@@ -39,6 +39,7 @@ from .ai_prompts import (  # noqa: F401  (réexport)
     _standing_preference_clause,
 )
 from .ai_plan import (  # noqa: F401  (réexport)
+    without_contact,
     _agent_call,
     _agent_run,
     _allowed_skills,
@@ -124,11 +125,12 @@ class AICVPipeline:
                 "consignes_candidat": _candidate_instructions(job),
                 "source_verite": _truth_context(master, "creator"),
                 "plan_adaptation": plan,
-                # Le squelette ne porte que ce qui n'est pas éditorial : contact,
-                # localisation, langues et contraintes de gabarit.
-                "squelette_structurel": build_structural_shell(
+                # Le squelette ne porte que ce qui n'est pas éditorial :
+                # localisation, langues et contraintes de gabarit. Les
+                # coordonnées restent côté Python.
+                "squelette_structurel": without_contact(build_structural_shell(
                     master, str(plan.get("selected_base_variant") or "")
-                ),
+                )),
             },
         )
         return _assemble_cv_content(
@@ -192,7 +194,7 @@ class AICVPipeline:
 
         payload = {
             "source_verite": _truth_context(master, "reviewer"),
-            "cv_a_verifier": draft.get("cv", {}),
+            "cv_a_verifier": without_contact(draft.get("cv", {})),
             "controle_python": validation["issues"],
         }
         if previous_claims is not None and changed_paths:
@@ -243,7 +245,7 @@ class AICVPipeline:
                 "consignes_candidat": _candidate_instructions(job),
                 "source_verite": _truth_context(master, "reviewer"),
                 "plan_adaptation": plan,
-                "cv_a_juger": draft,
+                "cv_a_juger": without_contact(draft),
                 "controle_python": deterministic,
             },
         )

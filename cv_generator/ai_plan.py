@@ -65,10 +65,9 @@ def _truth_context(master: Dict[str, Any], role: str) -> Dict[str, Any]:
     common = {
         "person": {
             "display_name": person.get("display_name"),
-            # Sans les coordonnées, le vérificateur refusait le bloc contact du
-            # CV faute de source — alors que Python l'y recopie depuis ce même
-            # profil. Le CV soumis les porte déjà : rien n'est exposé de plus.
-            "contact": person.get("contact", {}),
+            # Pas de coordonnées : Python les recopie lui-même dans le CV à
+            # l'assemblage, et aucun CV envoyé aux agents ne les porte
+            # (without_contact). Téléphone et email ne quittent pas le serveur.
             "location": person.get("location"),
             "languages": person.get("languages", []),
             "education": person.get("education", []),
@@ -450,3 +449,17 @@ def _validate_presentation_strategy(
         "experience_group_id": group_id,
         "member_ids": requested,
     }
+
+
+def without_contact(value: Dict[str, Any]) -> Dict[str, Any]:
+    """Copie sans bloc ``contact`` d'un CV, d'un contenu ``{"cv": ...}`` ou d'un squelette.
+
+    Les coordonnées appartiennent à Python (voir ``_PYTHON_OWNED_PATHS``) : un
+    agent n'a rien à en dire, il n'a donc pas à les recevoir.
+    """
+    if not isinstance(value, dict):
+        return value
+    copy = {key: item for key, item in value.items() if key != "contact"}
+    if isinstance(copy.get("cv"), dict):
+        copy["cv"] = {key: item for key, item in copy["cv"].items() if key != "contact"}
+    return copy
