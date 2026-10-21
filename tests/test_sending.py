@@ -590,3 +590,12 @@ def test_un_nom_de_fichier_ne_peut_pas_sortir_du_dossier():
     assert clean_attachment_name("../../etc/passwd") == "etc passwd.pdf"
     assert clean_attachment_name("  .pdf ") == ""
     assert len(clean_attachment_name("a" * 300)) == 120
+
+
+def test_cv_ajoute_par_le_candidat_remplace_le_cv_genere(tmp_path):
+    from applications.send import attachment_paths
+    (tmp_path / "cv").mkdir()
+    (tmp_path / "cv" / "cv_final.pdf").write_bytes(b"%PDF-1.4 genere")
+    (tmp_path / "cv" / "cv_upload.pdf").write_bytes(b"%PDF-1.4 perso")
+    names = [path.name for path in attachment_paths(tmp_path, {"send_include_lettre": False})]
+    assert names == ["cv_upload.pdf"]

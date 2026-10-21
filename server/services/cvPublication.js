@@ -32,10 +32,16 @@ export const PREVIEW_CV_FILES = [
   'cv_review_preview_ats.pdf',
 ];
 
+// CV fourni par le candidat depuis l'onglet lettre (demande Cundo 21/10/2026).
+// Il remplace le CV généré, ou en tient lieu quand aucun CV n'a été demandé :
+// c'est lui qui part à l'envoi, quel que soit le verdict du pipeline.
+export const UPLOADED_CV_PDF = 'cv_upload.pdf';
+
 export const CV_FILES = new Set([
   ...DIAGNOSTIC_CV_FILES,
   ...FINAL_CV_FILES,
   ...PREVIEW_CV_FILES,
+  UPLOADED_CV_PDF,
 ]);
 
 const FINAL_SET = new Set(FINAL_CV_FILES);
@@ -81,6 +87,15 @@ function reviewReason(review, formatIssues, sourceIssues) {
  * pas de l'état du dossier sur disque.
  */
 export function resolveCvPublication(files = {}, assessment = null, review = null, userValidation = null) {
+  if (files[UPLOADED_CV_PDF]) {
+    const generated = resolveAutomaticPublication({ ...files, [UPLOADED_CV_PDF]: false }, assessment, review);
+    return {
+      ...generated,
+      status: 'uploaded',
+      reason: 'CV ajouté par toi : il remplace le CV généré à l\u2019envoi.',
+      generated_status: generated.status,
+    };
+  }
   const publication = resolveAutomaticPublication(files, assessment, review);
   if (publication.status === 'review' && userValidation?.valid && files[USER_VALIDATED_PDF]) {
     return {

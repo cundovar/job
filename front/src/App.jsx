@@ -58,6 +58,7 @@ const CV_STATUS_LABELS = {
   preparing: 'Génération en cours',
   ready: 'CV prêt',
   validated: 'Validé par toi',
+  uploaded: 'Ton CV (ajouté)',
   review: 'À corriger',
   blocked: 'Bloqué',
   absent: 'Pas encore généré',
@@ -337,6 +338,56 @@ function PreuvesPanel({ preuves }) {
 
 // Noms des fichiers PDF du dossier : ceux du téléchargement et ceux que voit
 // le recruteur en pièce jointe. Un champ vide garde le nom par défaut.
+// CV fourni par toi : il remplace le CV généré à l'envoi, ou en tient lieu
+// quand aucun CV n'a été demandé (demande Cundo 21/10/2026).
+function UploadedCvPanel({ id, cvStatus, state, locked, onUpload, onRemove }) {
+  const uploaded = cvStatus?.status === 'uploaded'
+  const generated = cvStatus?.generated_status || (uploaded ? 'absent' : cvStatus?.status)
+  const generatedLabel = CV_STATUS_LABELS[generated] || 'Pas encore généré'
+  return (
+    <div className="approval-zone uploaded-cv">
+      <strong>CV joint à la candidature</strong>
+      {uploaded ? (
+        <p className="approval-note">
+          C’est <b>ton CV</b> qui partira.{' '}
+          <a href={`/api/applications/${id}/cv/download/cv_upload.pdf`}>Voir le PDF</a>
+          {generated !== 'absent' && <> · CV généré : {generatedLabel} (non utilisé)</>}
+        </p>
+      ) : (
+        <p className="approval-note">
+          {generated === 'absent'
+            ? 'Aucun CV généré pour cette candidature. Tu peux ajouter le tien.'
+            : `CV généré : ${generatedLabel}. Tu peux le remplacer par ton propre PDF.`}
+        </p>
+      )}
+      <div className="row" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <label className={`annuler-btn${locked || state?.pending ? ' disabled' : ''}`} style={{ cursor: locked ? 'not-allowed' : 'pointer' }}>
+          <input
+            type="file"
+            accept="application/pdf,.pdf"
+            style={{ display: 'none' }}
+            disabled={locked || state?.pending}
+            onChange={e => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) onUpload(id, file)
+            }}
+          />
+          {state?.pending ? 'Envoi…' : uploaded ? 'Remplacer mon CV' : 'Ajouter mon CV (PDF)'}
+        </label>
+        {uploaded && (
+          <button type="button" className="annuler-btn" disabled={locked || state?.pending} onClick={() => onRemove(id)}>
+            Retirer mon CV
+          </button>
+        )}
+      </div>
+      {locked && <p className="approval-note">Une tentative d’envoi existe : le CV est verrouillé.</p>}
+      {state?.error && <p className="approval-note" style={{ color: '#fb7185' }}>{state.error}</p>}
+      {uploaded && !state?.error && <p className="approval-note">L’approbation d’envoi est retirée à chaque changement de CV.</p>}
+    </div>
+  )
+}
+
 function PdfNamesEditor({ value, defaults, onChange, onSave, pending, saved, error, locked, approved }) {
   const draft = value || {}
   const customised = Boolean(draft.cv?.trim() || draft.lettre?.trim())
@@ -434,6 +485,7 @@ function CandidaturesView({ mission = 'annonce' }) {
   const [editMail, setEditMail] = useState({})          // { [id]: { editing, value, pending, saved, error } }
   const [cvReco, setCvReco] = useState({})              // { [id]: recommandations agent (préremplies) }
   const [pdfNames, setPdfNames] = useState({})          // { [id]: { cv, lettre, pending, saved, error } }
+  const [cvUpload, setCvUpload] = useState({})          // { [id]: { pending, error } }
   const [cvValidation, setCvValidation] = useState({})  // { [id]: { pending, error } }
   const [regenLettre, setRegenLettre] = useState({})    // { [id]: { consignes, mailNote, pending, ok, error } }
   const cvPollControllerRef = useRef(null)
@@ -486,6 +538,48 @@ function CandidaturesView({ mission = 'annonce' }) {
   }
 
   // Nom des fichiers PDF (téléchargement et pièces jointes). Vide = défaut.
+  // Ton propre CV : il remplace le CV généré à l'envoi.
+  const uploadCv = async (id, file) => {
+    if (file.type && file.type !== 'application/pdf') {
+      setCvUpload(prev => ({ ...prev, [id]: { pending: false, error: 'Choisis un fichier PDF.' } }))
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setCvUpload(prev => ({ ...prev, [id]: { pending: false, error: 'PDF trop lourd (10 Mo maximum).' } }))
+      return
+    }
+    setCvUpload(prev => ({ ...prev, [id]: { pending: true, error: null } }))
+    try {
+      const res = await fetch(`/api/applications/${id}/cv/upload`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/pdf' },
+        body: file,
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
+      setCvStatuses(prev => ({ ...prev, [id]: payload }))
+      setCvUpload(prev => ({ ...prev, [id]: { pending: false, error: null } }))
+      refreshApproval(id)
+    } catch (err) {
+      setCvUpload(prev => ({ ...prev, [id]: { pending: false, error: err.message || 'Ajout impossible.' } }))
+    }
+  }
+
+  const removeUploadedCv = async (id) => {
+    if (!window.confirm('Retirer ton CV ? Le CV généré (s’il est validé) redeviendra celui qui part.')) return
+    setCvUpload(prev => ({ ...prev, [id]: { pending: true, error: null } }))
+    try {
+      const res = await fetch(`/api/applications/${id}/cv/upload`, { method: 'DELETE' })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
+      setCvStatuses(prev => ({ ...prev, [id]: payload }))
+      setCvUpload(prev => ({ ...prev, [id]: { pending: false, error: null } }))
+      refreshApproval(id)
+    } catch (err) {
+      setCvUpload(prev => ({ ...prev, [id]: { pending: false, error: err.message || 'Retrait impossible.' } }))
+    }
+  }
+
   const savePdfNames = async (id, draft) => {
     setPdfNames(prev => ({ ...prev, [id]: { ...prev[id], pending: true, saved: false, error: null } }))
     try {
@@ -1017,6 +1111,17 @@ function CandidaturesView({ mission = 'annonce' }) {
             <TriangleAlert /> Dossier historique : les preuves structurées n’étaient pas encore enregistrées.
             Il reste consultable et son statut de candidature est conservé, mais il ne peut pas être approuvé pour un nouvel envoi depuis cette interface.
           </div>
+        )}
+
+        {backendOk && (
+          <UploadedCvPanel
+            id={selected}
+            cvStatus={cvStatus}
+            state={cvUpload[selected]}
+            locked={hasSendAttempt}
+            onUpload={uploadCv}
+            onRemove={removeUploadedCv}
+          />
         )}
 
         {backendOk && approval && (

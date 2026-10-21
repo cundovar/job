@@ -105,6 +105,7 @@ def include_lettre(metadata: Dict[str, Any]) -> bool:
 
 
 USER_VALIDATION_FILE = "cv_user_validation.json"
+UPLOADED_CV_PDF = "cv_upload.pdf"  # même nom que server/services/cvPublication.js
 USER_VALIDATED_PDF = "cv_review_preview.pdf"
 
 
@@ -156,7 +157,13 @@ def attachment_paths(dossier: Path, metadata: Dict[str, Any]) -> List[Path]:
     """Les pièces jointes réellement présentes, lettre comprise si elle est voulue."""
     names = attachment_names(metadata)
     final_cv = dossier / "cv" / "cv_final.pdf"
-    candidates = [("cv", final_cv if final_cv.exists() else (user_validated_cv(dossier) or final_cv))]
+    uploaded_cv = dossier / "cv" / UPLOADED_CV_PDF
+    # Le CV ajouté par le candidat (onglet lettre) passe avant tout CV généré.
+    if uploaded_cv.exists():
+        cv_path = uploaded_cv
+    else:
+        cv_path = final_cv if final_cv.exists() else (user_validated_cv(dossier) or final_cv)
+    candidates = [("cv", cv_path)]
     if include_lettre(metadata):
         candidates.append(("lettre", dossier / "lettre_motivation.pdf"))
     return [

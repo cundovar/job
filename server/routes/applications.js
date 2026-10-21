@@ -6,7 +6,7 @@
  *
  * @param {import('../repositories/applicationsRepository.js').default} repo
  */
-import { Router } from 'express';
+import express, { Router } from 'express';
 import fs from 'fs';
 import crypto from 'crypto';
 import path from 'path';
@@ -17,6 +17,7 @@ import {
   CV_FILES,
   isFinalCvFile,
   resolveCvPublication,
+  UPLOADED_CV_PDF,
   USER_VALIDATION_FILE,
   USER_VALIDATED_PDF,
 } from '../services/cvPublication.js';
@@ -412,7 +413,7 @@ export default function createApplicationsRouter(repo) {
     } catch {
       return null;
     }
-    if (['absent', 'ready', 'validated'].includes(publication.status)) return null;
+    if (['absent', 'ready', 'validated', 'uploaded'].includes(publication.status)) return null;
     return {
       error: "Le CV de cette candidature n'est pas validé.",
       cv_status: publication.status,
@@ -1178,7 +1179,7 @@ export default function createApplicationsRouter(repo) {
       const application = await repo.getById(req.params.id);
       const metadata = readApplicationMetadata(req.params.id);
       // Un aperçu que tu as validé se télécharge sous le nom d'un CV, pas « À corriger ».
-      const sentAsCv = file === 'cv_final.pdf'
+      const sentAsCv = file === 'cv_final.pdf' || file === UPLOADED_CV_PDF
         || (file === USER_VALIDATED_PDF && cvStatus(req.params.id).status === 'validated');
       const downloadAs = sentAsCv ? 'cv_final.pdf' : file;
       const custom = sentAsCv ? customAttachmentNames(metadata).cv : '';
@@ -1188,6 +1189,52 @@ export default function createApplicationsRouter(repo) {
       }, downloadAs));
     } catch (err) {
       console.error('[GET /applications/:id/cv/download/:file]', err.message);
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // PUT /api/applications/:id/cv/upload — corps = le PDF (application/pdf).
+  // Ton CV remplace le CV généré (ou en tient lieu s'il n'y en a pas) : c'est
+  // lui qui part à l'envoi. Ce qui partirait change : l'approbation tombe.
+  router.put(
+    '/applications/:id/cv/upload',
+    express.raw({ type: ['application/pdf', 'application/octet-stream'], limit: '10mb' }),
+    (req, res) => {
+      try {
+        const id = req.params.id;
+        const dir = applicationDir(id);
+        if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${id}` });
+        if (hasSendRecord(id)) return res.status(409).json({ error: 'Ce dossier possède déjà une tentative d’envoi ; son CV est verrouillé.' });
+        const body = Buffer.isBuffer(req.body) ? req.body : null;
+        if (!body || body.length < 5 || body.subarray(0, 5).toString('latin1') !== '%PDF-') {
+          return res.status(400).json({ error: 'Le fichier doit être un PDF.' });
+        }
+        const cvDir = path.join(dir, 'cv');
+        fs.mkdirSync(cvDir, { recursive: true });
+        fs.writeFileSync(path.join(cvDir, UPLOADED_CV_PDF), body);
+        writeApprovalStatus(id, false);
+        res.json({ ...statusWithTask(id), approved: false });
+      } catch (err) {
+        console.error('[PUT /applications/:id/cv/upload]', err.message);
+        res.status(400).json({ error: err.message });
+      }
+    },
+  );
+
+  // DELETE /api/applications/:id/cv/upload — retire ton CV : le CV généré
+  // (s'il existe et qu'il est validé) redevient celui qui part.
+  router.delete('/applications/:id/cv/upload', (req, res) => {
+    try {
+      const id = req.params.id;
+      const dir = applicationDir(id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${id}` });
+      if (hasSendRecord(id)) return res.status(409).json({ error: 'Ce dossier possède déjà une tentative d’envoi ; son CV est verrouillé.' });
+      const filePath = path.join(dir, 'cv', UPLOADED_CV_PDF);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      writeApprovalStatus(id, false);
+      res.json({ ...statusWithTask(id), approved: false });
+    } catch (err) {
+      console.error('[DELETE /applications/:id/cv/upload]', err.message);
       res.status(400).json({ error: err.message });
     }
   });
