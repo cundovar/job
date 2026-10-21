@@ -399,7 +399,7 @@ JSON attendu:
   "profile":"...",
   "skills":[{"title":"...","items":["libellé exact"]}],
   "experiences":[
-    {"id":"experience_id","bullets":[{"text":"...","sources":["experience_id:0"]}]},
+    {"id":"experience_id","title":"(facultatif) intitulé exact demandé dans les consignes_candidat","bullets":[{"text":"...","sources":["experience_id:0"]}]},
     {"id":"group_id","source_experience_ids":["mission_a","mission_b"],
      "bullets":[{"text":"...","sources":["mission_a:0"]},{"text":"...","sources":["mission_b:1"]}]}
   ],
@@ -862,6 +862,20 @@ def _validate_plan(
     }
 
 
+def _candidate_title(item: Dict[str, Any], master: Dict[str, Any]) -> str:
+    """Intitulé d'expérience demandé par le candidat dans ses consignes.
+
+    Les intitulés viennent du profil maître, sauf quand l'agent en propose un
+    qui figure mot pour mot dans les consignes du candidat (règle Cundo
+    21/10/2026 : la consigne est la source de vérité supérieure).
+    """
+    title = re.sub(r"\s+", " ", str(item.get("title") or "")).strip()
+    text = str(master.get("candidate_instructions_text") or "")
+    if title and text and title.lower() in text.lower():
+        return title
+    return ""
+
+
 def _required_experiences(master: Dict[str, Any], variant_id: str) -> List[Any]:
     """Expériences obligatoires de la variante (``"*"`` = valeur par défaut)."""
     rules = (master.get("layout_constraints", {}) or {}).get("required_experiences_by_variant", {}) or {}
@@ -1092,7 +1106,7 @@ def _assemble_cv_content(
                 "organization": " · ".join(
                     organization for organization in dict.fromkeys(organizations) if organization
                 ),
-                "title": group.get("title", "Missions et projets professionnels"),
+                "title": _candidate_title(item, master) or group.get("title", "Missions et projets professionnels"),
                 "period": period_to_text(group.get("period")),
                 "bullets": bullets,
                 "bullet_sources": bullet_sources,
@@ -1103,7 +1117,7 @@ def _assemble_cv_content(
                 "id": exp_id,
                 "selection_role": source.get("cv_role", "core"),
                 "organization": source.get("organization", ""),
-                "title": source.get("title", ""),
+                "title": _candidate_title(item, master) or source.get("title", ""),
                 "period": period_to_text(source.get("period")),
                 "bullets": bullets,
                 "bullet_sources": bullet_sources,
