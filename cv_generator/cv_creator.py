@@ -17,7 +17,17 @@ def _contact_for_variant(person: Dict[str, Any], master: Dict[str, Any], variant
     Ce n'est pas un choix éditorial mais une règle de confidentialité du profil
     maître : une candidature d'accueil n'expose pas le dépôt GitHub.
     """
-    contact = person.get("contact", {})
+    contact = dict(person.get("contact", {}))
+    # Règle Cundo (21/10/2026) : une variante peut remplacer une coordonnée,
+    # par exemple le site médiateur à la place du portfolio pour les CV de
+    # médiation / conseiller numérique.
+    overrides = (
+        master.get("adaptation_rules", {})
+        .get("contact_overrides_by_variant", {})
+        .get(variant_id)
+    )
+    if isinstance(overrides, dict):
+        contact.update({key: value for key, value in overrides.items() if value})
     allowed_fields = (
         master.get("adaptation_rules", {})
         .get("contact_fields_by_variant", {})
