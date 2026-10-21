@@ -182,11 +182,9 @@ def _assemble_cv_content(
                 for member in member_ids
                 if member in catalog
             ]
-            links: List[str] = []
-            for member in member_ids:
-                for link in catalog.get(member, {}).get("links", []):
-                    if link not in links:
-                        links.append(link)
+            links = candidate_rules.shown_links(
+                link for member in member_ids for link in catalog.get(member, {}).get("links", [])
+            )
             entry = {
                 "id": exp_id,
                 "source_experience_ids": member_ids,
@@ -209,7 +207,7 @@ def _assemble_cv_content(
                 "period": period_to_text(source.get("period")),
                 "bullets": bullets,
                 "bullet_sources": bullet_sources,
-                "links": source.get("links", [])[:2],
+                "links": candidate_rules.shown_links(source.get("links"))[:2],
             }
         experiences.append(entry)
 
@@ -236,7 +234,7 @@ def _assemble_cv_content(
                     if isinstance(requested, list)
                     else source.get("technologies", [])
                 ),
-                "links": source.get("links", [])[:2],
+                "links": candidate_rules.shown_links(source.get("links"))[:2],
             }
         )
 

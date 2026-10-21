@@ -169,3 +169,26 @@ def is_mediation_job(job: Dict[str, Any]) -> bool:
     if family in JOB_FAMILIES and family != "autre":
         return family in MEDIATION_FAMILIES
     return bool(_MEDIATION_TITLE_RE.search(str((job or {}).get("title") or "")))
+
+
+# Liens retirés du CV, quelle que soit la variante (décision Cundo 22/10/2026) :
+# docdevdoc.varascundo.com ne doit plus jamais apparaître ; la documentation de
+# DevDoc vit désormais sous https://devdoc.varascundo.com/docs/.
+RETIRED_LINK_HOSTS = frozenset({"docdevdoc.varascundo.com"})
+
+
+def is_retired_link(url: Any) -> bool:
+    from urllib.parse import urlparse
+
+    raw = str(url or "").strip()
+    host = (urlparse(raw).netloc or raw.split("/")[0]).lower().removeprefix("www.")
+    return host in RETIRED_LINK_HOSTS
+
+
+def shown_links(links: Any) -> List[str]:
+    """Les liens d'une entrée du CV, sans les liens retirés ni doublons."""
+    kept: List[str] = []
+    for link in links or []:
+        if link and not is_retired_link(link) and link not in kept:
+            kept.append(str(link))
+    return kept
