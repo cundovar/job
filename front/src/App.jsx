@@ -91,8 +91,30 @@ function cvFileUrl(id, file, status) {
   return `/api/applications/${id}/cv/download/${file}`
 }
 
+// Ta version (éditeur) ou ton PDF : c'est le fichier qui part à l'envoi, il
+// doit donc être celui qu'on télécharge en premier (demande Cundo 22/10/2026).
+function OwnCvLinks({ id, status, files }) {
+  if (status === 'uploaded') {
+    return <a className="download-btn primary" href={`/api/applications/${id}/cv/download/cv_upload.pdf`} download><FileDown /> Ton PDF</a>
+  }
+  if (status !== 'edited') return null
+  return (
+    <>
+      {files?.['cv_edit.pdf'] && <a className="download-btn primary" href={`/api/applications/${id}/cv/download/cv_edit.pdf`} download><FileDown /> PDF (ta version)</a>}
+      {files?.['cv_edit_ats.pdf'] && <a className="download-btn" href={`/api/applications/${id}/cv/download/cv_edit_ats.pdf`} download><FileDown /> PDF ATS (ta version)</a>}
+    </>
+  )
+}
+
 function CvDownloads({ cv }) {
   const status = { files: cv.files }
+  if (cv.status === 'edited' || cv.status === 'uploaded') {
+    return (
+      <div className="cv-library-downloads" aria-label={`Fichiers du CV ${cv.poste || cv.id}`}>
+        <OwnCvLinks id={cv.id} status={cv.status} files={cv.files} />
+      </div>
+    )
+  }
   // Hors `ready`, l'API refuse les fichiers finaux : on ne propose pas un lien
   // qui renverra une erreur, et on oriente vers l'aperçu à corriger.
   if (cv.status === 'validated') {
@@ -166,7 +188,7 @@ function MesCvView() {
           <article className="cv-library-card" key={cv.id}>
             <div>
               <div className="card-top">
-                <span className={['ready', 'validated'].includes(cv.status) ? 'badge-postuler' : 'badge-peut-etre'}>
+                <span className={['ready', 'validated', 'edited', 'uploaded'].includes(cv.status) ? 'badge-postuler' : 'badge-peut-etre'}>
                   {CV_STATUS_LABELS[cv.status] || 'Incomplet'}
                 </span>
               </div>
@@ -1480,6 +1502,7 @@ function CandidaturesView({ mission = 'annonce' }) {
                 <a className="download-btn" href={cvFileUrl(selected, 'cv_final.json', cvStatus)} download>JSON</a>
               </>
             )}
+            <OwnCvLinks id={selected} status={cvState} files={cvStatus?.files} />
             {cvState === 'validated' && cvStatus?.files?.['cv_review_preview.pdf'] && (
               <a className="download-btn" href={cvFileUrl(selected, 'cv_review_preview.pdf', cvStatus)} download>
                 <FileDown /> PDF (validé par toi)
