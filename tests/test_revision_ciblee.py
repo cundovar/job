@@ -156,3 +156,15 @@ def test_chaque_puce_porte_ses_preuves_et_leur_texte():
     assert second["preuves_citees"][0]["texte"].startswith("J'ai aussi")
     assert "bullet_sources" not in view["experiences"][0]
     assert cv["experiences"][0]["bullets"][0] == "Plateforme SaaS ; qualité PHPStan."   # original intact
+
+
+def test_la_lettre_recoit_le_contexte_de_la_structure():
+    from agents.motivation_letter_agent import candidate_profile
+
+    master = {"experience_catalog": {"pole": {
+        "organization": "Structure fictive", "title": "Formateur", "highlights": ["Fait."],
+        "contexte_structure": "Structure d'insertion (SIAE) fictive.", "contexte_vide": "  ",
+    }}}
+    exp = candidate_profile(master, "formateur_generaliste")["experiences"][0]
+    assert exp["contexte_structure"] == "Structure d'insertion (SIAE) fictive."
+    assert "contexte_vide" not in exp

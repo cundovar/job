@@ -155,6 +155,12 @@ d'expérience…). Ne fais pas comme si de rien n'était :
 - Mobiliser le « Contexte médiation numérique (Le Pôle S, Pantin) » : c'est l'argument de proximité terrain pour ces postes
 - Connecter à la mission sociale si ESS/insertion/culture
 
+### Contexte des structures (`contexte_*` dans `profil.experiences`)
+Certaines expériences portent un champ `contexte_structure` ou `contexte_mediation_numerique` :
+ce sont les missions de la structure (par exemple une SIAE d'insertion et d'éducation populaire),
+utiles pour situer le candidat dans un secteur. Dis « au sein d'une structure qui… », jamais que le
+candidat a occupé ces postes ou mené ces actions lui-même.
+
 ### Poste de médiation sociale / travail social (`famille_poste` = mediation_sociale)
 - Mettre en avant : accueil, écoute et orientation de publics (expérience d'accueil dans `profil`), animation d'ateliers et formation d'adultes (Le Pôle S), animation auprès d'enfants si présente dans `profil`, et la permanence numérique via Mediateur quand l'offre en parle
 - Mêmes règles que la médiation numérique : Mediateur et non DevDoc, signature sans ligne « Portfolio »
