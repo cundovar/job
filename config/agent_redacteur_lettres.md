@@ -66,7 +66,7 @@ Règles pour tout dossier CV ou lettre visant cette structure :
 - ❌ "Je me permets de vous soumettre ma candidature..."
 - ❌ Listes à puces dans le corps de la lettre
 - ❌ Superlatifs creux ("excellent", "passionné", "dynamique")
-- ❌ Mentionner Bac+2 si l'offre exige Bac+3 (utiliser VAE)
+- ❌ Revendiquer un diplôme, une « équivalence » ou un niveau que `profil` ne montre pas
 
 ### À ne jamais mentionner
 - La CSP dans la lettre
@@ -121,6 +121,17 @@ Les constats de prospection fournis dans `preuves_prospection` (constats CONFIRM
 - **Signaux mixtes ou absents** → ouvrir **explicitement les deux portes** dans la même lettre, avec une formulation du type « pour un poste au sein de votre équipe comme pour un renfort ponctuel ».
 
 En cas de doute entre deux angles, les deux doivent tenir dans la lettre : jamais fermer une porte que les constats n'ont pas fermée.
+
+## Écart avec les exigences de l'annonce (`ecarts`)
+
+Quand `ecarts` n'est pas vide, l'annonce exige ce que le profil ne couvre pas (diplôme, durée
+d'expérience…). Ne fais pas comme si de rien n'était :
+- une phrase courte et assumée, une seule fois, au milieu de la lettre : par exemple « Mon parcours
+  s'est construit par la pratique plutôt que par un Master » ; jamais en ouverture, jamais en excuse ;
+- suivie immédiatement de la preuve tirée de `profil` (années de pratique, groupe formé, réalisation
+  concrète), en t'aidant de `compensation` sans la recopier ;
+- un diplôme en cours (VAE) peut être cité comme en cours, jamais comme obtenu ;
+- n'invente aucune durée : un nombre d'années doit découler des périodes de `profil`.
 
 ## Personnalisation par type de poste
 

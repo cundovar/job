@@ -138,7 +138,7 @@ def _load_system_prompt() -> str:
     )
 
 
-def candidate_profile(master: Dict[str, Any], variant_id: str) -> Dict[str, Any]:
+def candidate_profile(master: Dict[str, Any], variant_id: str, show_diploma_status: bool = False) -> Dict[str, Any]:
     """Extrait du profil maître pour la lettre : les faits, rien de privé.
 
     La lettre lisait config/criteria.yaml et les faits écrits dans son prompt,
@@ -174,7 +174,7 @@ def candidate_profile(master: Dict[str, Any], variant_id: str) -> Dict[str, Any]
     education = [
         {key: entry[key] for key in ("year", "title", "level", "school", "status") if key in entry}
         for entry in (
-            candidate_rules.displayed_education_entry(item, master, variant_id)
+            candidate_rules.displayed_education_entry(item, master, variant_id, show_diploma_status)
             for item in person.get("education", []) or []
             if isinstance(item, dict)
         )
@@ -230,7 +230,12 @@ def _build_payload(
             "raison": getattr(recommendation, "reason", ""),
         },
         "famille_poste": str(job.get("job_family") or ""),
-        "profil": candidate_profile(master, variant_id) if master else _public_profile(user_profile),
+        # Ce que l'annonce exige et que le profil ne couvre pas, avec ce qui
+        # compense : la lettre l'aborde de front au lieu de laisser le trou.
+        "ecarts": job.get("ecarts") or [],
+        "profil": candidate_profile(
+            master, variant_id, any(gap.get("type") == "diplome" for gap in job.get("ecarts") or [])
+        ) if master else _public_profile(user_profile),
     }
 
 

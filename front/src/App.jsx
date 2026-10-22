@@ -19,6 +19,7 @@ import { zoneOptions } from './zones'
 import AgencyDecision from './AgencyDecision'
 import ConsignesEditor, { ConsignesReport } from './ConsignesEditor'
 import CvEditor from './CvEditor'
+import EcartsPanel from './EcartsPanel'
 import { saveLastConsignes } from './consignes'
 import { A_DECIDER, decisionCounts, matchesDecision, useAgencyDecisions } from './agencyDecisions'
 
@@ -1107,6 +1108,7 @@ function CandidaturesView({ mission = 'annonce' }) {
           <span><Calendar /> {c?.date}</span>
         </div>
 
+        <EcartsPanel ecarts={c?.metadata?.ecarts} />
         <PreuvesPanel preuves={c?.preuves} />
         {spontanee && !c?.preuves && (
           <div className="backend-warning">
