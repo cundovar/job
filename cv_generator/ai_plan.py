@@ -251,6 +251,12 @@ def _validate_plan(
     """
     variants = {item.get("id"): item for item in master.get("cv_variants", []) if item.get("id")}
     variant_id = str(proposed.get("selected_base_variant") or "")
+    # Une famille de poste peut porter sa variante (règle du candidat,
+    # adaptation_rules.variant_by_job_family) : toute médiation part sur la même base.
+    family = candidate_rules.normalize_family((proposed.get("annonce") or {}).get("famille"))
+    imposed = candidate_rules.variant_for_family(master, family)
+    if imposed in variants:
+        variant_id = imposed
     if variant_id not in variants:
         variant_id = str(rule_plan.get("selected_base_variant") or next(iter(variants), "webmaster"))
     # Expériences déclarées dans les consignes : citables dans ce plan comme

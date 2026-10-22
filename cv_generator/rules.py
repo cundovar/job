@@ -12,7 +12,14 @@ Clés lues :
 - ``layout_constraints.required_education_by_variant`` : diplômes à afficher ;
 - ``layout_constraints.required_experiences_by_variant`` : ``"*"`` = valeur par défaut ;
 - ``adaptation_rules.forbidden_projects_by_variant`` : projets jamais affichés ;
-- ``adaptation_rules.standing_experience_preferences_by_variant`` : préférences permanentes.
+- ``adaptation_rules.standing_experience_preferences_by_variant`` : préférences permanentes ;
+- ``adaptation_rules.required_projects_by_variant`` : projets à afficher ;
+- ``adaptation_rules.variant_by_job_family`` : variante imposée pour une famille de poste ;
+- ``layout_constraints.max_projects_by_variant`` : nombre de projets (sinon ``max_projects``) ;
+- ``layout_constraints.hide_project_technologies_by_variant`` : projets affichés sans
+  leurs technologies (``"*"`` = tous) ;
+- ``layout_constraints.online_work_by_variant`` : rubrique « Réalisations en ligne »
+  fixée par le candidat, liste de ``{label, url}``.
 """
 
 from __future__ import annotations
@@ -83,6 +90,49 @@ def required_experiences(master: Dict[str, Any], variant_id: str) -> List[Any]:
 def forbidden_projects(master: Dict[str, Any], variant_id: str) -> List[str]:
     value = _by_variant(_adaptation(master).get("forbidden_projects_by_variant"), variant_id, [])
     return [str(item) for item in value] if isinstance(value, list) else []
+
+
+def required_projects(master: Dict[str, Any], variant_id: str) -> List[str]:
+    value = _by_variant(_adaptation(master).get("required_projects_by_variant"), variant_id, [])
+    return [str(item) for item in value] if isinstance(value, list) else []
+
+
+def max_projects(master: Dict[str, Any], variant_id: str) -> int:
+    layout = _layout(master)
+    value = _by_variant(layout.get("max_projects_by_variant"), variant_id, None)
+    if value is None:
+        value = layout.get("max_projects", 1)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 1
+
+
+def hides_project_technologies(master: Dict[str, Any], variant_id: str, project_id: str) -> bool:
+    value = _by_variant(_layout(master).get("hide_project_technologies_by_variant"), variant_id, [])
+    if value == "*":
+        return True
+    return isinstance(value, list) and (project_id in value or "*" in value)
+
+
+def online_work(master: Dict[str, Any], variant_id: str) -> List[Dict[str, str]] | None:
+    """La rubrique « Réalisations en ligne » imposée par le candidat, ou None."""
+    value = _by_variant(_layout(master).get("online_work_by_variant"), variant_id, None)
+    if not isinstance(value, list):
+        return None
+    return [
+        {"label": str(item.get("label") or item.get("url")), "url": str(item["url"])}
+        for item in value
+        if isinstance(item, dict) and item.get("url") and not is_retired_link(item.get("url"))
+    ]
+
+
+def variant_for_family(master: Dict[str, Any], family: Any) -> str:
+    """Variante imposée par le candidat pour une famille de poste, ou chaîne vide."""
+    mapping = _adaptation(master).get("variant_by_job_family") or {}
+    if not isinstance(mapping, dict):
+        return ""
+    return str(mapping.get(str(family or "")) or "")
 
 
 def standing_preferences(master: Dict[str, Any]) -> Dict[str, List[str]]:

@@ -408,6 +408,95 @@ def test_telephone_et_email_ne_partent_a_aucun_agent(master):
         assert phone not in text and email not in text, name
 
 
+# ── Règles médiation (décision Cundo 22/10/2026) ─────────────────────────────
+
+MEDIATEUR_URL = "https://mediateur.exemple.test/"
+
+
+@pytest.fixture
+def master_mediation(master) -> Dict[str, Any]:
+    m = copy.deepcopy(master)
+    m["project_catalog"]["projet_mediation"] = {
+        "year": 2026,
+        "title": "Plateforme de médiation (fictive)",
+        "description": "Cours pour apprendre le numérique.",
+        "technologies": ["Vue 3", "Symfony"],
+        "links": [MEDIATEUR_URL],
+    }
+    lc = m["layout_constraints"]
+    lc["max_projects_by_variant"] = {"mediation_numerique": 1}
+    lc["hide_project_technologies_by_variant"] = {"mediation_numerique": ["projet_mediation"]}
+    lc["online_work_by_variant"] = {
+        "mediation_numerique": [
+            {"label": "Médiateur", "url": MEDIATEUR_URL},
+            {"label": "retiré", "url": "https://docdevdoc.varascundo.com"},
+        ]
+    }
+    m["adaptation_rules"]["required_projects_by_variant"] = {"mediation_numerique": ["projet_mediation"]}
+    m["adaptation_rules"]["variant_by_job_family"] = {
+        "mediation_numerique": "mediation_numerique",
+        "mediation_sociale": "mediation_numerique",
+    }
+    return m
+
+
+def test_mediation_projet_obligatoire_manquant_signale(master_mediation):
+    content, plan = _assemble(master_mediation, "mediation_numerique")
+    assert "MISSING_REQUIRED_PROJECT" in _codes(content, master_mediation, plan)
+
+
+def test_mediation_un_seul_projet(master_mediation):
+    content, plan = _assemble(
+        master_mediation,
+        "mediation_numerique",
+        projects=[{"id": "projet_mediation"}, {"id": "projet_demo", "description": "Démo."}],
+    )
+    codes = _codes(content, master_mediation, plan)
+    assert "TOO_MANY_PROJECTS" in codes
+    assert "MISSING_REQUIRED_PROJECT" not in codes
+
+
+def test_mediation_projet_sans_technologies(master_mediation):
+    content, _ = _assemble(master_mediation, "mediation_numerique", projects=[{"id": "projet_mediation"}])
+    assert content["cv"]["projects"][0]["technologies"] == []
+    dev, _ = _assemble(master_mediation, "fullstack", projects=[{"id": "projet_mediation"}])
+    assert dev["cv"]["projects"][0]["technologies"] == ["Vue 3", "Symfony"]
+
+
+def test_mediation_realisations_en_ligne_fixees_par_le_candidat(master_mediation):
+    from cv_generator.cv_pdf_design import _online_work
+
+    content, _ = _assemble(master_mediation, "mediation_numerique")
+    assert content["cv"]["online_work"] == [{"label": "Médiateur", "url": MEDIATEUR_URL}]
+    assert _online_work(content["cv"]) == [("Médiateur", MEDIATEUR_URL)]
+    dev, _ = _assemble(master_mediation, "fullstack")
+    assert "online_work" not in dev["cv"]
+
+
+@pytest.mark.parametrize("famille", ["mediation_sociale", "mediation_numerique"])
+def test_toute_mediation_part_sur_la_variante_imposee(master_mediation, famille):
+    from cv_generator.ai_plan import _validate_plan
+
+    proposed = {
+        "selected_base_variant": "fullstack",
+        "annonce": {"famille": famille},
+        "experience_plan": [{"experience_id": "agence_exemple", "highlight_indexes": [0]}],
+    }
+    plan = _validate_plan(proposed, {"selected_base_variant": "fullstack"}, master_mediation, RUN)
+    assert plan["selected_base_variant"] == "mediation_numerique"
+
+
+def test_sans_famille_mappee_le_choix_de_l_analyste_reste(master_mediation):
+    from cv_generator.ai_plan import _validate_plan
+
+    proposed = {
+        "selected_base_variant": "fullstack",
+        "annonce": {"famille": "developpement"},
+        "experience_plan": [{"experience_id": "agence_exemple", "highlight_indexes": [0]}],
+    }
+    plan = _validate_plan(proposed, {"selected_base_variant": "fullstack"}, master_mediation, RUN)
+    assert plan["selected_base_variant"] == "fullstack"
+
 # ── Expérience déclarée dans les consignes (décision Cundo 22/10/2026) ───────
 
 from cv_generator.cv_truth_validator import with_candidate_statements as _with_statements
