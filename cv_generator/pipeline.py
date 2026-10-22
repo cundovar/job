@@ -20,6 +20,7 @@ from .cv_assessment import build_cv_assessment
 from .exporters import cv_to_html, cv_to_pdf
 from .offer_analysis import load_offer_analysis
 from .cv_truth_validator import with_candidate_statements
+from .declared_experiences import with_declared_experiences
 from .utils import load_json, save_json
 
 #: Trois passes de correction au maximum : assez pour réparer, trop peu pour
@@ -268,6 +269,9 @@ def prepare_custom_cv(
     # La préparation de la candidature a déjà lu cette annonce : son plan sert
     # tant que l'annonce et les consignes n'ont pas changé.
     plan = load_offer_analysis(application_dir, job) or agents.analyze(job, master)
+    # Les expériences déclarées dans les consignes (validées par le plan)
+    # deviennent citables pour toute la génération, sans toucher au profil.
+    master = with_declared_experiences(master, plan.get("declared_experiences"))
 
     _write_progress(output_dir, "writing", detail=f"Variante : {plan.get('selected_base_variant')}")
     try:

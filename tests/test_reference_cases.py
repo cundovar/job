@@ -406,3 +406,101 @@ def test_telephone_et_email_ne_partent_a_aucun_agent(master):
     assert {name for name, _ in payloads} >= {"cv_job_analyzer", "cv_creator", "cv_truth_checker", "cv_quality_checker"}
     for name, text in payloads:
         assert phone not in text and email not in text, name
+
+
+# ── Expérience déclarée dans les consignes (décision Cundo 22/10/2026) ───────
+
+from cv_generator.cv_truth_validator import with_candidate_statements as _with_statements
+from cv_generator.declared_experiences import validate_declared, with_declared_experiences
+
+CONSIGNE_VENDEUR = (
+    "Ajoute mon expérience de vendeur chez Magasin Fictif depuis septembre 2026. "
+    "J'y conseille les clients et je gère la mise en rayon."
+)
+
+
+def _master_consigne(master):
+    return _with_statements(master, CONSIGNE_VENDEUR)
+
+
+def test_experience_declaree_reduite_a_ce_que_dit_la_consigne(master):
+    m = _master_consigne(master)
+    kept, warnings = validate_declared(
+        [{"id": "x", "organization": "Magasin Fictif", "title": "vendeur", "start": "2026-09",
+          "end": "", "ongoing": True, "statement_indexes": [0, 1]}],
+        m,
+    )
+    assert len(kept) == 1 and not warnings
+    entry = kept[0]
+    assert entry["id"].startswith("declaree_")
+    assert entry["period"] == {"start": "2026-09", "ongoing": True}
+    assert entry["highlights"] == m["candidate_statements"][:2]
+
+
+def test_rien_d_invente_dans_une_experience_declaree(master):
+    m = _master_consigne(master)
+    kept, warnings = validate_declared(
+        [{"organization": "Enseigne Inventée", "title": "vendeur", "start": "2025-03",
+          "end": "2026-01", "statement_indexes": [0]}],
+        m,
+    )
+    entry = kept[0]
+    assert entry["organization"] == ""          # absente de la consigne
+    assert entry["title"] == "vendeur"
+    assert entry["period"] == {}                # ni 2025 ni 2026-01 ne sont écrits ainsi
+    assert any("Enseigne Inventée" in w for w in warnings)
+
+
+def test_sans_phrase_citee_ou_sans_consigne_rien_n_est_cree(master):
+    assert validate_declared([{"organization": "Magasin Fictif", "statement_indexes": []}], _master_consigne(master))[0] == []
+    assert validate_declared([{"organization": "Magasin Fictif", "statement_indexes": [0]}], master)[0] == []
+
+
+def test_l_experience_declaree_entre_dans_le_plan_meme_omise_par_l_analyste(master):
+    from cv_generator.ai_plan import _validate_plan
+
+    m = _master_consigne(master)
+    proposed = {
+        "selected_base_variant": "fullstack",
+        "experiences_declarees": [
+            {"id": "vendeur", "organization": "Magasin Fictif", "title": "vendeur", "start": "2026-09",
+             "ongoing": True, "statement_indexes": [0, 1]}
+        ],
+        "experience_plan": [{"experience_id": "agence_exemple", "highlight_indexes": [0]}],
+    }
+    plan = _validate_plan(proposed, {"selected_base_variant": "fullstack"}, m, RUN)
+    declared_id = plan["declared_experiences"][0]["id"]
+    assert declared_id in [item["experience_id"] for item in plan["experience_plan"]]
+
+    # Citée par l'analyste sous son propre id : renommée, pas dupliquée.
+    proposed["experience_plan"].insert(0, {"experience_id": "vendeur", "highlight_indexes": [0]})
+    plan = _validate_plan(proposed, {"selected_base_variant": "fullstack"}, m, RUN)
+    ids = [item["experience_id"] for item in plan["experience_plan"]]
+    assert ids.count(declared_id) == 1 and ids[0] == declared_id
+
+
+def test_cv_avec_experience_declaree_sans_erreur_de_verite_et_absence_signalee(master):
+    m = _master_consigne(master)
+    kept, _ = validate_declared(
+        [{"organization": "Magasin Fictif", "title": "vendeur", "start": "2026-09", "ongoing": True,
+          "statement_indexes": [0, 1]}],
+        m,
+    )
+    m = with_declared_experiences(m, kept)
+    exp_id = kept[0]["id"]
+    proposed = {
+        "title": "Titre", "profile": "Accroche.", "skills": [], "projects": [], "education": [CDA],
+        "experiences": [
+            {"id": exp_id, "bullets": [{"text": "Conseil des clients et mise en rayon.", "sources": [f"{exp_id}:1"]}]},
+            {"id": "agence_exemple", "bullets": [{"text": "Puce.", "sources": ["agence_exemple:0"]}]},
+        ],
+    }
+    plan = {"selected_base_variant": "fullstack"}
+    content = _assemble_cv_content(proposed, {"title": "Poste"}, m, plan, RUN, "test")
+    issues = validate_cv_content(content, m, plan)["issues"]
+    assert not [i for i in issues if i["kind"] == "truth"], issues
+    assert content["cv"]["experiences"][0]["period"] == "2026-09 – Aujourd'hui"
+
+    proposed["experiences"] = proposed["experiences"][1:]
+    content = _assemble_cv_content(proposed, {"title": "Poste"}, m, plan, RUN, "test")
+    assert "MISSING_DECLARED_EXPERIENCE" in _codes(content, m, plan)

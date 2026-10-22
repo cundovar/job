@@ -36,6 +36,15 @@ Respecte les préférences permanentes du candidat listées dans
 adaptation_rules.standing_experience_preferences_by_variant pour la variante retenue : elles
 désignent une preuve humaine complémentaire, jamais une preuve métier centrale.
 
+Les consignes du candidat peuvent déclarer une expérience absente de source_verite (« ajoute
+mon expérience de vendeur chez X depuis septembre 2026 »). Décris-la dans experiences_declarees
+avec la structure et l'intitulé recopiés mot pour mot depuis la consigne, les dates seulement si
+elles y sont écrites (AAAA ou AAAA-MM, ongoing:true si elle dit « depuis », « en cours »…), et les
+indices des déclarations qui la décrivent dans declarations_candidat. Donne-lui un id de ton
+choix et utilise ce même id dans experience_plan (highlight_indexes de 0 à n-1, n étant le nombre
+de déclarations citées) : Python la renomme « declaree_… », ses preuves sont ces déclarations, et
+il l'ajoute au plan si tu l'omets. Ne crée jamais d'expérience à partir de l'annonce.
+
 Lis aussi l'annonce elle-même : son intitulé exact, l'employeur, le lieu, le contrat et sa
 famille de poste, choisie dans familles_de_poste. Ces champs décrivent l'annonce, pas le
 candidat : laisse vide ce que l'annonce ne dit pas, n'invente jamais un employeur. Un texte
@@ -45,6 +54,9 @@ qui n'est pas l'intitulé du poste.
 JSON attendu:
 {
   "annonce": {"intitule":"...","entreprise":"","lieu":"","contrat":"","famille":"une valeur de familles_de_poste"},
+  "experiences_declarees": [
+    {"id":"vendeur_magasin","organization":"recopié de la consigne","title":"recopié de la consigne","start":"AAAA-MM","end":"","ongoing":true,"statement_indexes":[0]}
+  ],
   "selected_base_variant": "id existant",
   "target_title": "titre du CV",
   "positioning": "accroche proposée",

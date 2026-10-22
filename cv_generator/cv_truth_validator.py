@@ -858,6 +858,21 @@ def validate_cv_content(
                 )
             )
 
+    # Une expérience déclarée dans les consignes est une demande du candidat :
+    # sa disparition (révision, place) se corrige, elle ne passe pas en silence.
+    for exp_id, entry in catalog.items():
+        if isinstance(entry, dict) and entry.get("source") == "consignes_candidat" and exp_id not in shown_ids:
+            issues.append(
+                TruthIssue(
+                    "MISSING_DECLARED_EXPERIENCE",
+                    FORMAT,
+                    "experiences",
+                    f"L'expérience « {entry.get('title') or entry.get('organization')} » demandée dans les "
+                    "consignes du candidat manque : l'ajouter, quitte à retirer une expérience moins utile.",
+                    exp_id,
+                )
+            )
+
     max_bullets = int(constraints.get("max_bullets_per_experience", 3))
     seen: set[str] = set()
     for view in views:
