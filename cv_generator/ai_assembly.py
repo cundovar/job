@@ -128,6 +128,9 @@ def _assemble_cv_content(
             "un choix éditorial : Python n'en fabrique pas."
         )
 
+    variant_id = str(plan.get("selected_base_variant") or "")
+    # Affichage décidé par le candidat : pas de ligne de liens sous les expériences.
+    hide_links = candidate_rules.hides_experience_links(master, variant_id)
     experiences: List[Dict[str, Any]] = []
     grounding: List[Dict[str, Any]] = []
     for item in raw_experiences:
@@ -196,7 +199,7 @@ def _assemble_cv_content(
                 "period": period_to_text(group.get("period")),
                 "bullets": bullets,
                 "bullet_sources": bullet_sources,
-                "links": links[:2],
+                "links": [] if hide_links else links[:2],
             }
         else:
             entry = {
@@ -207,11 +210,10 @@ def _assemble_cv_content(
                 "period": period_to_text(source.get("period")),
                 "bullets": bullets,
                 "bullet_sources": bullet_sources,
-                "links": candidate_rules.shown_links(source.get("links"))[:2],
+                "links": [] if hide_links else candidate_rules.shown_links(source.get("links"))[:2],
             }
         experiences.append(entry)
 
-    variant_id = str(plan.get("selected_base_variant") or "")
     projects: List[Dict[str, Any]] = []
     for item in proposed.get("projects") or []:
         if not isinstance(item, dict):

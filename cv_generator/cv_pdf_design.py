@@ -120,6 +120,12 @@ def _education_parts(edu: Dict[str, Any]) -> Tuple[str, str, str]:
 # n'y figure jamais ; le guide Chant d'Orties y est mis en avant dès que la
 # mission apparaît sur le CV. Le lien reste visible dans le bloc d'expérience.
 ONLINE_WORK_EXCLUDED = {"nat.varascundo.com"}
+
+# Espacements (points, avant mise à l'échelle) : entre deux sections, entre
+# deux blocs d'une section, entre deux rubriques de la colonne gauche.
+SECTION_GAP = 12.0
+BLOCK_GAP = 9.0
+SIDE_GAP = 6.5 * 2.8346
 CHANT_ORTIES_GUIDE = ("Chant d'Orties — guide", "https://tuto-des-orties.varascundo.com/")
 
 
@@ -266,10 +272,10 @@ def render_cv_pdf(
         pen.tracked(title, x, y, bold, size, 1.9 * s, accent)
         y -= 3.6 * s
         pen.hline(x, x + w, y, line_c)
-        return y - 10.5 * s
+        return y - 12.0 * s
 
     # ------------------------------------------------------- colonne principale
-    def main_column(pen: Pen, s: float) -> float:
+    def main_column(pen: Pen, s: float, education_left: bool = False) -> float:
         body, lead = 8.1 * s, 10.9 * s
         small, small_lead = 7.6 * s, 10.0 * s
         y = height - 11 * mm - 24
@@ -297,8 +303,8 @@ def render_cv_pdf(
                     items = " · ".join(str(i) for i in group.get("items", []))
                     gy = pen.para(items, gx, gy - 0.6 * s, col_w, regular, small, small_lead, soft)
                     row_bottom = min(row_bottom, gy)
-                y = row_bottom - 3.4 * s
-            return y - 4 * s
+                y = row_bottom - 5.0 * s
+            return y - SECTION_GAP * s
 
         def experiences(y: float) -> float:
             exps = cv.get("experiences", [])
@@ -350,10 +356,10 @@ def render_cv_pdf(
                     for ln in lines:
                         pen.text(ln, bx + 3.6 * mm, y, regular, body, body_c)
                         y -= lead
-                    y -= 0.9 * s
+                    y -= 1.4 * s
                 pen.vline(main_x + 0.6, top_y, y + lead * 0.55, line_c)
-                y -= 6.0 * s
-            return y
+                y -= BLOCK_GAP * s
+            return y - (SECTION_GAP - BLOCK_GAP) * s
 
         def projects(y: float) -> float:
             items = cv.get("projects", [])[:2]
@@ -388,8 +394,8 @@ def render_cv_pdf(
                     cx += pen.text(label, cx, y, regular, small, accent, _href(link))
                 if tech or links:
                     y -= small_lead
-                y -= 5.0 * s
-            return y - 2 * s
+                y -= BLOCK_GAP * s
+            return y - (SECTION_GAP - BLOCK_GAP) * s
 
         def education(y: float) -> float:
             items = cv.get("education", [])
@@ -411,12 +417,14 @@ def render_cv_pdf(
                     y -= lead
                 else:
                     y = pen.para(head + tail, x, y, text_w, semibold, body, lead, ink)
-                y -= 1.2 * s
-            return y
+                y -= 2.0 * s
+            return y - SECTION_GAP * s
 
         drawers: Dict[str, Callable[[float], float]] = {
-            "skills": skills, "experiences": experiences, "projects": projects, "education": education,
+            "skills": skills, "experiences": experiences, "projects": projects,
         }
+        if not education_left:
+            drawers["education"] = education
         order = [n for n in cv.get("section_order", []) if n in drawers]
         order += [n for n in drawers if n not in order]
         for name in order:
@@ -427,9 +435,12 @@ def render_cv_pdf(
     online = _online_work(cv)
     flag = cv.get("show_online_work")
     digital_profile = str(final_cv.get("base_variant") or "") not in NON_DIGITAL_VARIANTS
-    want_online = bool(online) and (flag is True or (flag is None and digital_profile and len(online) >= 2))
+    chosen = isinstance(cv.get("online_work"), list)  # fixée par le candidat : toujours affichée
+    want_online = bool(online) and (
+        flag is True or (flag is None and (chosen or (digital_profile and len(online) >= 2)))
+    )
 
-    def side_column(pen: Pen, with_online: bool) -> float:
+    def side_column(pen: Pen, with_online: bool, with_education: bool = False) -> float:
         body, lead = 8.2, 11.2
         diameter = 36 * mm
         px = (side_w - diameter) / 2
@@ -455,7 +466,7 @@ def render_cv_pdf(
         y = py - 9 * mm
         if cv.get("profile"):
             y = heading(pen, "Profil", side_x, y, side_inner, 1.0)
-            y = pen.para(str(cv["profile"]), side_x, y, side_inner, regular, body, lead, ink) - 5 * mm
+            y = pen.para(str(cv["profile"]), side_x, y, side_inner, regular, body, lead, ink) - SIDE_GAP
         rows = [
             (contact.get("email"), "email"), (contact.get("phone"), "tel"),
             (cv.get("location"), None), (contact.get("portfolio"), "web"), (contact.get("github"), "web"),
@@ -468,12 +479,12 @@ def render_cv_pdf(
                 color = accent if kind else ink
                 y = pen.para(label, side_x, y, side_inner, regular, 8.0, 10.6, color, _href(value, kind) if kind else None)
                 y -= 2.4
-            y -= 4 * mm
+            y -= SIDE_GAP - 2.4
         if with_online:
             y = heading(pen, "Réalisations en ligne", side_x, y, side_inner, 1.0)
             for label, url in online:
                 y = pen.para(label, side_x, y, side_inner, regular, 8.0, 10.6, accent, _href(url)) - 2.4
-            y -= 4 * mm
+            y -= SIDE_GAP - 2.4
         if cv.get("languages"):
             y = heading(pen, "Langues", side_x, y, side_inner, 1.0)
             for lang in cv["languages"]:
@@ -483,22 +494,41 @@ def render_cv_pdf(
                 if level:
                     pen.text(f" — {level}", x, y, regular, 8.0, soft)
                 y -= 11.0
+            y -= SIDE_GAP - 4.0
+        if with_education and cv.get("education"):
+            # La colonne gauche a la place : la formation y libère la colonne
+            # principale (décision Cundo 22/10/2026). Année et intitulé en gras,
+            # le complément en clair, comme dans la colonne principale.
+            y = heading(pen, "Formation", side_x, y, side_inner, 1.0)
+            for edu in cv["education"]:
+                year, title, extra = _education_parts(edu)
+                if year:
+                    pen.text(year, side_x, y, semibold, 8.0, accent)
+                    y -= 10.4
+                y = pen.para(title, side_x, y, side_inner, semibold, 8.0, 10.4, ink)
+                if extra:
+                    y = pen.para(extra, side_x, y, side_inner, regular, 7.6, 10.0, soft)
+                y -= 4.0
         return y
 
-    if want_online and side_column(Pen(False), True) < page_bottom:
+    if want_online and not chosen and side_column(Pen(False), True) < page_bottom:
         want_online = False  # la colonne gauche ne tiendrait pas : on retire la rubrique facultative
+    # La formation passe à gauche si elle y tient, sinon elle reste à droite.
+    education_left = bool(cv.get("education")) and side_column(Pen(False), want_online, True) >= page_bottom
 
     # Un CV court s'agrandit un peu au lieu de laisser le bas de page vide ;
     # un CV dense se resserre jusqu'à tenir sur une page.
     scale = 0.78
-    for candidate in (1.12, 1.08, 1.04, 1.0, 0.97, 0.94, 0.91, 0.88, 0.85, 0.82, 0.8, 0.78):
-        if main_column(Pen(False), candidate) >= page_bottom:
+    # Plafond à 104 % : au-delà, le texte grossit pour remplir la page et le
+    # CV paraît tassé ; un peu de blanc en bas se lit mieux.
+    for candidate in (1.04, 1.0, 0.97, 0.94, 0.91, 0.88, 0.85, 0.82, 0.8, 0.78):
+        if main_column(Pen(False), candidate, education_left) >= page_bottom:
             scale = candidate
             break
 
     c.setFillColor(tint)
     c.rect(0, 0, side_w, height, stroke=0, fill=1)
-    side_column(Pen(True), want_online)
-    main_column(Pen(True), scale)
+    side_column(Pen(True), want_online, education_left)
+    main_column(Pen(True), scale, education_left)
     c.showPage()
     c.save()

@@ -19,7 +19,11 @@ Clés lues :
 - ``layout_constraints.hide_project_technologies_by_variant`` : projets affichés sans
   leurs technologies (``"*"`` = tous) ;
 - ``layout_constraints.online_work_by_variant`` : rubrique « Réalisations en ligne »
-  fixée par le candidat, liste de ``{label, url}``.
+  fixée par le candidat, liste de ``{label, url}`` ;
+- ``layout_constraints.hide_experience_links_variants`` : variantes sans ligne de
+  liens sous les expériences ;
+- ``layout_constraints.max_bullets_per_experience_by_variant`` : puces par
+  expérience, un nombre ou ``{"*": 2, "<experience_id>": 3}``.
 """
 
 from __future__ import annotations
@@ -125,6 +129,26 @@ def online_work(master: Dict[str, Any], variant_id: str) -> List[Dict[str, str]]
         for item in value
         if isinstance(item, dict) and item.get("url") and not is_retired_link(item.get("url"))
     ]
+
+
+def hides_experience_links(master: Dict[str, Any], variant_id: str) -> bool:
+    value = _layout(master).get("hide_experience_links_variants") or []
+    return isinstance(value, list) and variant_id in value
+
+
+def max_bullets(master: Dict[str, Any], variant_id: str, experience_id: str = "") -> int:
+    """Puces autorisées pour une expérience sur cette variante."""
+    layout = _layout(master)
+    default = layout.get("max_bullets_per_experience", 3)
+    value = _by_variant(layout.get("max_bullets_per_experience_by_variant"), variant_id, None)
+    if isinstance(value, dict):
+        value = value.get(experience_id, value.get("*", default))
+    if value is None:
+        value = default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 3
 
 
 def variant_for_family(master: Dict[str, Any], family: Any) -> str:
