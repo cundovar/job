@@ -363,7 +363,7 @@ function cvBlocksSending(id) {
   } catch {
     return null;
   }
-  if (['absent', 'ready', 'validated', 'uploaded'].includes(publication.status)) return null;
+  if (['absent', 'ready', 'validated', 'uploaded', 'edited'].includes(publication.status)) return null;
   return {
     error: "Le CV de cette candidature n'est pas validé.",
     cv_status: publication.status,

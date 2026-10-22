@@ -21,6 +21,8 @@ import {
   UPLOADED_CV_PDF,
   USER_VALIDATION_FILE,
   USER_VALIDATED_PDF,
+  EDITED_CV_JSON,
+  EDITED_CV_PDF,
 } from '../services/cvPublication.js';
 import {
   MAX_CV_PROCESS_OUTPUT,
@@ -58,6 +60,17 @@ export default function createApplicationsRouter(repo) {
   const cvQueue = [];
   let activeCvTask = null;
 
+
+  function archiveEditedCv(dir) {
+    const cvDir = path.join(dir, 'cv');
+    const editPath = path.join(cvDir, EDITED_CV_JSON);
+    if (!fs.existsSync(editPath)) return;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    fs.renameSync(editPath, path.join(cvDir, `cv_edit.archive-${stamp}.json`));
+    for (const file of [EDITED_CV_PDF, 'cv_edit_ats.pdf']) {
+      fs.rmSync(path.join(cvDir, file), { force: true });
+    }
+  }
 
   function statusWithTask(id) {
     return {
@@ -400,6 +413,10 @@ export default function createApplicationsRouter(repo) {
       }
       const currentTask = cvTasks.get(req.params.id);
       if (!currentTask || !['queued', 'running'].includes(currentTask.state)) {
+        // Régénérer, c'est demander un nouveau CV : ta version modifiée de
+        // l'ancien est mise de côté (renommée, jamais effacée), sans quoi elle
+        // continuerait de remplacer le CV qu'on vient de demander.
+        archiveEditedCv(dir);
         enqueueCvTask(req.params.id, dir);
       }
       res.status(202).json({
@@ -536,7 +553,7 @@ export default function createApplicationsRouter(repo) {
       const application = await repo.getById(req.params.id);
       const metadata = readApplicationMetadata(req.params.id);
       // Un aperçu que tu as validé se télécharge sous le nom d'un CV, pas « À corriger ».
-      const sentAsCv = file === 'cv_final.pdf' || file === UPLOADED_CV_PDF
+      const sentAsCv = file === 'cv_final.pdf' || file === UPLOADED_CV_PDF || file === EDITED_CV_PDF
         || (file === USER_VALIDATED_PDF && cvStatus(req.params.id).status === 'validated');
       const downloadAs = sentAsCv ? 'cv_final.pdf' : file;
       const custom = sentAsCv ? customAttachmentNames(metadata).cv : '';
@@ -593,6 +610,76 @@ export default function createApplicationsRouter(repo) {
     } catch (err) {
       console.error('[DELETE /applications/:id/cv/upload]', err.message);
       res.status(400).json({ error: err.message });
+    }
+  });
+
+  // ── Éditeur : ta version du CV (demande Cundo 22/10/2026) ──────────────
+  // GET  /api/applications/:id/cv/edit — la version à éditer : la tienne si
+  //      elle existe, sinon le CV généré (quel que soit son verdict).
+  // PUT  /api/applications/:id/cv/edit — { cv } : enregistre ta version, refait
+  //      les PDF sans IA. Elle remplace le CV généré à l'envoi.
+  // DELETE /api/applications/:id/cv/edit — retire ta version.
+  router.get('/applications/:id/cv/edit', (req, res) => {
+    try {
+      const cvDir = path.join(applicationDir(req.params.id), 'cv');
+      const editPath = path.join(cvDir, EDITED_CV_JSON);
+      const generatedPath = path.join(cvDir, 'cv_content.json');
+      const source = fs.existsSync(editPath) ? editPath : generatedPath;
+      if (!fs.existsSync(source)) return res.status(404).json({ error: 'Aucun CV généré : lance la génération avant de le modifier.' });
+      const content = JSON.parse(fs.readFileSync(source, 'utf-8'));
+      res.json({
+        edited: source === editPath,
+        edited_at: content.edited_at || null,
+        warnings: Array.isArray(content.warnings) ? content.warnings : [],
+        cv: content.cv || {},
+      });
+    } catch (err) {
+      console.error('[GET /applications/:id/cv/edit]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.put('/applications/:id/cv/edit', async (req, res) => {
+    const id = req.params.id;
+    const dir = applicationDir(id);
+    if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${id}` });
+    if (hasSendRecord(id)) return res.status(409).json({ error: 'Ce dossier possède déjà une tentative d’envoi ; son CV est verrouillé.' });
+    if (!req.body || typeof req.body.cv !== 'object' || Array.isArray(req.body.cv)) {
+      return res.status(400).json({ error: 'Corps attendu : { cv: {...} }.' });
+    }
+    const cvDir = path.join(dir, 'cv');
+    const inputPath = path.join(cvDir, `.cv_edit_input.${process.pid}.${Date.now()}.json`);
+    try {
+      fs.mkdirSync(cvDir, { recursive: true });
+      fs.writeFileSync(inputPath, JSON.stringify({ cv: req.body.cv }), 'utf-8');
+      const stdout = await runPython(['-m', 'cv_generator.user_edit', dir, '--input', inputPath], {
+        timeout: 120000,
+        acceptOutputOnError: true,
+      });
+      const result = JSON.parse(stdout.slice(stdout.indexOf('{')));
+      if (!result.ok) return res.status(400).json({ error: result.error || 'Version refusée.' });
+      writeApprovalStatus(id, false);
+      res.json({ ...statusWithTask(id), approved: false, warnings: result.warnings || [], edited_at: result.edited_at });
+    } catch (err) {
+      console.error('[PUT /applications/:id/cv/edit]', err.message);
+      res.status(500).json({ error: err.message });
+    } finally {
+      fs.rmSync(inputPath, { force: true });
+    }
+  });
+
+  router.delete('/applications/:id/cv/edit', async (req, res) => {
+    try {
+      const id = req.params.id;
+      const dir = applicationDir(id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${id}` });
+      if (hasSendRecord(id)) return res.status(409).json({ error: 'Ce dossier possède déjà une tentative d’envoi ; son CV est verrouillé.' });
+      await runPython(['-m', 'cv_generator.user_edit', dir, '--reset'], { timeout: 30000 });
+      writeApprovalStatus(id, false);
+      res.json({ ...statusWithTask(id), approved: false });
+    } catch (err) {
+      console.error('[DELETE /applications/:id/cv/edit]', err.message);
+      res.status(500).json({ error: err.message });
     }
   });
 

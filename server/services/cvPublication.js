@@ -37,11 +37,21 @@ export const PREVIEW_CV_FILES = [
 // c'est lui qui part à l'envoi, quel que soit le verdict du pipeline.
 export const UPLOADED_CV_PDF = 'cv_upload.pdf';
 
+// Version du CV modifiée par le candidat dans l'éditeur (demande Cundo
+// 22/10/2026), produite par `python -m cv_generator.user_edit` : sa parole,
+// pas une affirmation de l'IA. Elle remplace le CV généré à l'envoi.
+export const EDITED_CV_JSON = 'cv_edit.json';
+export const EDITED_CV_PDF = 'cv_edit.pdf';
+export const EDITED_CV_ATS_PDF = 'cv_edit_ats.pdf';
+
 export const CV_FILES = new Set([
   ...DIAGNOSTIC_CV_FILES,
   ...FINAL_CV_FILES,
   ...PREVIEW_CV_FILES,
   UPLOADED_CV_PDF,
+  EDITED_CV_JSON,
+  EDITED_CV_PDF,
+  EDITED_CV_ATS_PDF,
 ]);
 
 const FINAL_SET = new Set(FINAL_CV_FILES);
@@ -81,7 +91,9 @@ function reviewReason(review, formatIssues, sourceIssues) {
  *             envoyé ; aucun fichier `cv_final` n'est fabriqué pour autant ;
  * `blocked`   un contrôle de vérité a échoué — jamais validable à la main :
  *             la preuve manque dans le profil maître (règle 2) ;
- * `ready`     validé ET fichiers finaux présents.
+ * `ready`     validé ET fichiers finaux présents ;
+ * `edited`    le candidat a réécrit le CV dans l'éditeur : sa version part,
+ *             comme un PDF qu'il ajoute (`uploaded`, prioritaire sur tout).
  *
  * `preparing` n'apparaît pas ici : il vient de l'état de la tâche asynchrone,
  * pas de l'état du dossier sur disque.
@@ -93,6 +105,15 @@ export function resolveCvPublication(files = {}, assessment = null, review = nul
       ...generated,
       status: 'uploaded',
       reason: 'CV ajouté par toi : il remplace le CV généré à l\u2019envoi.',
+      generated_status: generated.status,
+    };
+  }
+  if (files[EDITED_CV_PDF] && files[EDITED_CV_JSON]) {
+    const generated = resolveAutomaticPublication(files, assessment, review);
+    return {
+      ...generated,
+      status: 'edited',
+      reason: 'Version modifiée par toi : elle remplace le CV généré à l\u2019envoi.',
       generated_status: generated.status,
     };
   }

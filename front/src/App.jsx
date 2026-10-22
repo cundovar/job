@@ -18,6 +18,7 @@ import { setRecipientRole, withPrimaryRecipient } from './recipients'
 import { zoneOptions } from './zones'
 import AgencyDecision from './AgencyDecision'
 import ConsignesEditor, { ConsignesReport } from './ConsignesEditor'
+import CvEditor from './CvEditor'
 import { saveLastConsignes } from './consignes'
 import { A_DECIDER, decisionCounts, matchesDecision, useAgencyDecisions } from './agencyDecisions'
 
@@ -59,6 +60,7 @@ const CV_STATUS_LABELS = {
   ready: 'CV prêt',
   validated: 'Validé par toi',
   uploaded: 'Ton CV (ajouté)',
+  edited: 'Ta version (modifiée)',
   review: 'À corriger',
   blocked: 'Bloqué',
   absent: 'Pas encore généré',
@@ -1121,6 +1123,18 @@ function CandidaturesView({ mission = 'annonce' }) {
             locked={hasSendAttempt}
             onUpload={uploadCv}
             onRemove={removeUploadedCv}
+          />
+        )}
+
+        {backendOk && (
+          <CvEditor
+            id={selected}
+            cvStatus={cvStatus}
+            locked={hasSendAttempt}
+            onSaved={(id, payload) => {
+              setCvStatuses(prev => ({ ...prev, [id]: payload }))
+              refreshApproval(id)
+            }}
           />
         )}
 
