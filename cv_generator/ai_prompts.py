@@ -237,6 +237,9 @@ les vrais intitulés d'expérience. Préserve la provenance de chaque puce dans 
 Tu peux ajouter, retirer ou réordonner tout élément sourcé; aucune sélection Python n'est
 obligatoire. Le jugement IA décide de la pertinence, Python ne contrôle que la vérité et le format.
 """ + candidate_rules.CANDIDATE_INSTRUCTIONS_CLAUSE + """ Applique les consignes_candidat et les corrections du juge ensemble ; en cas de conflit, la consigne l'emporte.
+Une erreur de vérité sur une puce vient souvent d'une citation incomplète : si le fait est vrai
+dans source_verite, garde le texte et ajoute la preuve manquante dans "sources" (une correction
+peut la nommer dans suggested_fix) ; sinon retire la partie non prouvée.
 Respecte les niveaux de skills_confidence et l'ordre antéchronologique. Une exigence de l'annonce
 absente de la source reste un écart honnête; elle ne doit jamais être transformée en compétence.
 Utilise evidence_coverage du jugement pour combler chaque pilier partiel ou manquant avec les
