@@ -463,6 +463,31 @@ def _is_python_owned(path: Any) -> bool:
     return head in _PYTHON_OWNED_PATHS
 
 
+_BULLET_SOURCES_PATH = re.compile(r"\.bullet_sources\[(\d+)\](?:\[\d+\])*")
+_CITED_REF = re.compile(r"\b(?:[a-z][a-z0-9_]*:\d+|consignes_candidat:\d+)\b")
+
+
+def _claim_path(path: str) -> str:
+    """Ramène un chemin de preuve sur la puce qu'elle soutient.
+
+    Le vérificateur désignait parfois « experiences[0].bullet_sources[0] » :
+    le réviseur corrige « experiences[0].bullets[0] », son patch était refusé
+    hors périmètre, et la vérification ciblée — qui ne re-juge que les chemins
+    modifiés — reconduisait le refus à chaque tour. Deux CV bloqués ainsi le
+    22/10/2026 pour une simple citation manquante.
+    """
+    return _BULLET_SOURCES_PATH.sub(lambda m: f".bullets[{m.group(1)}]", path)
+
+
+def _suggested_refs(reason: str, cited: List[str]) -> List[str]:
+    """Références que le vérificateur nomme comme manquantes (« pole_s:7, non cité »)."""
+    found = []
+    for ref in _CITED_REF.findall(reason or ""):
+        if ref not in cited and ref not in found:
+            found.append(ref)
+    return found[:6]
+
+
 def _merge_truth_check(
     proposed: Dict[str, Any],
     validation: Dict[str, Any],
@@ -482,7 +507,7 @@ def _merge_truth_check(
         status = str(item.get("status") or "").strip().lower()
         if status not in {"supported", "unsupported"}:
             status = "unsupported"
-        path = _clip(item.get("path"), 120)
+        path = _claim_path(_clip(item.get("path"), 120))
         if not path:
             continue
         claims.append(
@@ -500,11 +525,12 @@ def _merge_truth_check(
         # Un claim que l'agent rendrait sur un chemin intact est ignoré : le
         # statut précédent fait foi, il porte sur exactement le même texte.
         paths = changed_paths or []
-        kept = [
-            item
+        previous = [
+            {**item, "path": _claim_path(str(item.get("path") or ""))}
             for item in previous_claims
-            if isinstance(item, dict) and not _claim_affected(str(item.get("path") or ""), paths)
+            if isinstance(item, dict)
         ]
+        kept = [item for item in previous if not _claim_affected(item["path"], paths)]
         kept_paths = {item.get("path") for item in kept}
         claims = kept + [item for item in claims if item["path"] not in kept_paths]
         targeted = {
@@ -526,6 +552,9 @@ def _merge_truth_check(
                 "path": item["path"],
                 "detail": item["reason"] or "Reformulation non soutenue par la preuve citée.",
                 "reference": ", ".join(item["source_refs"]) or None,
+                # Le fait est souvent vrai mais mal cité : le vérificateur nomme
+                # la preuve manquante, le réviseur n'a qu'à l'ajouter.
+                "suggested_refs": _suggested_refs(item["reason"], item["source_refs"]),
             }
         )
     merged = {
@@ -662,16 +691,21 @@ def build_correction_contract(
     corrections: List[Dict[str, Any]] = []
     truth = truth_check or {}
     for issue in truth.get("truth_issues", []):
-        corrections.append(
-            {
-                "origin": "truth",
-                "blocking": True,
-                "code": issue.get("code"),
-                "location": issue.get("path"),
-                "problem": issue.get("detail"),
-                "reference": issue.get("reference"),
-            }
-        )
+        correction = {
+            "origin": "truth",
+            "blocking": True,
+            "code": issue.get("code"),
+            "location": issue.get("path"),
+            "problem": issue.get("detail"),
+            "reference": issue.get("reference"),
+        }
+        if issue.get("suggested_refs"):
+            correction["suggested_fix"] = (
+                "Si le fait est vrai, ajouter à la puce la preuve qui le porte ("
+                + ", ".join(issue["suggested_refs"])
+                + ") ; sinon retirer la partie non prouvée."
+            )
+        corrections.append(correction)
     for issue in truth.get("format_issues", []):
         corrections.append(
             {
