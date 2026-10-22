@@ -80,3 +80,57 @@ def test_ajout_sans_preuve_ou_hors_perimetre_refuse():
                         [[("experiences", 0)]])
     with pytest.raises(CVAgentError, match="hors périmètre"):
         _apply_cv_patch(FLAT, [{"action": "modify", "path": "title", "new": "x"}], [[("projects", None)]])
+
+
+# ── Compétence affichée sans preuve (cas « Python », D2P 22/10/2026) ─────────
+
+from cv_generator.cv_truth_validator import _validate_skill_evidence
+
+PLAN_PREUVES = {"priority_keywords": ["agents IA et MCP", "Python"], "evidence_matches": [
+    {"requirement": "agents IA", "matched_terms": ["agents IA", "Python"], "project_ids": ["pipeline"], "experience_ids": []},
+    {"requirement": "MCP", "matched_terms": ["MCP"], "project_ids": ["devdoc_mcp"], "experience_ids": []},
+]}
+
+
+def _cv(projects, skills, bullets=()):
+    return {
+        "skills": [{"title": "IA", "items": skills}],
+        "projects": [{"id": pid, "title": pid, "description": "", "technologies": []} for pid in projects],
+        "experiences": [{"id": "a", "bullets": list(bullets)}],
+    }
+
+
+def test_competence_sans_preuve_visible_localisee():
+    issues = _validate_skill_evidence(_cv(["devdoc_mcp"], ["MCP", "Python"]), PLAN_PREUVES)
+    assert [(i.code, i.path) for i in issues] == [("SKILL_SHOWN_WITHOUT_EVIDENCE", "skills[0].items[1]")]
+    assert issues[0].kind == "format"
+
+
+def test_competence_prouvee_par_projet_visible_ou_nommee_dans_une_puce():
+    assert _validate_skill_evidence(_cv(["pipeline"], ["Python"]), PLAN_PREUVES) == []
+    assert _validate_skill_evidence(_cv([], ["Python"], [{"text": "Scripts Python d'automatisation."}]), PLAN_PREUVES) == []
+
+
+def test_competence_hors_plan_non_jugee():
+    assert _validate_skill_evidence(_cv([], ["Docker"]), PLAN_PREUVES) == []
+
+
+def test_le_patch_peut_retirer_la_competence_signalee():
+    from cv_generator.ai_patch import _parse_patch_path
+
+    flat = {"skills": [{"title": "IA", "items": ["MCP", "Python"]}]}
+    out = _apply_cv_patch(flat, [{"action": "remove", "path": "skills[0].items[1]"}],
+                          [_parse_patch_path("skills[0].items[1]")])
+    assert out["skills"][0]["items"] == ["MCP"]
+
+
+def test_titre_mesure_dans_la_vraie_mise_en_page():
+    from cv_generator.cv_pdf_design import title_line_count
+
+    assert title_line_count("Formateur IA & conception de supports pédagogiques") == 1
+    assert title_line_count(" ".join(["Formateur"] * 40)) > 2
+
+
+def test_competence_secondaire_non_jugee():
+    plan = dict(PLAN_PREUVES, priority_keywords=["MCP"])
+    assert _validate_skill_evidence(_cv(["devdoc_mcp"], ["MCP", "Python"]), plan) == []

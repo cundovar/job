@@ -170,6 +170,26 @@ def _online_work(cv: Dict[str, Any]) -> List[Tuple[str, str]]:
     return items[:5]
 
 
+def title_line_count(title: str) -> int:
+    """Lignes occupées par le sous-titre (cible du CV) dans la mise en page réelle."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    _, _, semibold, _ = _register_fonts(pdfmetrics, TTFont)
+    mm = 2.8346
+    main_w = A4[0] - 11 * mm - (64 * mm + 9 * mm)
+    words, lines, current = str(title or "").split(), 0, ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if current and stringWidth(candidate, semibold, 9.6) > main_w:
+            lines, current = lines + 1, word
+        else:
+            current = candidate
+    return lines + (1 if current else 0)
+
+
 def render_cv_pdf(
     final_cv: Dict[str, Any],
     output_path: str | Path,
