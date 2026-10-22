@@ -21,7 +21,6 @@ from cv_generator.cv_truth_validator import validate_cv_content
 from cv_generator.job_analyzer import analyze_job_for_cv as analyze_job_rules
 from cv_generator import rules as candidate_rules
 from cv_generator.requirements_gap import detect_gaps, gap_clause
-from cv_generator.utils import job_text
 from .ai_client import (  # noqa: F401  (réexport)
     AgentClient,
     AgentResult,
@@ -111,7 +110,9 @@ class AICVPipeline:
             },
         )
         plan = _validate_plan(result.data, rule_plan, master, result)
-        plan["ecarts"] = detect_gaps(job_text(job), master, (result.data or {}).get("ecarts"))
+        # Texte brut (accents, casse) : l'extrait cité dans l'écart doit se lire tel quel.
+        raw_text = "\n".join(str(job.get(key) or "") for key in ("title", "description"))
+        plan["ecarts"] = detect_gaps(raw_text, master, (result.data or {}).get("ecarts"))
         return plan
 
     def create(

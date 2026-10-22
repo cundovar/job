@@ -90,12 +90,13 @@ def candidate_diplomas(master: Dict[str, Any]) -> Tuple[int, str, List[str]]:
 
 
 def required_years(job_text: str) -> Tuple[int, str]:
-    text = normalize(job_text)
-    for pattern in _YEARS_REQUIRED:
-        match = pattern.search(text)
-        if match:
-            start = max(0, match.start() - 20)
-            return int(match.group(1)), text[start:match.end() + 20].strip()
+    """(années exigées, ligne de l'annonce qui le dit) ; 0 si rien n'est exigé."""
+    for raw_line in re.split(r"[\n•;]", str(job_text or "")):
+        line = normalize(raw_line)
+        for pattern in _YEARS_REQUIRED:
+            match = pattern.search(line)
+            if match:
+                return int(match.group(1)), " ".join(raw_line.split())[:200]
     return 0, ""
 
 
