@@ -9,7 +9,9 @@ from .job_analyzer import _max_experiences
 from .utils import job_text, normalize
 
 
-DEFAULT_CONFIG_PATH = "config/cv_assessment.json"
+# Racine déduite du fichier (CLAUDE.md, « Chemins et ports ») : un chemin relatif
+# cassait l'évaluation dès que le processus ne tournait pas depuis la racine.
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "cv_assessment.json"
 
 
 class CVAssessmentConfigError(ValueError):
