@@ -584,7 +584,11 @@ def test_minor_revision_request_does_not_open_a_round(tmp_path, careco_master):
     assert result["published"] is True
     assert trace["stopped_because"] == "validated"
     assert trace["automatic_revision_rounds"] == 0
-    assert assessment["final_ai_review"]["status"] == "needs_minor_revision"
+    # Décision Cundo (22/10/2026) : des remarques de sévérité basse seules
+    # valident le CV ; elles restent lisibles dans le jugement final.
+    assert assessment["final_ai_review"]["status"] == "validated"
+    final_review = json.loads((tmp_path / "cv" / "cv_final_review.json").read_text(encoding="utf-8"))
+    assert final_review["problems"]
     assert (tmp_path / "cv" / "cv_final.pdf").exists()
 
 

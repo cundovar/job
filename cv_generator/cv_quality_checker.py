@@ -106,6 +106,9 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
                 "code": "SKILL_WITHOUT_EVIDENCE",
                 "severity": "high",
                 "section": "evidence",
+                # La preuve prévue par le plan est un projet ou une expérience :
+                # c'est là que le réviseur doit pouvoir intervenir.
+                "path": "projects" if project_ids else "experiences",
                 "problem": f"L'exigence importante « {requirement} » ne possède aucune preuve visible dans le CV.",
                 "suggested_fix": "Ajouter un projet ou une expérience sourcée correspondant à cette exigence.",
             })
@@ -115,6 +118,7 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
                 "code": issue["code"],
                 "severity": _SEVERITY_BY_KIND.get(issue["kind"], "medium"),
                 "section": _section_for(issue),
+                "path": issue.get("path") or "",
                 "problem": issue["detail"],
                 "suggested_fix": (
                     "Corriger en s'appuyant uniquement sur le profil maître, "
@@ -131,6 +135,7 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
         problems.append({
             "severity": "medium",
             "section": "header",
+            "path": "title",
             "problem": "Le sous-titre est trop large sur une ligne et risque de dépasser la colonne imprimable.",
             "suggested_fix": "Le couper en deux lignes avant l'export.",
         })
@@ -139,6 +144,7 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
         problems.append({
             "severity": "medium",
             "section": "positioning",
+            "path": "profile",
             "problem": "Le CV reste trop orienté full-stack pour cette variante.",
             "suggested_fix": "Remplacer l'accroche par un positionnement webmaster/formateur/accessibilité selon l'annonce.",
         })

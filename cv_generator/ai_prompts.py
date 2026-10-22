@@ -199,11 +199,16 @@ peut le corriger, il sera traité dans la lettre ou en entretien. Ne range PAS e
 exigence que la source prouve sous d'autres mots (ex. un guide d'administration prouve « guides
 utilisateurs ») : c'est alors un problème de formulation réparable. Utilise le code
 SKILL_WITHOUT_EVIDENCE lorsqu'une compétence importante est\naffichée ou demandée sans preuve concrète visible dans le CV.
+Pour chaque problème réparable, donne dans "path" l'endroit exact du CV à corriger (par exemple
+"title", "projects[1]", "skills[2]", "experiences[3].bullets"), avec les index du CV jugé : c'est
+ce chemin que le réviseur aura le droit de modifier. Réserve la sévérité high à ce qui empêche
+vraiment d'envoyer le CV ; une remarque de confort (une puce de plus possible, un lien répété)
+est low et ne bloque pas.
 
 JSON attendu:
 {
   "strengths":["..."],
-  "problems":[{"code":"SKILL_WITHOUT_EVIDENCE|autre_code","severity":"high|medium|low","section":"...","problem":"...","suggested_fix":"..."}],
+  "problems":[{"code":"SKILL_WITHOUT_EVIDENCE|autre_code","severity":"high|medium|low","section":"...","path":"title|profile|skills[k]|experiences[i]|experiences[i].bullets[j]|projects|projects[i]|education","problem":"...","suggested_fix":"..."}],
   "missing_keywords":["..."],
   "source_gaps":["exigence de l'annonce absente de la source"],
   "overrepresented_keywords":["..."],
@@ -250,11 +255,13 @@ intitulés exacts.
 
 
 _PATCH_MODE_PROMPT = """
-Privilégie le mode patch : réponds exactement {"changes": [{"action": "modify"|"remove",
+Privilégie le mode patch : réponds exactement {"changes": [{"action": "modify"|"remove"|"add",
 "path": "<chemin>", "new": <nouvelle valeur>}]}, un changement par correction à appliquer.
-Chemins acceptés : "profile", "skills[k].items[m]", "experiences[i]",
-"experiences[i].bullets[j]", "projects[i]", "education[i]". Ne cible que les location
-listées dans corrections_a_appliquer : tout ce qui n'est pas visé reste inchangé, ne renvoie
+Chemins acceptés : "title", "profile", "skills[k]", "skills[k].items[m]", "experiences[i]",
+"experiences[i].bullets[j]", "projects[i]", "education[i]". « add » ajoute en fin de liste et
+vise la liste elle-même : "projects", "experiences[i].bullets", "skills[k].items". Traite
+d'abord les corrections blocking:true. Ne cible que les location et path listés dans
+corrections_a_appliquer : tout ce qui n'est pas visé reste inchangé, ne renvoie
 pas le CV complet. Une puce modifiée exige {"text": "...", "sources": ["experience_id:index"
 ou "project_id"]} avec ses preuves. Si le patch ne suffit vraiment pas, renvoie le schéma
 complet du rédacteur.

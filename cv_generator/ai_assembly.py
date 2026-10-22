@@ -305,6 +305,29 @@ def _is_source_gap(problem: Dict[str, Any]) -> bool:
     return str(problem.get("code") or "").strip().upper() == SOURCE_GAP_CODE
 
 
+#: Racines du CV qu'un jugement peut désigner (mêmes chemins que le patch).
+REVIEW_PATH_ROOTS = {"title", "profile", "skills", "experiences", "projects", "education"}
+
+
+def _review_path(value: Any) -> str:
+    """Chemin du CV désigné par une remarque, ou vide s'il est illisible.
+
+    Le juge écrivait la zone en texte libre (« Compétences + bloc Projets ») :
+    Python ne savait pas quoi ouvrir au réviseur. Un chemin exploitable fait
+    entrer la remarque dans le périmètre du patch.
+    """
+    from .ai_patch import _parse_patch_path
+
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        tokens = _parse_patch_path(raw)
+    except CVAgentError:
+        return ""
+    return raw if tokens[0][0] in REVIEW_PATH_ROOTS else ""
+
+
 def _normalize_problems(value: Any) -> List[Dict[str, str]]:
     if not isinstance(value, list):
         return []
@@ -327,6 +350,7 @@ def _normalize_problems(value: Any) -> List[Dict[str, str]]:
                 "code": _clip(item.get("code"), 80),
                 "severity": severity,
                 "section": _clip(item.get("section"), 80, "general"),
+                "path": _review_path(item.get("path")),
                 "problem": problem,
                 "suggested_fix": _clip(item.get("suggested_fix"), 360),
             }
@@ -575,9 +599,12 @@ def _merge_review(
         limit=20,
     )
     repairable = [item for item in problems if not _is_source_gap(item)]
+    # Le cosmétique ne bloque plus (décision Cundo 22/10/2026) : s'il ne reste
+    # que des remarques de sévérité basse, le CV est validé et les remarques
+    # restent lisibles dans le jugement.
     if (
         status != "validated"
-        and not repairable
+        and all(item.get("severity") == "low" for item in repairable)
         and not deterministic.get("format_issues")
         and not deterministic.get("truth_blocking")
         and not forbidden
@@ -661,12 +688,16 @@ def build_correction_contract(
             # Rien à corriger dans le CV : l'écart est assumé et remonté via
             # review["source_gaps"] pour la lettre de motivation.
             continue
+        # Une remarque grave empêche la validation : elle est donc obligatoire
+        # pour le réviseur. Avant, toute remarque du juge partait « facultative »
+        # alors que le juge refusait de valider tant qu'elle restait.
         corrections.append(
             {
                 "origin": "relevance",
-                "blocking": False,
+                "blocking": problem.get("severity") == "high",
                 "code": problem.get("code"),
-                "location": problem.get("section"),
+                "location": problem.get("path") or problem.get("section"),
+                "path": problem.get("path") or "",
                 "problem": problem.get("problem"),
                 "suggested_fix": problem.get("suggested_fix"),
             }
