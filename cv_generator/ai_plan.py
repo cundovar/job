@@ -485,6 +485,52 @@ def _validate_presentation_strategy(
     }
 
 
+def _cited_text(reference: str, master: Dict[str, Any]) -> str:
+    """Le texte d'une preuve citée (« exp_id:index », « consignes_candidat:N », projet)."""
+    ref = str(reference or "").strip()
+    if ":" in ref:
+        owner, _, index = ref.rpartition(":")
+        if index.isdigit():
+            position = int(index)
+            if owner == "consignes_candidat":
+                statements = master.get("candidate_statements", []) or []
+                return str(statements[position]) if position < len(statements) else ""
+            highlights = (master.get("experience_catalog", {}).get(owner) or {}).get("highlights", []) or []
+            return str(highlights[position]) if position < len(highlights) else ""
+    project = master.get("project_catalog", {}).get(ref) or {}
+    return str(project.get("description") or "")
+
+
+def with_cited_evidence(cv: Dict[str, Any], master: Dict[str, Any]) -> Dict[str, Any]:
+    """Le CV à vérifier, chaque puce collée à ses preuves et à leur texte.
+
+    Le vérificateur recevait les puces et ``bullet_sources`` en deux listes à
+    recoller par position, et se trompait : cas réel (D2P, 22/10/2026), une
+    puce citant ``qualiscope_backend:0`` et ``:5`` refusée parce que « :0 n'est
+    pas référencé ». Python fait l'association et joint le texte cité : la
+    vérification ne porte plus que sur l'écart de sens.
+    """
+    view = dict(cv)
+    experiences = []
+    for exp in cv.get("experiences", []) or []:
+        if not isinstance(exp, dict):
+            experiences.append(exp)
+            continue
+        sources = exp.get("bullet_sources") or []
+        bullets = []
+        for index, bullet in enumerate(exp.get("bullets", []) or []):
+            refs = sources[index] if index < len(sources) and isinstance(sources[index], list) else []
+            bullets.append({
+                "text": bullet,
+                "preuves_citees": [{"ref": ref, "texte": _cited_text(ref, master)} for ref in refs],
+            })
+        entry = {key: value for key, value in exp.items() if key != "bullet_sources"}
+        entry["bullets"] = bullets
+        experiences.append(entry)
+    view["experiences"] = experiences
+    return view
+
+
 def without_contact(value: Dict[str, Any]) -> Dict[str, Any]:
     """Copie sans bloc ``contact`` d'un CV, d'un contenu ``{"cv": ...}`` ou d'un squelette.
 

@@ -104,7 +104,11 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
         ):
             problems.append({
                 "code": "SKILL_WITHOUT_EVIDENCE",
-                "severity": "high",
+                # Une compétence affichée sans preuve est déjà une erreur de
+                # format localisée (SKILL_SHOWN_WITHOUT_EVIDENCE). Ici, la
+                # preuve d'une exigence manque au CV : signalement au juge,
+                # qui seul arbitre la place qu'elle mérite.
+                "severity": "medium",
                 "section": "evidence",
                 # La preuve prévue par le plan est un projet ou une expérience :
                 # c'est là que le réviseur doit pouvoir intervenir.

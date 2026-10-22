@@ -134,3 +134,25 @@ def test_titre_mesure_dans_la_vraie_mise_en_page():
 def test_competence_secondaire_non_jugee():
     plan = dict(PLAN_PREUVES, priority_keywords=["MCP"])
     assert _validate_skill_evidence(_cv(["devdoc_mcp"], ["MCP", "Python"]), plan) == []
+
+
+# ── Vérificateur : chaque puce collée à ses preuves (faux refus D2P) ─────────
+
+def test_chaque_puce_porte_ses_preuves_et_leur_texte():
+    from cv_generator.ai_plan import with_cited_evidence
+
+    master = {
+        "experience_catalog": {"q": {"highlights": ["Contribution à une plateforme SaaS.", "x", "PHPStan, PHPCS, PHPUnit."]}},
+        "candidate_statements": ["J'ai aussi animé des ateliers CV."],
+        "project_catalog": {"devdoc": {"description": "Pages de cours, exercices de code, QCM."}},
+    }
+    cv = {"experiences": [{"id": "q", "bullets": ["Plateforme SaaS ; qualité PHPStan.", "Ateliers CV."],
+                           "bullet_sources": [["q:0", "q:2"], ["consignes_candidat:0"]]}],
+          "projects": [{"id": "devdoc"}]}
+    view = with_cited_evidence(cv, master)
+    first, second = view["experiences"][0]["bullets"]
+    assert [p["ref"] for p in first["preuves_citees"]] == ["q:0", "q:2"]
+    assert first["preuves_citees"][1]["texte"] == "PHPStan, PHPCS, PHPUnit."
+    assert second["preuves_citees"][0]["texte"].startswith("J'ai aussi")
+    assert "bullet_sources" not in view["experiences"][0]
+    assert cv["experiences"][0]["bullets"][0] == "Plateforme SaaS ; qualité PHPStan."   # original intact
