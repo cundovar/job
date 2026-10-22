@@ -61,13 +61,18 @@ def hides_diploma_status(master: Dict[str, Any], variant_id: str) -> bool:
     return variant_id in (_layout(master).get("hide_vae_status_variants") or [])
 
 
-def displayed_education_entry(entry: Dict[str, Any], master: Dict[str, Any], variant_id: str) -> Dict[str, Any]:
+def displayed_education_entry(
+    entry: Dict[str, Any], master: Dict[str, Any], variant_id: str, show_status: bool = False
+) -> Dict[str, Any]:
     """Le diplôme tel qu'il s'affiche pour la variante : sans statut si la règle le demande.
 
     Ce n'est pas un choix éditorial réécrit : l'agent choisit le diplôme, la
     façon de l'afficher est une décision du candidat portée par le profil.
     """
-    if not hides_diploma_status(master, variant_id):
+    # Quand l'annonce exige un diplôme plus élevé que ceux obtenus, le statut
+    # revient (« VAE en cours ») : il montre un niveau en train d'être acquis
+    # (décision Cundo 22/10/2026).
+    if show_status or not hides_diploma_status(master, variant_id):
         return entry
     return {key: value for key, value in entry.items() if key != "status"}
 

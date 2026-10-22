@@ -137,6 +137,8 @@ def enrich_job_from_analysis(job: Dict[str, Any], plan: Dict[str, Any] | None) -
         enriched["contract_type"] = annonce["contrat"]
     if annonce.get("famille"):
         enriched["job_family"] = annonce["famille"]
+    if (plan or {}).get("ecarts"):
+        enriched["ecarts"] = plan["ecarts"]
     return enriched
 
 
@@ -211,6 +213,9 @@ def build_application_package(
         "recommended_cv": asdict(recommendation),
         "job_family": job.get("job_family") or "",
         "offer_analysis": "agent" if plan else "mots-cles",
+        # Exigences de l'annonce non couvertes par le profil, affichées avant
+        # de postuler (diplôme et durée mesurés par Python).
+        "ecarts": job.get("ecarts") or [],
         "files": files,
         "consignes": _consignes_metadata(job, report),
     }

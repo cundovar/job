@@ -593,3 +593,24 @@ def test_cv_avec_experience_declaree_sans_erreur_de_verite_et_absence_signalee(m
     proposed["experiences"] = proposed["experiences"][1:]
     content = _assemble_cv_content(proposed, {"title": "Poste"}, m, plan, RUN, "test")
     assert "MISSING_DECLARED_EXPERIENCE" in _codes(content, m, plan)
+
+
+# ── Écart de diplôme (décision Cundo 22/10/2026) ─────────────────────────────
+
+def test_la_vae_reapparait_quand_l_annonce_exige_un_diplome_plus_eleve(master):
+    plan = {"selected_base_variant": "mediation_numerique",
+            "ecarts": [{"type": "diplome", "exigence": "Master / Bac+5 (niveau 7)"}]}
+    proposed = {"title": "T", "profile": "P.", "skills": [], "projects": [], "education": [CDA],
+                "experiences": [{"id": "agence_exemple", "bullets": [{"text": "Puce.", "sources": ["agence_exemple:0"]}]}]}
+    content = _assemble_cv_content(proposed, {"title": "Poste"}, master, plan, RUN, "test")
+    cda = next(e for e in content["cv"]["education"] if e["title"] == CDA)
+    assert cda.get("status") == "VAE en cours"
+
+
+def test_une_duree_d_experience_non_couverte_est_refusee(master):
+    proposed = {"title": "T", "profile": "Formateur avec 40 ans d'expérience.", "skills": [], "projects": [],
+                "education": [CDA],
+                "experiences": [{"id": "agence_exemple", "bullets": [{"text": "Puce.", "sources": ["agence_exemple:0"]}]}]}
+    plan = {"selected_base_variant": "fullstack"}
+    content = _assemble_cv_content(proposed, {"title": "Poste"}, master, plan, RUN, "test")
+    assert "YEARS_CLAIM_UNSUPPORTED" in _codes(content, master, plan)

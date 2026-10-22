@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 from . import rules
+from .requirements_gap import experience_years, years_claims
 from .utils import flatten_skills, normalize, period_bounds
 
 TRUTH = "truth"
@@ -954,6 +955,28 @@ def validate_cv_content(
     issues.extend(_validate_skills(cv, master, variant_id, constraints))
     issues.extend(_validate_projects(cv, master, constraints, variant_id))
     issues.extend(_validate_education(cv, master, constraints, variant_id))
+
+    # Une durée d'expérience affirmée (« 4 ans d'expérience ») doit tenir dans
+    # les périodes du profil, chevauchements comptés une fois.
+    covered = experience_years(master)
+    claimed_texts = [("profile", str(cv.get("profile") or ""))] + [
+        (f"{view.path}.bullets[{index}]", str(bullet))
+        for view in views
+        for index, bullet in enumerate(view.bullets)
+    ]
+    for path, text in claimed_texts:
+        for years in years_claims(text):
+            if years > covered + 0.5:
+                issues.append(
+                    TruthIssue(
+                        "YEARS_CLAIM_UNSUPPORTED",
+                        TRUTH,
+                        path,
+                        f"« {years} ans d'expérience » dépasse les {covered:.1f} ans couverts par les "
+                        "périodes du profil : écrire une durée qui en découle, ou aucune.",
+                        str(years),
+                    )
+                )
 
     profile = str(cv.get("profile") or "")
     max_profile = int(constraints.get("max_profile_chars", 240))

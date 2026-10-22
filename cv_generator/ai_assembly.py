@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 from cv_generator.cv_creator import build_structural_shell
 from cv_generator.cv_truth_validator import validate_cv_content
 from cv_generator import rules as candidate_rules
+from cv_generator.requirements_gap import has_diploma_gap
 from cv_generator.utils import compact_items, normalize, period_to_text
 from .ai_client import AgentResult, CVAgentError
 from .ai_plan import _agent_run, _as_string_list, _candidate_title, _clip, _filter_skills_whitelist, _int_score
@@ -77,6 +78,7 @@ def _filter_education_by_variant(
     education_catalog: Dict[str, Dict[str, Any]],
     variant_id: str,
     master: Dict[str, Any] | None = None,
+    show_status: bool = False,
 ) -> List[Dict[str, Any]]:
     """N'affiche qu'un diplôme autorisé pour la variante retenue.
 
@@ -95,7 +97,9 @@ def _filter_education_by_variant(
             allowed = entry.get("present_on_variants")
             if allowed and variant_id not in allowed:
                 continue
-            education.append(candidate_rules.displayed_education_entry(entry, master or {}, variant_id))
+            education.append(
+                candidate_rules.displayed_education_entry(entry, master or {}, variant_id, show_status)
+            )
         else:
             education.append({"title": str(title)})
     return education
@@ -250,7 +254,7 @@ def _assemble_cv_content(
         if isinstance(entry, dict) and normalize(entry.get("title"))
     }
     education = _filter_education_by_variant(
-        proposed.get("education"), education_catalog, variant_id, master
+        proposed.get("education"), education_catalog, variant_id, master, has_diploma_gap(plan)
     )
 
     cv = {

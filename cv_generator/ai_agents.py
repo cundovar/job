@@ -20,6 +20,8 @@ from cv_generator.cv_quality_checker import review_cv as review_cv_rules
 from cv_generator.cv_truth_validator import validate_cv_content
 from cv_generator.job_analyzer import analyze_job_for_cv as analyze_job_rules
 from cv_generator import rules as candidate_rules
+from cv_generator.requirements_gap import detect_gaps, gap_clause
+from cv_generator.utils import job_text
 from .ai_client import (  # noqa: F401  (réexport)
     AgentClient,
     AgentResult,
@@ -108,7 +110,9 @@ class AICVPipeline:
                 "preanalyse_python": rule_plan,
             },
         )
-        return _validate_plan(result.data, rule_plan, master, result)
+        plan = _validate_plan(result.data, rule_plan, master, result)
+        plan["ecarts"] = detect_gaps(job_text(job), master, (result.data or {}).get("ecarts"))
+        return plan
 
     def create(
         self,
@@ -119,7 +123,7 @@ class AICVPipeline:
         result = _agent_call(
             self.client,
             "cv_creator",
-            CREATOR_PROMPT + _standing_preference_clause(master, plan, "creator"),
+            CREATOR_PROMPT + _standing_preference_clause(master, plan, "creator") + gap_clause(plan),
             {
                 "annonce_complete": _announcement_context(job),
                 "consignes_candidat": _candidate_instructions(job),
@@ -282,7 +286,7 @@ class AICVPipeline:
                 result = _agent_call(
                     self.client,
                     "cv_style_reviser",
-                    REVISER_PROMPT + "\n\n" + _PATCH_MODE_PROMPT,
+                    REVISER_PROMPT + gap_clause(plan) + "\n\n" + _PATCH_MODE_PROMPT,
                     payload,
                 )
                 data = result.data
@@ -346,7 +350,7 @@ class AICVPipeline:
             result = _agent_call(
                 self.client,
                 "cv_style_reviser",
-                REVISER_PROMPT,
+                REVISER_PROMPT + gap_clause(plan),
                 payload,
             )
             final = _assemble_cv_content(

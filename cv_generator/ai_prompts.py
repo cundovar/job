@@ -45,6 +45,11 @@ choix et utilise ce même id dans experience_plan (highlight_indexes de 0 à n-1
 de déclarations citées) : Python la renomme « declaree_… », ses preuves sont ces déclarations, et
 il l'ajoute au plan si tu l'omets. Ne crée jamais d'expérience à partir de l'annonce.
 
+Relève les exigences de l'annonce que le profil ne couvre pas (diplôme, durée d'expérience,
+compétence, permis…) dans ecarts, et pour chacune ce qui, dans source_verite, peut honnêtement la
+compenser (années de pratique, réalisation, responsabilité). Python mesure lui-même le diplôme et
+la durée : ta compensation sert de piste au rédacteur et au candidat, jamais de preuve.
+
 Lis aussi l'annonce elle-même : son intitulé exact, l'employeur, le lieu, le contrat et sa
 famille de poste, choisie dans familles_de_poste. Ces champs décrivent l'annonce, pas le
 candidat : laisse vide ce que l'annonce ne dit pas, n'invente jamais un employeur. Un texte
@@ -56,6 +61,9 @@ JSON attendu:
   "annonce": {"intitule":"...","entreprise":"","lieu":"","contrat":"","famille":"une valeur de familles_de_poste"},
   "experiences_declarees": [
     {"id":"vendeur_magasin","organization":"recopié de la consigne","title":"recopié de la consigne","start":"AAAA-MM","end":"","ongoing":true,"statement_indexes":[0]}
+  ],
+  "ecarts": [
+    {"type":"diplome|experience|competence|autre","exigence":"ce que l'annonce exige","profil":"ce que la source montre","compensation":"ce qui compense, tiré de la source"}
   ],
   "selected_base_variant": "id existant",
   "target_title": "titre du CV",
