@@ -66,17 +66,26 @@ export function isFinalCvFile(file) {
   return FINAL_SET.has(file);
 }
 
-function reviewReason(review, formatIssues, sourceIssues) {
+function reviewReason(review, formatIssues, sourceIssues, assessment = null) {
   // Une source incomplète passe devant : aucune relecture éditoriale ne la
   // réparera, c'est le profil maître qu'il faut compléter.
   if (sourceIssues.length) {
     return sourceIssues[0].detail || 'Le profil maître est incomplet sur une date.';
   }
-  if (review?.status === 'needs_revision' || review?.status === 'needs_minor_revision') {
+  if (review?.status === 'needs_revision') {
     return review.verdict || 'Le juge IA demande une correction.';
   }
   if (formatIssues.length) {
     return formatIssues[0].detail || 'Une contrainte de mise en page reste à corriger.';
+  }
+  // Rien à corriger dans le CV, mais l'annonce demande ce que le profil n'a
+  // pas : c'est une question d'adéquation, que le candidat tranche (règle 3).
+  const match = Number(assessment?.match?.score);
+  if (Number.isFinite(match) && match < 70) {
+    return `CV correct, mais adéquation faible avec l’annonce (${match}/100) : elle demande ce que ton profil n’a pas (voir les écarts). Tu peux le valider tel quel.`;
+  }
+  if (review?.status === 'needs_minor_revision') {
+    return review.verdict || 'Le juge IA suggère des retouches mineures.';
   }
   return 'Le CV demande une vérification avant envoi.';
 }
@@ -178,7 +187,7 @@ function resolveAutomaticPublication(files = {}, assessment = null, review = nul
     };
   }
   if (assessment.overall_status !== 'ready') {
-    return { status: 'review', reason: reviewReason(review, formatIssues, sourceIssues), ...base };
+    return { status: 'review', reason: reviewReason(review, formatIssues, sourceIssues, assessment), ...base };
   }
   if (!finalFilesPresent) {
     // L'évaluation dit « prêt » mais les fichiers finaux manquent : on ne

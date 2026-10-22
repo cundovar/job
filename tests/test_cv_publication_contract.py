@@ -313,3 +313,12 @@ def test_le_pdf_ajoute_par_le_candidat_passe_avant_sa_version_modifiee():
     files = {name: True for name in DIAGNOSTIC_FILES}
     files.update({"cv_edit.json": True, "cv_edit.pdf": True, "cv_upload.pdf": True})
     assert resolve(files, {"overall_status": "ready"})["status"] == "uploaded"
+
+
+def test_une_adequation_faible_se_dit_comme_telle_et_non_comme_une_correction():
+    files = {name: True for name in DIAGNOSTIC_FILES}
+    files.update({name: True for name in PREVIEW_FILES})
+    assessment = {"overall_status": "review", "match": {"score": 66}, "publication": {}}
+    result = resolve(files, assessment, {"status": "needs_minor_revision"})
+    assert result["status"] == "review"
+    assert "adéquation faible" in result["reason"] and "66/100" in result["reason"]
