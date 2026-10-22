@@ -446,7 +446,7 @@ def test_rien_d_invente_dans_une_experience_declaree(master):
     )
     entry = kept[0]
     assert entry["organization"] == ""          # absente de la consigne
-    assert entry["title"] == "vendeur"
+    assert entry["title"] == "Vendeur"
     assert entry["period"] == {}                # ni 2025 ni 2026-01 ne sont écrits ainsi
     assert any("Enseigne Inventée" in w for w in warnings)
 

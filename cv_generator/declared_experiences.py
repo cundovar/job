@@ -94,6 +94,8 @@ def validate_declared(raw: Any, master: Dict[str, Any]) -> Tuple[List[Dict[str, 
             title = ""
         if not (organization or title):
             continue
+        # Recopié de la phrase (« vendeur ») : affiché comme un intitulé.
+        title = title[:1].upper() + title[1:]
         period: Dict[str, Any] = {}
         start = _date_from_text(item.get("start"), text)
         end = _date_from_text(item.get("end"), text)
