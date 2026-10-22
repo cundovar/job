@@ -13,6 +13,7 @@ import X`` continue de fonctionner pour chaque nom existant.
 
 from __future__ import annotations
 
+import threading
 from typing import Any, Dict, List
 
 from cv_generator.cv_creator import build_structural_shell
@@ -89,12 +90,44 @@ from .ai_patch import (  # noqa: F401  (réexport)
 )
 
 
+def _truth_first(contract: List[Dict[str, Any]], refused: Dict[str, List[str]]) -> List[Dict[str, Any]]:
+    """La vérité l'emporte sur la pertinence, chemin par chemin.
+
+    Une remarque du juge sur un chemin que le vérificateur a déjà refusé dans
+    cette génération est retirée du contrat ; la correction de vérité porte les
+    formulations refusées, pour que le réviseur n'y revienne pas.
+    """
+    result: List[Dict[str, Any]] = []
+    for item in contract:
+        path = str(item.get("path") or item.get("location") or "")
+        if item.get("origin") == "relevance" and path in refused:
+            continue
+        if item.get("origin") == "truth" and refused.get(path):
+            item = {
+                **item,
+                "formulations_refusees": refused[path],
+                "suggested_fix": (item.get("suggested_fix") or "")
+                + " Ne reviens à aucune formulation déjà refusée pour ce chemin.",
+            }
+        result.append(item)
+    return result
+
+
 class AICVPipeline:
     def __init__(self, client: AgentClient | None = None) -> None:
         self.client = client or CVLLMClient()
         #: Échecs de patch consécutifs du réviseur : à 2, on cesse de lui
         #: proposer le mode patch et on repasse en réécriture complète.
         self._patch_failures = 0
+        #: Chemins du CV déjà refusés par le vérificateur pendant cette
+        #: génération, avec les formulations refusées. Le juge ne peut plus les
+        #: réclamer : cas réel (Mairie de Dugny, 22/10/2026), le juge redemandait
+        #: l'intitulé exact de l'annonce que la vérité venait de refuser, et les
+        #: trois tours s'épuisaient en aller-retour.
+        self._truth_refused: Dict[str, List[str]] = {}
+        # Vérité et pertinence tournent en parallèle : l'une écrit les refus
+        # pendant que l'autre les lit.
+        self._truth_lock = threading.Lock()
 
     def analyze(self, job: Dict[str, Any], master: Dict[str, Any]) -> Dict[str, Any]:
         rule_plan = analyze_job_rules(job, master)
@@ -226,13 +259,44 @@ class AICVPipeline:
             TRUTH_CHECKER_PROMPT,
             payload,
         )
-        return _merge_truth_check(
+        merged = _merge_truth_check(
             result.data,
             validation,
             result,
             previous_claims=previous_claims,
             changed_paths=changed_paths or None,
         )
+        self._remember_truth_refusals(draft, merged)
+        return merged
+
+    def _truth_refusals(self) -> Dict[str, List[str]]:
+        """Copie des refus de vérité de cette génération."""
+        with self._lock():
+            return {path: list(values) for path, values in (getattr(self, "_truth_refused", None) or {}).items()}
+
+    def _lock(self) -> threading.Lock:
+        lock = getattr(self, "_truth_lock", None)
+        if lock is None:
+            lock = self._truth_lock = threading.Lock()
+        return lock
+
+    def _remember_truth_refusals(self, draft: Dict[str, Any], truth: Dict[str, Any]) -> None:
+        with self._lock():
+            self._store_truth_refusals(draft, truth)
+
+    def _store_truth_refusals(self, draft: Dict[str, Any], truth: Dict[str, Any]) -> None:
+        refused = getattr(self, "_truth_refused", None)
+        if refused is None:
+            refused = self._truth_refused = {}
+        cv = draft.get("cv", {}) or {}
+        for issue in truth.get("truth_issues", []) or []:
+            path = str(issue.get("path") or "")
+            if not path:
+                continue
+            values = refused.setdefault(path, [])
+            text = cv.get(path) if path in {"title", "profile"} else None
+            if isinstance(text, str) and text and text not in values:
+                values.append(text)
 
     def review(
         self,
@@ -253,6 +317,10 @@ class AICVPipeline:
                 "plan_adaptation": plan,
                 "cv_a_juger": without_contact(draft),
                 "controle_python": deterministic,
+                "refus_verite": [
+                    {"path": path, "formulations_refusees": values}
+                    for path, values in self._truth_refusals().items()
+                ],
             },
         )
         return _merge_review(result.data, deterministic, result, master)
@@ -266,7 +334,10 @@ class AICVPipeline:
         review: Dict[str, Any],
         truth_check: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
-        contract = build_correction_contract(review, truth_check)
+        contract = _truth_first(
+            build_correction_contract(review, truth_check),
+            self._truth_refusals(),
+        )
         payload = {
             "annonce_complete": _announcement_context(job),
             "consignes_candidat": _candidate_instructions(job),
