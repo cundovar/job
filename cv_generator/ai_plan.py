@@ -13,6 +13,7 @@ from typing import Any, Dict, Iterable, List
 from cv_generator.cv_truth_validator import ALLOWED_SECTIONS
 from cv_generator.cv_truth_validator import candidate_excludes
 from cv_generator import rules as candidate_rules
+from cv_generator.declared_experiences import declared_id_map, validate_declared, with_declared_experiences
 from cv_generator.utils import compact_items, flatten_skills, normalize
 from .ai_client import AgentClient, AgentResult, CVAgentError
 
@@ -258,7 +259,12 @@ def _validate_plan(
         variant_id = imposed
     if variant_id not in variants:
         variant_id = str(rule_plan.get("selected_base_variant") or next(iter(variants), "webmaster"))
+    # Expériences déclarées dans les consignes : citables dans ce plan comme
+    # celles du profil, une fois réduites à ce que le texte du candidat dit.
+    declared, declared_warnings = validate_declared(proposed.get("experiences_declarees"), master)
+    master = with_declared_experiences(master, declared)
     catalog = master.get("experience_catalog", {})
+    renamed = declared_id_map(declared)
 
     raw_experiences = proposed.get("experience_plan")
     if not isinstance(raw_experiences, list) or not raw_experiences:
@@ -274,6 +280,7 @@ def _validate_plan(
         if not isinstance(item, dict):
             continue
         exp_id = str(item.get("experience_id") or "")
+        exp_id = renamed.get(exp_id, exp_id)
         if exp_id in seen:
             continue
         if exp_id not in catalog or catalog[exp_id].get("retired"):
@@ -292,6 +299,25 @@ def _validate_plan(
                 "reason": _clip(item.get("reason"), 260, "Expérience retenue par l'agent analyste."),
                 "highlight_indexes": indexes,
                 "highlights": [highlights[index] for index in indexes],
+            }
+        )
+        seen.add(exp_id)
+    # Une expérience déclarée dans les consignes est une demande du candidat :
+    # elle figure sur le CV même si l'agent l'a omise.
+    for entry in declared:
+        exp_id = entry["id"]
+        if exp_id in seen:
+            continue
+        indexes = list(range(len(entry["highlights"])))[:3]
+        experience_plan.append(
+            {
+                "experience_id": exp_id,
+                "priority": 0,
+                "selection_role": "core",
+                "reason": "Expérience déclarée dans les consignes du candidat.",
+                "highlight_indexes": indexes,
+                "highlights": [entry["highlights"][index] for index in indexes],
+                "declared": True,
             }
         )
         seen.add(exp_id)
@@ -387,6 +413,8 @@ def _validate_plan(
         "skills_to_reduce": _as_string_list(proposed.get("skills_to_reduce"), limit=8),
         "warnings": _as_string_list(proposed.get("warnings"), limit=8),
         "unknown_experience_ids": unknown,
+        "declared_experiences": declared,
+        "declared_experience_warnings": declared_warnings,
     }
 
 
