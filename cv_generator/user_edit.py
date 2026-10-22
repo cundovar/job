@@ -10,7 +10,8 @@ donc le contrôle de véracité ne la juge pas.
 Ce module ne fait aucun appel IA. Il :
 - nettoie la structure reçue (champs connus, longueurs bornées, liens http(s),
   aucun lien retiré par ``rules.RETIRED_LINK_HOSTS``) ;
-- garde les coordonnées et la localisation produites par Python ;
+- prend les coordonnées revues par le candidat (email, téléphone, liens vérifiés),
+  sinon celles produites pour la variante ;
 - refait les deux PDF (design et ATS) ;
 - signale, sans rien bloquer, les contraintes de mise en page dépassées.
 
@@ -26,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -144,6 +146,42 @@ def _online_work(raw: Any) -> List[Dict[str, str]] | None:
     return items
 
 
+_EMAIL = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
+_PHONE = re.compile(r"^[0-9+().\s-]{6,30}$")
+CONTACT_LINK_KEYS = ("portfolio", "github", "linkedin")
+
+
+def _contact(raw: Any, generated: Dict[str, Any]) -> Dict[str, str]:
+    """Coordonnées revues par le candidat ; sans saisie, celles de la génération.
+
+    Un champ vidé disparaît du CV. Une valeur invalide (email, téléphone, lien
+    non http) est refusée en le disant : elle partirait telle quelle chez un
+    recruteur.
+    """
+    if not isinstance(raw, dict):
+        return dict(generated or {})
+    contact: Dict[str, str] = {}
+    email = _text(raw.get("email"), 120)
+    if email:
+        if not _EMAIL.match(email):
+            raise UserEditError(f"Adresse email invalide : « {email} ».")
+        contact["email"] = email
+    phone = _text(raw.get("phone"), 30)
+    if phone:
+        if not _PHONE.match(phone):
+            raise UserEditError(f"Numéro de téléphone invalide : « {phone} ».")
+        contact["phone"] = phone
+    for key in CONTACT_LINK_KEYS:
+        value = _text(raw.get(key), 300)
+        if not value:
+            continue
+        links = _links([value], 1)
+        if not links:
+            raise UserEditError(f"Lien « {key} » invalide : il doit commencer par https:// et ne pas être retiré.")
+        contact[key] = links[0]
+    return contact
+
+
 def _clean(items: Any, cleaner, count: int) -> List[Any]:
     if not isinstance(items, list):
         return []
@@ -162,10 +200,14 @@ def sanitize_cv(edited: Any, generated_cv: Dict[str, Any]) -> Dict[str, Any]:
             section for section in edited.get("section_order") or generated_cv.get("section_order") or SECTIONS
             if section in SECTIONS
         ] or list(SECTIONS),
-        # Coordonnées et localisation : celles que Python a produites pour la
-        # variante (règles de contact du profil maître), jamais réécrites ici.
-        "contact": generated_cv.get("contact", {}),
-        "location": generated_cv.get("location", ""),
+        # Coordonnées : celles que le candidat a revues (demande Cundo
+        # 22/10/2026), sinon celles produites pour la variante.
+        "contact": _contact(edited.get("contact"), generated_cv.get("contact", {})),
+        "location": (
+            _text(edited.get("location"), 80)
+            if "location" in edited
+            else generated_cv.get("location", "")
+        ),
         "skills": _clean(edited.get("skills"), _skill_group, 8),
         "experiences": _clean(edited.get("experiences"), _experience, 12),
         "projects": _clean(edited.get("projects"), _project, 6),
@@ -279,8 +321,26 @@ def main(argv: List[str] | None = None) -> int:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--input", type=Path, help="JSON du CV modifié ({cv: …} ou le CV seul)")
     group.add_argument("--reset", action="store_true", help="Retire la version modifiée")
+    group.add_argument("--show", action="store_true", help="Version à éditer, avec les réalisations affichées")
     args = parser.parse_args(argv)
     try:
+        if args.show:
+            from .cv_pdf_design import _online_work
+
+            cv_dir = args.dossier / "cv"
+            content = current_content(cv_dir)
+            cv = content.get("cv", {}) or {}
+            print(json.dumps({
+                "ok": True,
+                "edited": (cv_dir / EDIT_JSON).is_file(),
+                "edited_at": content.get("edited_at"),
+                "warnings": content.get("warnings") or [],
+                "cv": cv,
+                # Ce que la rubrique affiche réellement, même quand elle est
+                # choisie automatiquement : l'éditeur part de là.
+                "online_work_effective": [{"label": label, "url": url} for label, url in _online_work(cv)],
+            }, ensure_ascii=False))
+            return 0
         if args.reset:
             print(json.dumps({"ok": True, "removed": reset_user_edit(args.dossier)}, ensure_ascii=False))
             return 0
