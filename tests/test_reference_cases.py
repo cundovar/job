@@ -595,6 +595,55 @@ def test_cv_avec_experience_declaree_sans_erreur_de_verite_et_absence_signalee(m
     assert "MISSING_DECLARED_EXPERIENCE" in _codes(content, m, plan)
 
 
+# ── Aération du CV (décision Cundo 22/10/2026) ───────────────────────────────
+
+def test_mediation_sans_liens_sous_les_experiences(master):
+    m = copy.deepcopy(master)
+    m["experience_catalog"]["agence_exemple"]["links"] = ["https://exemple.test"]
+    m["layout_constraints"]["hide_experience_links_variants"] = ["mediation_numerique"]
+    content, _ = _assemble(m, "mediation_numerique")
+    assert content["cv"]["experiences"][0]["links"] == []
+    dev, _ = _assemble(m, "fullstack")
+    assert dev["cv"]["experiences"][0]["links"] == ["https://exemple.test"]
+
+
+def test_puces_par_experience_selon_la_variante(master):
+    from cv_generator import rules
+
+    m = copy.deepcopy(master)
+    m["layout_constraints"]["max_bullets_per_experience"] = 3
+    m["layout_constraints"]["max_bullets_per_experience_by_variant"] = {
+        "mediation_numerique": {"*": 2, "agence_exemple": 3}
+    }
+    assert rules.max_bullets(m, "mediation_numerique", "autre") == 2
+    assert rules.max_bullets(m, "mediation_numerique", "agence_exemple") == 3
+    assert rules.max_bullets(m, "fullstack", "autre") == 3
+    m["layout_constraints"]["max_bullets_per_experience_by_variant"] = {"mediation_numerique": {"*": 1}}
+    proposed = {
+        "title": "T", "profile": "P.", "skills": [], "projects": [], "education": [CDA],
+        "experiences": [{"id": "agence_exemple", "bullets": [
+            {"text": "Un.", "sources": ["agence_exemple:0"]}, {"text": "Deux.", "sources": ["agence_exemple:0"]}]}],
+    }
+    plan = {"selected_base_variant": "mediation_numerique"}
+    content = _assemble_cv_content(proposed, {"title": "Poste"}, m, plan, RUN, "test")
+    assert "TOO_MANY_BULLETS" in _codes(content, m, plan)
+    assert len(content["cv"]["experiences"][0]["bullets"]) == 2  # Python signale, ne tronque pas
+
+
+def test_realisations_choisies_affichees_meme_avec_un_seul_lien(tmp_path):
+    from pypdf import PdfReader
+    from cv_generator.exporters import cv_to_pdf
+
+    content = {"base_variant": "mediation_numerique", "cv": {
+        "title": "Médiateur", "profile": "Accroche.", "contact": {}, "location": "Paris",
+        "experiences": [{"title": "Poste", "organization": "Org", "period": "2024", "bullets": ["Puce."]}],
+        "education": [{"year": 2012, "title": "CAP fictif"}],
+        "online_work": [{"label": "mediateur.exemple.test", "url": "https://mediateur.exemple.test/"}],
+    }}
+    cv_to_pdf(content, tmp_path / "cv.pdf")
+    text = PdfReader(str(tmp_path / "cv.pdf")).pages[0].extract_text()
+    assert "mediateur.exemple.test" in text
+
 # ── Écart de diplôme (décision Cundo 22/10/2026) ─────────────────────────────
 
 def test_la_vae_reapparait_quand_l_annonce_exige_un_diplome_plus_eleve(master):

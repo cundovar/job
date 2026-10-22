@@ -887,7 +887,6 @@ def validate_cv_content(
                 )
             )
 
-    max_bullets = int(constraints.get("max_bullets_per_experience", 3))
     seen: set[str] = set()
     for view in views:
         if not view.id:
@@ -938,13 +937,13 @@ def validate_cv_content(
                     view.id,
                 )
             )
-        elif len(view.bullets) > max_bullets:
+        elif len(view.bullets) > (limit := rules.max_bullets(master, variant_id, view.id)):
             issues.append(
                 TruthIssue(
                     "TOO_MANY_BULLETS",
                     FORMAT,
                     view.path,
-                    f"{len(view.bullets)} puces pour « {view.id} », limite {max_bullets}.",
+                    f"{len(view.bullets)} puces pour « {view.id} », limite {limit}.",
                     view.id,
                 )
             )
