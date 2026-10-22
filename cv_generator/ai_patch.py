@@ -36,9 +36,16 @@ def _patch_scope(contract: List[Dict[str, Any]]) -> List[List[Any]]:
     """
     prefixes: List[List[Any]] = []
     for item in contract or []:
-        if item.get("origin") not in {"truth", "format"}:
+        origin = item.get("origin")
+        if origin == "relevance":
+            # Une remarque du juge qui désigne un chemin précis ouvre ce chemin :
+            # sans quoi le titre ou les projets restaient hors de portée dès
+            # qu'une erreur de vérité faisait passer en mode patch.
+            location = item.get("path")
+        elif origin in {"truth", "format"}:
+            location = item.get("location")
+        else:
             continue
-        location = item.get("location")
         if not location:
             continue
         try:
@@ -127,7 +134,7 @@ def _apply_cv_patch(
         if not isinstance(change, dict):
             raise CVAgentError("Changement de patch illisible (élément non objet).")
         action = str(change.get("action") or "").strip().lower()
-        if action not in {"modify", "remove"}:
+        if action not in {"modify", "remove", "add"}:
             raise CVAgentError(
                 f"Action de patch inconnue : « {change.get('action')} »."
             )
@@ -152,7 +159,26 @@ def _apply_cv_patch(
         reverse=True,
     )
 
+    additions = [item for item in lus if item[0] == "add"]
+
     updated = copy.deepcopy(flat)
+    # « add » ajoute en fin de liste (une puce, un projet, une expérience) : il
+    # passe après les modifications et avant les suppressions, pour que les
+    # index cités par celles-ci désignent toujours le brouillon entrant.
+    for _, tokens, change in additions:
+        container, key = _patch_parent(updated, tokens)
+        if not isinstance(container, dict) or not isinstance(container.get(key), list):
+            raise CVAgentError(f"« add » vise une liste : « {change.get('path')} ».")
+        new = change.get("new")
+        if key == "bullets" and (
+            not isinstance(new, dict)
+            or not str(new.get("text") or "").strip()
+            or not isinstance(new.get("sources"), list)
+            or not new["sources"]
+        ):
+            raise CVAgentError(f"Puce ajoutée sans texte ou sans preuve : « {change.get('path')} ».")
+        container[key].append(new)
+
     for _, tokens, change in modifications:
         container, key = _patch_parent(updated, tokens)
         new = change.get("new")
