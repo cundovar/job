@@ -298,3 +298,18 @@ def test_un_cv_bloque_ne_se_valide_jamais_a_la_main():
     )
 
     assert result["status"] == "blocked"
+
+
+def test_une_version_modifiee_par_le_candidat_part_meme_si_le_genere_est_bloque():
+    blocked = {"overall_status": "blocked", "publication": {"blocking_issues": [{"detail": "x"}]}}
+    files = {name: True for name in DIAGNOSTIC_FILES}
+    files.update({"cv_edit.json": True, "cv_edit.pdf": True})
+    result = resolve(files, blocked)
+    assert result["status"] == "edited"
+    assert result["generated_status"] == "blocked"
+
+
+def test_le_pdf_ajoute_par_le_candidat_passe_avant_sa_version_modifiee():
+    files = {name: True for name in DIAGNOSTIC_FILES}
+    files.update({"cv_edit.json": True, "cv_edit.pdf": True, "cv_upload.pdf": True})
+    assert resolve(files, {"overall_status": "ready"})["status"] == "uploaded"

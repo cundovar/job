@@ -599,3 +599,17 @@ def test_cv_ajoute_par_le_candidat_remplace_le_cv_genere(tmp_path):
     (tmp_path / "cv" / "cv_upload.pdf").write_bytes(b"%PDF-1.4 perso")
     names = [path.name for path in attachment_paths(tmp_path, {"send_include_lettre": False})]
     assert names == ["cv_upload.pdf"]
+
+
+def test_cv_modifie_par_le_candidat_passe_avant_le_genere_et_apres_son_pdf(tmp_path):
+    from applications.send import attachment_paths
+    cv = tmp_path / "cv"
+    cv.mkdir()
+    (cv / "cv_final.pdf").write_bytes(b"%PDF-1.4 genere")
+    (cv / "cv_edit.pdf").write_bytes(b"%PDF-1.4 modifie")
+    (cv / "cv_edit.json").write_text("{}", encoding="utf-8")
+    names = [path.name for path in attachment_paths(tmp_path, {"send_include_lettre": False})]
+    assert names == ["cv_edit.pdf"]
+    (cv / "cv_upload.pdf").write_bytes(b"%PDF-1.4 perso")
+    names = [path.name for path in attachment_paths(tmp_path, {"send_include_lettre": False})]
+    assert names == ["cv_upload.pdf"]

@@ -106,6 +106,8 @@ def include_lettre(metadata: Dict[str, Any]) -> bool:
 
 USER_VALIDATION_FILE = "cv_user_validation.json"
 UPLOADED_CV_PDF = "cv_upload.pdf"  # même nom que server/services/cvPublication.js
+EDITED_CV_PDF = "cv_edit.pdf"  # version réécrite par le candidat (cv_generator.user_edit)
+EDITED_CV_JSON = "cv_edit.json"
 USER_VALIDATED_PDF = "cv_review_preview.pdf"
 
 
@@ -158,9 +160,13 @@ def attachment_paths(dossier: Path, metadata: Dict[str, Any]) -> List[Path]:
     names = attachment_names(metadata)
     final_cv = dossier / "cv" / "cv_final.pdf"
     uploaded_cv = dossier / "cv" / UPLOADED_CV_PDF
-    # Le CV ajouté par le candidat (onglet lettre) passe avant tout CV généré.
+    edited_cv = dossier / "cv" / EDITED_CV_PDF
+    # Le CV ajouté par le candidat (onglet lettre) passe avant tout, puis sa
+    # version réécrite dans l'éditeur, puis le CV généré.
     if uploaded_cv.exists():
         cv_path = uploaded_cv
+    elif edited_cv.exists() and (dossier / "cv" / EDITED_CV_JSON).exists():
+        cv_path = edited_cv
     else:
         cv_path = final_cv if final_cv.exists() else (user_validated_cv(dossier) or final_cv)
     candidates = [("cv", cv_path)]
