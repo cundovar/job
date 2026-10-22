@@ -40,6 +40,7 @@ from .ai_prompts import (  # noqa: F401  (réexport)
     _standing_preference_clause,
 )
 from .ai_plan import (  # noqa: F401  (réexport)
+    with_cited_evidence,
     without_contact,
     _agent_call,
     _agent_run,
@@ -199,7 +200,7 @@ class AICVPipeline:
 
         payload = {
             "source_verite": _truth_context(master, "reviewer"),
-            "cv_a_verifier": without_contact(draft.get("cv", {})),
+            "cv_a_verifier": with_cited_evidence(without_contact(draft.get("cv", {})), master),
             "controle_python": validation["issues"],
         }
         if previous_claims is not None and changed_paths:

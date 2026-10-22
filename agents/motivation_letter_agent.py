@@ -157,6 +157,13 @@ def candidate_profile(master: Dict[str, Any], variant_id: str, show_diploma_stat
             "periode": period_to_text(item.get("period")),
             "faits": list(item.get("highlights", []) or []),
             "liens": list(item.get("links", []) or [])[:2],
+            # Contexte de la structure (missions d'un organisme d'insertion,
+            # médiation observée…) : matière à lettre, jamais un poste occupé.
+            **{
+                key: str(value)
+                for key, value in item.items()
+                if key.startswith("contexte") and isinstance(value, str) and value.strip()
+            },
         }
         for exp_id, item in (master.get("experience_catalog", {}) or {}).items()
         if isinstance(item, dict) and not item.get("retired")

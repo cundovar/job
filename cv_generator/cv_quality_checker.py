@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 from .cv_truth_validator import TRUTH, validate_cv_content
 from .utils import normalize
-from .layout import title_requires_wrap
+from .cv_pdf_design import title_line_count
 
 
 def _collect_cv_text(draft: Dict[str, Any]) -> str:
@@ -104,7 +104,11 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
         ):
             problems.append({
                 "code": "SKILL_WITHOUT_EVIDENCE",
-                "severity": "high",
+                # Une compétence affichée sans preuve est déjà une erreur de
+                # format localisée (SKILL_SHOWN_WITHOUT_EVIDENCE). Ici, la
+                # preuve d'une exigence manque au CV : signalement au juge,
+                # qui seul arbitre la place qu'elle mérite.
+                "severity": "medium",
                 "section": "evidence",
                 # La preuve prévue par le plan est un projet ou une expérience :
                 # c'est là que le réviseur doit pouvoir intervenir.
@@ -131,13 +135,18 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
         for issue in validation["truth_issues"]
         if issue["code"] == "FORBIDDEN_CLAIM"
     ]
-    if title_requires_wrap(str(cv.get("title") or "")):
+    # Mesuré dans la mise en page réelle (cv_pdf_design), qui passe à la ligne
+    # d'elle-même : deux lignes restent lisibles, au-delà le titre est trop long.
+    # L'ancienne mesure (gabarit Canva, majuscules espacées) signalait à tort
+    # des titres qui tiennent sur une ligne.
+    title_lines = title_line_count(str(cv.get("title") or ""))
+    if title_lines > 2:
         problems.append({
             "severity": "medium",
             "section": "header",
             "path": "title",
-            "problem": "Le sous-titre est trop large sur une ligne et risque de dépasser la colonne imprimable.",
-            "suggested_fix": "Le couper en deux lignes avant l'export.",
+            "problem": f"Le sous-titre occupe {title_lines} lignes sous le nom.",
+            "suggested_fix": "Raccourcir le titre du CV pour qu'il tienne sur une ou deux lignes.",
         })
     base_variant = draft.get("base_variant")
     if base_variant in {"webmaster", "wordpress", "formateur_generaliste", "accessibilite"} and "full stack" in cv_text:

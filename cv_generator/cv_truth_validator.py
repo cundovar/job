@@ -525,6 +525,79 @@ def _validate_skills(
     return issues
 
 
+def _validate_skill_evidence(cv: Dict[str, Any], plan: Dict[str, Any] | None) -> List[TruthIssue]:
+    """Une compétence affichée dont la preuve prévue par le plan n'est pas visible.
+
+    Ne vaut que pour une compétence que l'annonce met en avant
+    (``plan.priority_keywords``). Cas réel (D2P, 22/10/2026) : « Python »,
+    mot-clé prioritaire, restait dans les compétences alors
+    que le seul projet qui le prouvait avait quitté le CV. Le juge le relevait
+    en remarque libre, le réviseur ne le traitait pas. L'erreur porte désormais
+    sur la compétence exacte (« skills[k].items[m] ») : la retirer, ou rendre la
+    preuve visible, est la correction attendue.
+    """
+    evidence: Dict[str, Dict[str, set]] = {}
+    for match in (plan or {}).get("evidence_matches", []) or []:
+        if not isinstance(match, dict):
+            continue
+        # Une même preuve couvre plusieurs termes (« Python », « agents IA »…) :
+        # chacun pointe vers l'union de ses preuves possibles.
+        terms = [match.get("requirement"), *(match.get("matched_terms") or [])]
+        for key in {normalize(term) for term in terms if normalize(term)}:
+            target = evidence.setdefault(key, {"projects": set(), "experiences": set()})
+            target["projects"].update(str(x) for x in match.get("project_ids", []) or [])
+            target["experiences"].update(str(x) for x in match.get("experience_ids", []) or [])
+    if not evidence:
+        return []
+    # Seules les compétences que l'annonce met en avant sont jugées : une
+    # compétence vraie mais secondaire n'a pas à porter sa preuve sur le CV.
+    priorities = [f" {normalize(k)} " for k in (plan or {}).get("priority_keywords", []) or [] if normalize(k)]
+    if not priorities:
+        return []
+    visible_projects = {str(item.get("id")) for item in cv.get("projects", []) or [] if isinstance(item, dict)}
+    visible_experiences = set()
+    parts: List[str] = []
+    for exp in cv.get("experiences", []) or []:
+        if not isinstance(exp, dict):
+            continue
+        visible_experiences.add(str(exp.get("id")))
+        visible_experiences.update(str(x) for x in exp.get("source_experience_ids", []) or [])
+        parts.extend(b.get("text", "") if isinstance(b, dict) else str(b) for b in exp.get("bullets", []) or [])
+    for project in cv.get("projects", []) or []:
+        if isinstance(project, dict):
+            parts.append(str(project.get("title", "")))
+            parts.append(str(project.get("description", "")))
+            parts.extend(str(t) for t in project.get("technologies", []) or [])
+    shown_text = f" {normalize(' '.join(parts))} "
+    issues: List[TruthIssue] = []
+    for k, group in enumerate(cv.get("skills", []) or []):
+        if not isinstance(group, dict):
+            continue
+        for m, item in enumerate(group.get("items", []) or []):
+            key = normalize(item)
+            planned = evidence.get(key)
+            if not planned or not (planned["projects"] or planned["experiences"]):
+                continue
+            if not any(re.search(rf"(?<![\w]){re.escape(key)}(?![\w])", prio) for prio in priorities):
+                continue
+            if planned["projects"] & visible_projects or planned["experiences"] & visible_experiences:
+                continue
+            if re.search(rf"(?<![\w]){re.escape(key)}(?![\w])", shown_text):
+                continue  # nommée dans une puce ou un projet visible : prouvée
+            issues.append(
+                TruthIssue(
+                    "SKILL_SHOWN_WITHOUT_EVIDENCE",
+                    FORMAT,
+                    f"skills[{k}].items[{m}]",
+                    f"« {item} » est affichée sans preuve visible : la preuve prévue "
+                    f"({', '.join(sorted(planned['projects'] | planned['experiences']))}) n'est pas sur le CV. "
+                    "Retirer la compétence, ou rendre la preuve visible.",
+                    str(item),
+                )
+            )
+    return issues
+
+
 def _validate_projects(
     cv: Dict[str, Any],
     master: Dict[str, Any],
@@ -953,6 +1026,7 @@ def validate_cv_content(
     issues.extend(_validate_order(views, master))
     issues.extend(_validate_skills(cv, master, variant_id, constraints))
     issues.extend(_validate_projects(cv, master, constraints, variant_id))
+    issues.extend(_validate_skill_evidence(cv, plan))
     issues.extend(_validate_education(cv, master, constraints, variant_id))
 
     # Une durée d'expérience affirmée (« 4 ans d'expérience ») doit tenir dans

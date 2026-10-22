@@ -744,7 +744,9 @@ def test_long_identity_title_wraps_instead_of_overflowing():
 
 
 def test_quality_checker_flags_long_identity_title():
-    title = "Conseiller numérique — formateur / médiateur numérique"
+    # Mesuré dans la mise en page réelle : un titre ordinaire tient sur une
+    # ligne, seul un titre de plus de deux lignes est signalé.
+    title = " ".join(["Conseiller numérique — formateur / médiateur numérique"] * 3)
     master = {
         "layout_constraints": {"max_profile_chars": 420, "max_bullet_chars": 145, "max_experiences": 4},
         "forbidden_claims": [],
@@ -1720,6 +1722,14 @@ def test_a_truncated_answer_names_the_budget_not_a_contract_violation():
 # --- Révision par patch ciblé ----------------------------------------------- #
 
 TOO_LONG_PERMANENCE = [
+    # La boutique reste visible : elle prouve « WooCommerce », mot-clé
+    # prioritaire affiché en compétence (SKILL_SHOWN_WITHOUT_EVIDENCE sinon).
+    {
+        "id": "boutique_fictive",
+        "bullets": [
+            {"text": "Catalogue WooCommerce sur une boutique inventée.", "sources": ["boutique_fictive:0"]}
+        ],
+    },
     {
         "id": "permanence_test",
         "bullets": [
@@ -1792,7 +1802,7 @@ def test_a_patch_only_touches_the_targeted_path(tmp_path, careco_master):
         patch_changes=[
             {
                 "action": "modify",
-                "path": "experiences[0].bullets[0]",
+                "path": "experiences[1].bullets[0]",
                 "new": {
                     "text": "Puce raccourcie par le patch, preuve conservée.",
                     "sources": ["permanence_test:0"],
@@ -1820,13 +1830,14 @@ def test_a_patch_only_touches_the_targeted_path(tmp_path, careco_master):
     assert final_cv["projects"] == draft_cv["projects"]
     assert final_cv["education"] == draft_cv["education"]
     assert len(final_cv["experiences"]) == len(draft_cv["experiences"])
-    assert final_cv["experiences"][0]["id"] == draft_cv["experiences"][0]["id"]
+    assert final_cv["experiences"][0] == draft_cv["experiences"][0]
+    assert final_cv["experiences"][1]["id"] == draft_cv["experiences"][1]["id"]
     assert (
-        final_cv["experiences"][0]["bullets"][0]
+        final_cv["experiences"][1]["bullets"][0]
         == "Puce raccourcie par le patch, preuve conservée."
     )
-    assert final_cv["experiences"][0]["bullets"][1:] == draft_cv["experiences"][0]["bullets"][1:]
-    assert final_cv["experiences"][1:] == draft_cv["experiences"][1:]
+    assert final_cv["experiences"][1]["bullets"][1:] == draft_cv["experiences"][1]["bullets"][1:]
+    assert final_cv["experiences"][2:] == draft_cv["experiences"][2:]
 
     reviser_runs = [r for r in trace["runs"] if r.get("agent") == "cv_style_reviser_ai"]
     assert reviser_runs and all(r.get("duration_seconds") is not None for r in reviser_runs)
