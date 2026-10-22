@@ -4,7 +4,10 @@ from typing import Any, Dict, List
 
 from .cv_truth_validator import TRUTH, validate_cv_content
 from .utils import normalize
-from .cv_pdf_design import title_line_count
+from .cv_pdf_design import page_fill, title_line_count
+
+#: En dessous, la place libre est signalée au juge et au réviseur.
+PAGE_FILL_HINT = 0.75
 
 
 def _collect_cv_text(draft: Dict[str, Any]) -> str:
@@ -147,6 +150,25 @@ def review_cv(job: Dict[str, Any], master: Dict[str, Any], plan: Dict[str, Any],
             "path": "title",
             "problem": f"Le sous-titre occupe {title_lines} lignes sous le nom.",
             "suggested_fix": "Raccourcir le titre du CV pour qu'il tienne sur une ou deux lignes.",
+        })
+    # Place libre (décision Cundo 23/10/2026) : signalée au juge et au
+    # réviseur comme une possibilité, jamais comme une obligation — sévérité
+    # basse, elle ne déclenche ni ne bloque rien.
+    try:
+        fill = page_fill(draft)
+    except Exception:  # la mesure ne doit jamais faire échouer le contrôle
+        fill = 1.0
+    if fill < PAGE_FILL_HINT:
+        problems.append({
+            "code": "PAGE_SPACE_AVAILABLE",
+            "severity": "low",
+            "section": "experiences",
+            "path": "experiences",
+            "problem": f"Le contenu occupe environ {round(fill * 100)} % de la page : il reste de la place.",
+            "suggested_fix": (
+                "Facultatif : ajouter une puce sourcée utile à l'annonce (ou une expérience pertinente), "
+                "sans rien inventer ni répéter."
+            ),
         })
     base_variant = draft.get("base_variant")
     if base_variant in {"webmaster", "wordpress", "formateur_generaliste", "accessibilite"} and "full stack" in cv_text:

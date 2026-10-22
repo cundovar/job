@@ -126,6 +126,26 @@ ONLINE_WORK_EXCLUDED = {"nat.varascundo.com"}
 SECTION_GAP = 12.0
 BLOCK_GAP = 9.0
 SIDE_GAP = 6.5 * 2.8346
+# Répartition de la place libre : marge basse gardée, étirement maximal des
+# espacements, puis du texte.
+PAGE_BOTTOM_RESERVE = 0.05
+MAX_GAP_STRETCH = 2.4
+MAX_TEXT_SCALE = 1.12
+
+
+def _largest_fitting(fits: Callable[[float], bool], low: float, high: float, steps: int = 12) -> float:
+    """Plus grande valeur dans [low, high] qui tient (fits), par dichotomie ; low si rien ne tient mieux."""
+    if fits(high):
+        return high
+    if not fits(low):
+        return low
+    for _ in range(steps):
+        middle = (low + high) / 2
+        if fits(middle):
+            low = middle
+        else:
+            high = middle
+    return low
 CHANT_ORTIES_GUIDE = ("Chant d'Orties — guide", "https://tuto-des-orties.varascundo.com/")
 
 
@@ -190,11 +210,19 @@ def title_line_count(title: str) -> int:
     return lines + (1 if current else 0)
 
 
+def page_fill(final_cv: Dict[str, Any]) -> float:
+    """Part de la colonne principale occupée par le contenu, espacements normaux (0 à 1+)."""
+    import io
+
+    return float(render_cv_pdf(final_cv, io.BytesIO(), "", measure_only=True) or 0.0)
+
+
 def render_cv_pdf(
     final_cv: Dict[str, Any],
-    output_path: str | Path,
+    output_path: Any,
     portrait_path: str | Path,
-) -> None:
+    measure_only: bool = False,
+) -> float | None:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.utils import ImageReader
@@ -208,9 +236,12 @@ def render_cv_pdf(
     light, regular, semibold, bold = _register_fonts(pdfmetrics, TTFont)
     ink, soft, body_c, accent, tint, line_c = (colors.HexColor(v) for v in (INK, SOFT, BODY, ACCENT, TINT, LINE))
 
-    out = Path(output_path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    c = canvas.Canvas(str(out), pagesize=A4)
+    if hasattr(output_path, "write"):
+        c = canvas.Canvas(output_path, pagesize=A4)
+    else:
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        c = canvas.Canvas(str(out), pagesize=A4)
     c.setTitle(f"CV Facundo Varas — {cv.get('title', '')}".strip(" —"))
     c.setAuthor("Facundo Varas")
     width, height = A4
@@ -287,15 +318,17 @@ def render_cv_pdf(
                 c.setLineWidth(w)
                 c.line(x, y1, x, y2)
 
-    def heading(pen: Pen, title: str, x: float, y: float, w: float, s: float) -> float:
+    def heading(pen: Pen, title: str, x: float, y: float, w: float, s: float, g: float = 1.0) -> float:
         size = 7.4 * s
         pen.tracked(title, x, y, bold, size, 1.9 * s, accent)
         y -= 3.6 * s
         pen.hline(x, x + w, y, line_c)
-        return y - 12.0 * s
+        return y - 12.0 * s * (1 + (g - 1) * 0.4)
 
     # ------------------------------------------------------- colonne principale
-    def main_column(pen: Pen, s: float, education_left: bool = False) -> float:
+    def main_column(pen: Pen, s: float, education_left: bool = False, g: float = 1.0) -> float:
+        # g étire les espacements (sections, blocs, puces) quand la page a de
+        # la place : voir la répartition en bas de render_cv_pdf.
         body, lead = 8.1 * s, 10.9 * s
         small, small_lead = 7.6 * s, 10.0 * s
         y = height - 11 * mm - 24
@@ -312,7 +345,7 @@ def render_cv_pdf(
             groups = cv.get("skills", [])
             if not groups:
                 return y
-            y = heading(pen, str(cv.get("skills_title") or "Compétences"), main_x, y, main_w, s)
+            y = heading(pen, str(cv.get("skills_title") or "Compétences"), main_x, y, main_w, s, g)
             col_gap = 6 * mm
             col_w = (main_w - col_gap) / 2
             for row in range(0, len(groups), 2):
@@ -323,14 +356,14 @@ def render_cv_pdf(
                     items = " · ".join(str(i) for i in group.get("items", []))
                     gy = pen.para(items, gx, gy - 0.6 * s, col_w, regular, small, small_lead, soft)
                     row_bottom = min(row_bottom, gy)
-                y = row_bottom - 5.0 * s
-            return y - SECTION_GAP * s
+                y = row_bottom - 5.0 * s * g
+            return y - SECTION_GAP * s * g
 
         def experiences(y: float) -> float:
             exps = cv.get("experiences", [])
             if not exps:
                 return y
-            y = heading(pen, "Expériences", main_x, y, main_w, s)
+            y = heading(pen, "Expériences", main_x, y, main_w, s, g)
             bx = main_x + 3.6 * mm
             bw = main_right - bx
             for exp in exps:
@@ -376,16 +409,16 @@ def render_cv_pdf(
                     for ln in lines:
                         pen.text(ln, bx + 3.6 * mm, y, regular, body, body_c)
                         y -= lead
-                    y -= 1.4 * s
+                    y -= 1.4 * s * (1 + (g - 1) * 0.5)
                 pen.vline(main_x + 0.6, top_y, y + lead * 0.55, line_c)
-                y -= BLOCK_GAP * s
-            return y - (SECTION_GAP - BLOCK_GAP) * s
+                y -= BLOCK_GAP * s * g
+            return y - (SECTION_GAP - BLOCK_GAP) * s * g
 
         def projects(y: float) -> float:
             items = cv.get("projects", [])[:2]
             if not items:
                 return y
-            y = heading(pen, "Projets personnels" if len(items) > 1 else "Projet personnel", main_x, y, main_w, s)
+            y = heading(pen, "Projets personnels" if len(items) > 1 else "Projet personnel", main_x, y, main_w, s, g)
             for project in items:
                 name, sub = _split_title(str(project.get("title", "")))
                 x = main_x
@@ -414,14 +447,14 @@ def render_cv_pdf(
                     cx += pen.text(label, cx, y, regular, small, accent, _href(link))
                 if tech or links:
                     y -= small_lead
-                y -= BLOCK_GAP * s
-            return y - (SECTION_GAP - BLOCK_GAP) * s
+                y -= BLOCK_GAP * s * g
+            return y - (SECTION_GAP - BLOCK_GAP) * s * g
 
         def education(y: float) -> float:
             items = cv.get("education", [])
             if not items:
                 return y
-            y = heading(pen, "Formation", main_x, y, main_w, s)
+            y = heading(pen, "Formation", main_x, y, main_w, s, g)
             year_w = 10.5 * mm * s
             for edu in items:
                 year, title, extra = _education_parts(edu)
@@ -438,7 +471,7 @@ def render_cv_pdf(
                 else:
                     y = pen.para(head + tail, x, y, text_w, semibold, body, lead, ink)
                 y -= 2.0 * s
-            return y - SECTION_GAP * s
+            return y - SECTION_GAP * s * g
 
         drawers: Dict[str, Callable[[float], float]] = {
             "skills": skills, "experiences": experiences, "projects": projects,
@@ -460,7 +493,8 @@ def render_cv_pdf(
         flag is True or (flag is None and (chosen or (digital_profile and len(online) >= 2)))
     )
 
-    def side_column(pen: Pen, with_online: bool, with_education: bool = False) -> float:
+    def side_column(pen: Pen, with_online: bool, with_education: bool = False, g: float = 1.0) -> float:
+        gap = SIDE_GAP * g
         body, lead = 8.2, 11.2
         diameter = 36 * mm
         px = (side_w - diameter) / 2
@@ -486,7 +520,7 @@ def render_cv_pdf(
         y = py - 9 * mm
         if cv.get("profile"):
             y = heading(pen, "Profil", side_x, y, side_inner, 1.0)
-            y = pen.para(str(cv["profile"]), side_x, y, side_inner, regular, body, lead, ink) - SIDE_GAP
+            y = pen.para(str(cv["profile"]), side_x, y, side_inner, regular, body, lead, ink) - gap
         rows = [
             (contact.get("email"), "email"), (contact.get("phone"), "tel"),
             (cv.get("location"), None), (contact.get("portfolio"), "web"), (contact.get("github"), "web"),
@@ -499,12 +533,12 @@ def render_cv_pdf(
                 color = accent if kind else ink
                 y = pen.para(label, side_x, y, side_inner, regular, 8.0, 10.6, color, _href(value, kind) if kind else None)
                 y -= 2.4
-            y -= SIDE_GAP - 2.4
+            y -= gap - 2.4
         if with_online:
             y = heading(pen, "Réalisations en ligne", side_x, y, side_inner, 1.0)
             for label, url in online:
                 y = pen.para(label, side_x, y, side_inner, regular, 8.0, 10.6, accent, _href(url)) - 2.4
-            y -= SIDE_GAP - 2.4
+            y -= gap - 2.4
         if cv.get("languages"):
             y = heading(pen, "Langues", side_x, y, side_inner, 1.0)
             for lang in cv["languages"]:
@@ -514,7 +548,7 @@ def render_cv_pdf(
                 if level:
                     pen.text(f" — {level}", x, y, regular, 8.0, soft)
                 y -= 11.0
-            y -= SIDE_GAP - 4.0
+            y -= gap - 4.0
         if with_education and cv.get("education"):
             # La colonne gauche a la place : la formation y libère la colonne
             # principale (décision Cundo 22/10/2026). Année et intitulé en gras,
@@ -536,19 +570,35 @@ def render_cv_pdf(
     # La formation passe à gauche si elle y tient, sinon elle reste à droite.
     education_left = bool(cv.get("education")) and side_column(Pen(False), want_online, True) >= page_bottom
 
-    # Un CV court s'agrandit un peu au lieu de laisser le bas de page vide ;
-    # un CV dense se resserre jusqu'à tenir sur une page.
-    scale = 0.78
-    # Plafond à 104 % : au-delà, le texte grossit pour remplir la page et le
-    # CV paraît tassé ; un peu de blanc en bas se lit mieux.
-    for candidate in (1.04, 1.0, 0.97, 0.94, 0.91, 0.88, 0.85, 0.82, 0.8, 0.78):
+    # Répartition de la page selon le contenu (décision Cundo 23/10/2026) :
+    # - un CV dense se resserre jusqu'à tenir sur une page (texte jusqu'à 78 %) ;
+    # - un CV court étire d'abord ses espacements (jusqu'à x1,8), puis grossit un
+    #   peu son texte (jusqu'à 108 %), en gardant une marge basse de 5 % : une
+    #   page remplie au millimètre paraît aussi forcée qu'une page vide.
+    target = page_bottom + PAGE_BOTTOM_RESERVE * height
+    if measure_only:
+        top = height - 11 * mm - 24
+        natural_bottom = main_column(Pen(False), 1.0, education_left)
+        return (top - natural_bottom) / max(1.0, top - target)
+    scale, gap = 0.78, 1.0
+    for candidate in (1.0, 0.97, 0.94, 0.91, 0.88, 0.85, 0.82, 0.8, 0.78):
         if main_column(Pen(False), candidate, education_left) >= page_bottom:
             scale = candidate
             break
+    if scale == 1.0:
+        gap = _largest_fitting(lambda value: main_column(Pen(False), 1.0, education_left, value) >= target,
+                               1.0, MAX_GAP_STRETCH)
+        if gap >= MAX_GAP_STRETCH:
+            scale = _largest_fitting(
+                lambda value: main_column(Pen(False), value, education_left, gap) >= target, 1.0, MAX_TEXT_SCALE
+            )
+    side_gap = _largest_fitting(
+        lambda value: side_column(Pen(False), want_online, education_left, value) >= target, 1.0, MAX_GAP_STRETCH
+    )
 
     c.setFillColor(tint)
     c.rect(0, 0, side_w, height, stroke=0, fill=1)
-    side_column(Pen(True), want_online, education_left)
-    main_column(Pen(True), scale, education_left)
+    side_column(Pen(True), want_online, education_left, side_gap)
+    main_column(Pen(True), scale, education_left, gap)
     c.showPage()
     c.save()
