@@ -10,7 +10,7 @@ Système de recherche d'emploi automatisé : scraping d'annonces, filtrage, anal
 
 1. **`data/` n'est jamais commité.** Le dossier est gitignoré et contient des données personnelles, dont `data/cv_master_profile.json`. Ne jamais l'ajouter à un commit, ne jamais le copier ailleurs dans le dépôt, ne jamais en recopier le contenu dans un fichier de test.
 
-2. **Le profil maître est la seule source de vérité sur le candidat.** Aucune expérience, compétence ou affirmation ne peut apparaître dans un CV ou une lettre si elle n'y figure pas. La dimension « Véracité » de `cv_generator/cv_assessment.py` applique cette règle : ne pas l'affaiblir, ne pas la contourner, ne pas la rendre optionnelle.
+2. **Le profil maître est la seule source de vérité sur le candidat.** Aucune expérience, compétence ou affirmation ne peut apparaître dans un CV ou une lettre si elle n'y figure pas. La dimension « Véracité » de `cv_generator/cv_assessment.py` applique cette règle : ne pas l'affaiblir, ne pas la contourner, ne pas la rendre optionnelle. Elle vise ce que **l'IA** écrit. Ce que le candidat écrit lui-même n'y est pas soumis : ses consignes avant génération (`consignes_candidat`), sa version réécrite dans l'éditeur (`cv_edit.*`, statut `edited`, `cv_generator/user_edit.py`) et le PDF qu'il ajoute (`cv_upload.pdf`, statut `uploaded`) sont sa parole. L'ordre à l'envoi est `uploaded` > `edited` > CV généré.
 
 3. **Une donnée inconnue produit `review`, jamais un faux échec.** Les trois états sont `ready` / `review` / `blocked`. Ne pas trancher à la place de l'utilisateur quand l'information manque.
 
