@@ -32,10 +32,10 @@ describe('cvEdit', () => {
     expect(textToOnlineWork(onlineWorkToText(list))).toEqual(list)
   })
 
-  it("n'envoie pas les coordonnées", () => {
-    const payload = editablePayload({ title: 'T', contact: { email: 'x@y.z' }, experiences: [] })
-    expect(payload.contact).toBeUndefined()
-    expect(payload.title).toBe('T')
+  it('envoie les coordonnées revues par le candidat', () => {
+    const payload = editablePayload({ title: 'T', contact: { email: 'x@y.z' }, location: 'Paris', experiences: [] })
+    expect(payload.contact).toEqual({ email: 'x@y.z' })
+    expect(payload.location).toBe('Paris')
   })
 })
 
@@ -56,6 +56,32 @@ describe('formulaire', () => {
     expect(back.skills[0].items).toEqual(['PHP', 'Vue'])
     expect(back.online_work).toEqual(cv.online_work)
     expect(back.projects[0].year).toBe('2026')
+    expect(back.languages).toEqual([{ name: 'Français' }])
+  })
+
+  it('langues : « nom | niveau », une par ligne', () => {
+    const form = toForm({ languages: [{ name: 'Français', level: 'courant' }, { name: 'Anglais', level: 'technique' }] })
+    expect(form.languagesText).toBe('Français | courant\nAnglais | technique')
+    form.languagesText += '\nEspagnol'
+    expect(fromForm(form).languages).toEqual([
+      { name: 'Français', level: 'courant' }, { name: 'Anglais', level: 'technique' }, { name: 'Espagnol' },
+    ])
+  })
+
+  it('coordonnées modifiables, champ vidé envoyé vide', () => {
+    const form = toForm({ contact: { email: 'a@b.fr', phone: '06 00', portfolio: 'https://m.test/' }, location: 'Paris' })
+    form.contact.phone = ''
+    form.location = 'Montreuil'
+    const back = fromForm(form)
+    expect(back.contact).toEqual({ email: 'a@b.fr', phone: '', portfolio: 'https://m.test/', github: '', linkedin: '' })
+    expect(back.location).toBe('Montreuil')
+  })
+
+  it('réalisations : la liste affichée sert de départ, sans être imposée', () => {
+    const effective = [{ label: 'mediateur.test', url: 'https://mediateur.test/' }]
+    const form = toForm({ title: 'T', experiences: [] }, effective)
+    expect(form.onlineWorkText).toBe('mediateur.test | https://mediateur.test/')
+    expect(fromForm(form).online_work).toBeUndefined()
   })
 
   it("une ligne en cours de frappe n'est pas perdue", () => {

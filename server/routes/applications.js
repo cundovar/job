@@ -619,20 +619,19 @@ export default function createApplicationsRouter(repo) {
   // PUT  /api/applications/:id/cv/edit — { cv } : enregistre ta version, refait
   //      les PDF sans IA. Elle remplace le CV généré à l'envoi.
   // DELETE /api/applications/:id/cv/edit — retire ta version.
-  router.get('/applications/:id/cv/edit', (req, res) => {
+  router.get('/applications/:id/cv/edit', async (req, res) => {
     try {
-      const cvDir = path.join(applicationDir(req.params.id), 'cv');
-      const editPath = path.join(cvDir, EDITED_CV_JSON);
-      const generatedPath = path.join(cvDir, 'cv_content.json');
-      const source = fs.existsSync(editPath) ? editPath : generatedPath;
-      if (!fs.existsSync(source)) return res.status(404).json({ error: 'Aucun CV généré : lance la génération avant de le modifier.' });
-      const content = JSON.parse(fs.readFileSync(source, 'utf-8'));
-      res.json({
-        edited: source === editPath,
-        edited_at: content.edited_at || null,
-        warnings: Array.isArray(content.warnings) ? content.warnings : [],
-        cv: content.cv || {},
+      const dir = applicationDir(req.params.id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      // Python rend aussi la rubrique « Réalisations en ligne » telle qu'elle
+      // s'affiche, même choisie automatiquement : l'éditeur part de là.
+      const stdout = await runPython(['-m', 'cv_generator.user_edit', dir, '--show'], {
+        timeout: 30000,
+        acceptOutputOnError: true,
       });
+      const result = JSON.parse(stdout.slice(stdout.indexOf('{')));
+      if (!result.ok) return res.status(404).json({ error: result.error || 'Aucun CV généré : lance la génération avant de le modifier.' });
+      res.json(result);
     } catch (err) {
       console.error('[GET /applications/:id/cv/edit]', err.message);
       res.status(500).json({ error: err.message });

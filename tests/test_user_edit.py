@@ -48,11 +48,39 @@ def test_une_experience_absente_du_profil_peut_etre_ajoutee(dossier):
     assert content["agent"] == "edition_candidat"
 
 
-def test_coordonnees_gardees_et_champs_inconnus_ignores(dossier):
-    edited = _edited(contact={"email": "pirate@exemple.test"}, script="<x>")
-    content = user_edit.save_user_edit(dossier, edited, {})
-    assert content["cv"]["contact"] == {"email": "contact@exemple.test"}
-    assert "script" not in content["cv"]
+def test_coordonnees_revues_par_le_candidat_et_champs_inconnus_ignores(dossier):
+    # Le candidat a la main sur ses coordonnées (demande Cundo 22/10/2026).
+    edited = _edited(contact={"email": "autre@exemple.test", "phone": "", "portfolio": "https://site.exemple.test/"},
+                     location="Montreuil", script="<x>")
+    cv = user_edit.save_user_edit(dossier, edited, {})["cv"]
+    assert cv["contact"] == {"email": "autre@exemple.test", "portfolio": "https://site.exemple.test/"}
+    assert cv["location"] == "Montreuil"
+    assert "script" not in cv
+
+
+def test_sans_saisie_les_coordonnees_de_la_generation_restent(dossier):
+    edited = _edited()
+    edited.pop("contact"); edited.pop("location")
+    cv = user_edit.save_user_edit(dossier, edited, {})["cv"]
+    assert cv["contact"] == {"email": "contact@exemple.test"} and cv["location"] == "Paris"
+
+
+@pytest.mark.parametrize("contact, message", [
+    ({"email": "pas-un-email"}, "email"),
+    ({"phone": "appelle-moi"}, "téléphone"),
+    ({"portfolio": "javascript:alert(1)"}, "portfolio"),
+    ({"github": "https://docdevdoc.varascundo.com"}, "github"),
+])
+def test_coordonnee_invalide_refusee(dossier, contact, message):
+    with pytest.raises(user_edit.UserEditError, match=message):
+        user_edit.save_user_edit(dossier, _edited(contact=contact), {})
+
+
+def test_show_rend_les_realisations_affichees(dossier, capsys):
+    assert user_edit.main([str(dossier), "--show"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] and out["edited"] is False and out["cv"]["title"] == "Développeur"
+    assert isinstance(out["online_work_effective"], list)
 
 
 def test_liens_nettoyes_et_lien_retire_exclu(dossier):

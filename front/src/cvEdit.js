@@ -48,18 +48,41 @@ export function editablePayload(cv) {
     education: cv.education || [],
     languages: cv.languages || [],
   }
+  if (cv.contact && typeof cv.contact === 'object') payload.contact = cv.contact
+  if (typeof cv.location === 'string') payload.location = cv.location
   if (Array.isArray(cv.online_work)) payload.online_work = cv.online_work
   return payload
 }
 
+// « Français | courant », une langue par ligne.
+export function textToLanguages(text) {
+  return linesToList(text).map(line => {
+    const [name, ...rest] = line.split('|')
+    const level = rest.join('|').trim()
+    return level ? { name: name.trim(), level } : { name: name.trim() }
+  }).filter(item => item.name)
+}
+
+export function languagesToText(list) {
+  return (Array.isArray(list) ? list : [])
+    .map(item => (typeof item === 'string' ? item : (item.level ? `${item.name} | ${item.level}` : item.name || '')))
+    .filter(Boolean)
+    .join('\n')
+}
+
+const CONTACT_KEYS = ['email', 'phone', 'portfolio', 'github', 'linkedin']
+
 // Le formulaire garde le texte brut des champs multi-lignes : convertir à
 // chaque frappe mangerait le retour à la ligne qu'on est en train de taper.
-export function toForm(cv = {}) {
+export function toForm(cv = {}, onlineWorkEffective = null) {
+  const custom = Array.isArray(cv.online_work)
   return {
     title: cv.title || '',
     profile: cv.profile || '',
     section_order: cv.section_order,
-    languages: cv.languages || [],
+    contact: Object.fromEntries(CONTACT_KEYS.map(key => [key, (cv.contact || {})[key] || ''])),
+    location: cv.location || '',
+    languagesText: languagesToText(cv.languages),
     experiences: (cv.experiences || []).map(exp => ({
       id: exp.id || '',
       organization: exp.organization || '',
@@ -80,8 +103,10 @@ export function toForm(cv = {}) {
     education: (cv.education || []).map(edu => (typeof edu === 'string'
       ? { year: '', title: edu, level: '', school: '', status: '' }
       : { year: edu.year ? String(edu.year) : '', title: edu.title || '', level: edu.level || '', school: edu.school || '', status: edu.status || '' })),
-    onlineWorkCustom: Array.isArray(cv.online_work),
-    onlineWorkText: onlineWorkToText(cv.online_work),
+    // La rubrique telle qu'elle s'affiche : choisie par toi, ou à défaut celle
+    // que la mise en page calcule. La modifier la rend « choisie par toi ».
+    onlineWorkCustom: custom,
+    onlineWorkText: onlineWorkToText(custom ? cv.online_work : (onlineWorkEffective || [])),
   }
 }
 
@@ -90,7 +115,9 @@ export function fromForm(form) {
     title: form.title,
     profile: form.profile,
     section_order: form.section_order,
-    languages: form.languages,
+    contact: Object.fromEntries(Object.entries(form.contact || {}).map(([key, value]) => [key, String(value || '').trim()])),
+    location: String(form.location || '').trim(),
+    languages: textToLanguages(form.languagesText),
     experiences: form.experiences.map(exp => ({
       id: exp.id,
       organization: exp.organization,

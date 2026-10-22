@@ -56,7 +56,7 @@ export default function CvEditor({ id, cvStatus, locked, onSaved }) {
       .then(async res => {
         const payload = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
-        setForm(toForm(payload.cv))
+        setForm(toForm(payload.cv, payload.online_work_effective))
         setMeta({ edited: payload.edited, warnings: payload.warnings || [] })
         setState(prev => ({ ...prev, loading: false }))
       })
@@ -122,6 +122,14 @@ export default function CvEditor({ id, cvStatus, locked, onSaved }) {
           <>
             <Field label="Titre du CV" value={form.title} disabled={disabled} onChange={title => set({ title })} />
             <Field label="Accroche" rows={3} value={form.profile} disabled={disabled} onChange={profile => set({ profile })} />
+
+            <h4>Coordonnées</h4>
+            <Field label="Email" value={form.contact.email} disabled={disabled} onChange={email => set({ contact: { ...form.contact, email } })} />
+            <Field label="Téléphone" value={form.contact.phone} disabled={disabled} onChange={phone => set({ contact: { ...form.contact, phone } })} />
+            <Field label="Ville / zone" value={form.location} disabled={disabled} onChange={location => set({ location })} />
+            <Field label="Site / portfolio (https://…, vide = aucun)" value={form.contact.portfolio} disabled={disabled} onChange={portfolio => set({ contact: { ...form.contact, portfolio } })} />
+            <Field label="GitHub (https://…, vide = aucun)" value={form.contact.github} disabled={disabled} onChange={github => set({ contact: { ...form.contact, github } })} />
+            <Field label="LinkedIn (https://…, vide = aucun)" value={form.contact.linkedin} disabled={disabled} onChange={linkedin => set({ contact: { ...form.contact, linkedin } })} />
 
             <h4>Expériences</h4>
             {form.experiences.map((exp, index) => (
@@ -192,15 +200,19 @@ export default function CvEditor({ id, cvStatus, locked, onSaved }) {
             <button type="button" className="copy-btn" disabled={disabled} onClick={() => setList('education', [...form.education, emptyEducationForm()])}><Plus /> Ajouter un diplôme</button>
 
             <h4>Réalisations en ligne</h4>
-            <label className="consignes-label cv-edit-check">
-              <input type="checkbox" checked={form.onlineWorkCustom} disabled={disabled} onChange={e => set({ onlineWorkCustom: e.target.checked })} />
-              Choisir moi-même (sinon : liens des expériences et projets)
-            </label>
-            {form.onlineWorkCustom && (
-              <Field label="Une par ligne : libellé | https://…" rows={3} value={form.onlineWorkText} disabled={disabled}
-                placeholder="mediateur.varascundo.com | https://mediateur.varascundo.com/"
-                onChange={onlineWorkText => set({ onlineWorkText })} />
-            )}
+            <Field label="Une par ligne : libellé | https://… (vide = rubrique masquée)" rows={3} value={form.onlineWorkText} disabled={disabled}
+              placeholder="mediateur.varascundo.com | https://mediateur.varascundo.com/"
+              onChange={onlineWorkText => set({ onlineWorkText, onlineWorkCustom: true })} />
+            <p className="approval-note">
+              {form.onlineWorkCustom
+                ? 'Liste choisie par toi : c’est elle qui s’affiche.'
+                : 'Liste calculée automatiquement à partir de tes expériences et projets. Modifie-la pour la fixer.'}
+            </p>
+
+            <h4>Langues</h4>
+            <Field label="Une par ligne : langue | niveau" rows={2} value={form.languagesText} disabled={disabled}
+              placeholder="Français | courant"
+              onChange={languagesText => set({ languagesText })} />
 
             <div className="cv-edit-actions">
               <button type="button" className="copy-btn" disabled={disabled} onClick={save}>
