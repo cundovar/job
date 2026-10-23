@@ -463,8 +463,10 @@ def _is_python_owned(path: Any) -> bool:
     return head in _PYTHON_OWNED_PATHS
 
 
-_BULLET_SOURCES_PATH = re.compile(r"\.bullet_sources\[(\d+)\](?:\[\d+\])*")
-_CITED_REF = re.compile(r"\b(?:[a-z][a-z0-9_]*:\d+|consignes_candidat:\d+)\b")
+_BULLET_SOURCES_PATH = re.compile(r"\.bullet_sources(?:\[(\d+)\](?:\[\d+\])*)?")
+# Une référence suivie de « … » a été coupée (« pole_s:1… » pour « pole_s:13 ») :
+# la reprendre ferait citer une autre preuve que celle que nomme le vérificateur.
+_CITED_REF = re.compile(r"\b(?:[a-z][a-z0-9_]*:\d+|consignes_candidat:\d+)\b(?!…|\.\.\.)")
 
 
 def _claim_path(path: str) -> str:
@@ -476,7 +478,9 @@ def _claim_path(path: str) -> str:
     modifiés — reconduisait le refus à chaque tour. Deux CV bloqués ainsi le
     22/10/2026 pour une simple citation manquante.
     """
-    return _BULLET_SOURCES_PATH.sub(lambda m: f".bullets[{m.group(1)}]", path)
+    return _BULLET_SOURCES_PATH.sub(
+        lambda m: f".bullets[{m.group(1)}]" if m.group(1) is not None else ".bullets", path
+    )
 
 
 def _suggested_refs(reason: str, cited: List[str]) -> List[str]:
@@ -516,6 +520,11 @@ def _merge_truth_check(
                 "source_refs": _as_string_list(item.get("source_refs"), 8),
                 "status": status,
                 "reason": _clip(item.get("reason"), 300),
+                # Lues sur le texte entier : la raison est coupée à 300
+                # caractères, et une référence coupée en désigne une autre.
+                "suggested_refs": _suggested_refs(
+                    str(item.get("reason") or ""), _as_string_list(item.get("source_refs"), 8)
+                ),
             }
         )
     targeted: Dict[str, Any] | None = None
@@ -524,7 +533,7 @@ def _merge_truth_check(
         # tour précédent — un texte identique ne peut pas changer de sens.
         # Un claim que l'agent rendrait sur un chemin intact est ignoré : le
         # statut précédent fait foi, il porte sur exactement le même texte.
-        paths = changed_paths or []
+        paths = list(dict.fromkeys(_claim_path(p) for p in changed_paths or []))
         previous = [
             {**item, "path": _claim_path(str(item.get("path") or ""))}
             for item in previous_claims
@@ -554,7 +563,8 @@ def _merge_truth_check(
                 "reference": ", ".join(item["source_refs"]) or None,
                 # Le fait est souvent vrai mais mal cité : le vérificateur nomme
                 # la preuve manquante, le réviseur n'a qu'à l'ajouter.
-                "suggested_refs": _suggested_refs(item["reason"], item["source_refs"]),
+                "suggested_refs": item.get("suggested_refs")
+                or _suggested_refs(item["reason"], item["source_refs"]),
             }
         )
     merged = {
