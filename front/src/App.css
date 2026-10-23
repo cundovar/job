@@ -2188,3 +2188,9 @@ h3 > .lucide {
 .ecarts-panel ul { margin: 0.4rem 0; padding-left: 1.1rem; }
 .ecarts-panel li { margin-bottom: 0.4rem; }
 .ecarts-panel svg { width: 15px; height: 15px; vertical-align: -2px; }
+
+/* Annonce relue depuis l'onglet lettre */
+.offre-panel summary { cursor: pointer; font-weight: 600; }
+.offre-panel summary svg { width: 15px; height: 15px; vertical-align: -2px; }
+.offre-panel a svg { vertical-align: -1px; }
+.offre-texte { white-space: pre-wrap; max-height: 28rem; overflow-y: auto; margin-top: 0.5rem; line-height: 1.5; font-size: 0.92rem; }
