@@ -66,6 +66,7 @@ from .ai_assembly import (  # noqa: F401  (réexport)
     _PYTHON_OWNED_PATHS,
     _assemble_cv_content,
     _claim_affected,
+    _claim_path,
     _cv_diff_paths,
     _filter_education_by_variant,
     _is_python_owned,
@@ -205,9 +206,14 @@ class AICVPipeline:
         previous_claims: List[Dict[str, Any]] | None = None
         changed_paths: List[str] = []
         if previous_content is not None and previous_truth is not None:
-            changed_paths = _cv_diff_paths(
-                previous_content.get("cv", {}), draft.get("cv", {})
-            )
+            # Une citation changée (« bullet_sources[2] ») change la puce
+            # qu'elle soutient : c'est cette puce que le vérificateur re-juge.
+            # Sans ce report, le refus du tour précédent était reconduit sur
+            # une puce dont la preuve venait d'être corrigée (Simplon, 23/10/2026).
+            changed_paths = list(dict.fromkeys(
+                _claim_path(path)
+                for path in _cv_diff_paths(previous_content.get("cv", {}), draft.get("cv", {}))
+            ))
             previous_claims = [
                 item for item in previous_truth.get("claims") or [] if isinstance(item, dict)
             ]
