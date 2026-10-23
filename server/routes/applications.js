@@ -14,6 +14,7 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { PROJECT_ROOT } from '../config.js';
 import { downloadFilename } from '../services/cvDownloads.js';
+import { readJobOffer } from '../services/jobOffer.js';
 import { runPython } from '../services/python.js';
 import {
   CV_FILES,
@@ -425,6 +426,17 @@ export default function createApplicationsRouter(repo) {
       });
     } catch (err) {
       console.error('[POST /applications/:id/cv/prepare]', err.message);
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // GET /api/applications/:id/offre — l'annonce telle que les agents l'ont lue
+  router.get('/applications/:id/offre', (req, res) => {
+    try {
+      const dir = applicationDir(req.params.id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      res.json(readJobOffer(dir));
+    } catch (err) {
       res.status(400).json({ error: err.message });
     }
   });
