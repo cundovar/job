@@ -992,27 +992,27 @@ h3 > .lucide {
   gap: var(--sp-2);
 }
 .agency-targeting-status.loading-status {
-  background: var(--info-soft);
+  background: var(--info-bg);
   color: var(--info);
   border: 1px solid var(--info);
 }
 .agency-targeting-status.success-status {
-  background: var(--ok-soft);
+  background: var(--ok-bg);
   color: var(--ok);
   border: 1px solid var(--ok);
 }
 .agency-targeting-status.error-status {
-  background: var(--err-soft);
-  color: var(--err);
-  border: 1px solid var(--err);
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid var(--danger);
 }
 .prepare-btn.done {
-  background: var(--ok-soft);
+  background: var(--ok-bg);
   border-color: var(--ok);
   color: var(--ok);
 }
 .prepare-btn.done:hover {
-  background: var(--ok-soft);
+  background: var(--ok-bg);
   border-color: var(--ok);
 }
 
@@ -1267,6 +1267,201 @@ h3 > .lucide {
   line-height: 1.75;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* --- Sections teintées de l'onglet Lettres -------------------
+   Chaque bloc a sa couleur claire : on sait où l'on est d'un coup
+   d'œil. Les teintes viennent des tokens sémantiques. */
+.doc-section {
+  --tone: var(--accent);
+  --tone-bg: var(--accent-soft);
+  --tone-border: var(--accent-border);
+  margin: 0 0 var(--sp-4);
+  padding: var(--sp-4);
+  border: 1px solid var(--tone-border);
+  border-left: 4px solid var(--tone);
+  border-radius: var(--r-md);
+  background: var(--tone-bg);
+}
+.doc-section--accent { --tone: var(--accent); --tone-bg: var(--accent-soft); --tone-border: var(--accent-border); }
+.doc-section--info { --tone: var(--info); --tone-bg: var(--info-bg); --tone-border: var(--info-border); }
+.doc-section--warn { --tone: var(--warn); --tone-bg: var(--warn-bg); --tone-border: var(--warn-border); }
+.doc-section--ok { --tone: var(--ok); --tone-bg: var(--ok-bg); --tone-border: var(--ok-border); }
+.doc-section--neutral { --tone: var(--border-strong); --tone-bg: var(--surface-sunken); --tone-border: var(--border); }
+
+.doc-head {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.candidature-detail .doc-head h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  color: var(--tone);
+  font-size: var(--fs-lg);
+}
+.doc-state {
+  padding: 0.15rem 0.65rem;
+  border: 1px solid var(--tone-border);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--tone);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+.doc-state--ok { color: var(--ok); border-color: var(--ok-border); }
+.doc-state--warn { color: var(--warn); border-color: var(--warn-border); }
+.doc-state--info { color: var(--info); border-color: var(--info-border); }
+.doc-state--accent { color: var(--accent-hover); border-color: var(--accent-border); }
+
+.doc-step {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0 0;
+  color: var(--text-strong);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+.doc-step span {
+  display: inline-grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: var(--r-full);
+  background: var(--tone);
+  color: var(--on-accent);
+  font-size: var(--fs-xs);
+}
+
+.meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  background: var(--surface);
+}
+.meta-pill--company { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-hover); }
+.meta-pill--role { border-color: var(--info-border); background: var(--info-bg); color: var(--info); }
+.meta-pill--date { border-color: var(--warn-border); background: var(--warn-bg); color: var(--warn); }
+
+/* Barres d'actions : une seule règle pour toutes les rangées de boutons. */
+.doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.doc-actions--editor { margin: var(--sp-2) 0; }
+.doc-textarea {
+  width: 100%;
+  margin-top: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+.doc-textarea--compact { margin: 0 0 var(--sp-2); }
+.doc-textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Rôles de boutons : chaque action a sa teinte. */
+.candidature-detail .copy-btn.is-copy {
+  border-color: var(--info-border);
+  background: var(--info-bg);
+  color: var(--info);
+}
+.candidature-detail .copy-btn.is-edit {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+.candidature-detail .copy-btn.is-regen {
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.candidature-detail .download-btn {
+  border-color: var(--ok-border);
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+.candidature-detail .download-btn.secondary {
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.candidature-detail .copy-btn.is-copy:hover { border-color: var(--info); background: color-mix(in srgb, var(--info) 14%, transparent); }
+.candidature-detail .copy-btn.is-edit:hover { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.candidature-detail .copy-btn.is-regen:hover { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+.candidature-detail .download-btn:hover { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.candidature-detail .annuler-btn:hover:not(:disabled) {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.candidature-detail .copy-btn:disabled,
+.candidature-detail .approve-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.candidature-detail :is(button, a, input, textarea):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.approve-btn {
+  box-shadow: var(--shadow-sm);
+}
+
+.approval-note--error { color: var(--danger); }
+.approval-note--ok { color: var(--ok); }
+.send-brevo-zone {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.cv-progress-line {
+  flex: 1 1 100%;
+  margin: var(--sp-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.postule-zone.doc-section {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.lettre-content { background: var(--surface); }
+
+@media (max-width: 480px) {
+  .doc-actions > .copy-btn,
+  .doc-actions > .download-btn,
+  .doc-actions > .prepare-btn,
+  .doc-actions > .annuler-btn {
+    flex: 1 1 calc(50% - var(--sp-2));
+  }
+  .approval-zone .approve-btn,
+  .postule-zone .postule-btn {
+    flex: 1 1 100%;
+  }
 }
 
 .cv-generator-panel {

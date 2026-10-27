@@ -1126,9 +1126,9 @@ function CandidaturesView({ mission = 'annonce' }) {
         <button className="tab back-btn" onClick={() => setSelected(null)}><ArrowLeft /> Retour</button>
         <h1><FileText /> Lettre de motivation</h1>
         <div className="candidature-meta">
-          <span><strong>{c?.entreprise}</strong></span>
-          <span><Briefcase /> {c?.poste}</span>
-          <span><Calendar /> {c?.date}</span>
+          <span className="meta-pill meta-pill--company"><strong>{c?.entreprise}</strong></span>
+          <span className="meta-pill meta-pill--role"><Briefcase /> {c?.poste}</span>
+          <span className="meta-pill meta-pill--date"><Calendar /> {c?.date}</span>
         </div>
 
         {backendOk && <OffrePanel key={selected} id={selected} />}
@@ -1188,7 +1188,16 @@ function CandidaturesView({ mission = 'annonce' }) {
             optionnel={!spontanee}
             ouvert={hasRecipients || Boolean(approval?.approved) || hasSendAttempt}
           >
-          <div className="approval-zone">
+          <div className={`approval-zone doc-section ${approval?.approved ? 'doc-section--ok' : 'doc-section--warn'}`}>
+            <div className="doc-head">
+              <h2><ShieldCheck /> Envoi de la candidature</h2>
+              {sendBrevo[selected]?.ok
+                ? <span className="doc-state doc-state--ok">Envoyée</span>
+                : approval?.approved
+                  ? <span className="doc-state doc-state--ok">Approuvée</span>
+                  : <span className="doc-state doc-state--warn">À approuver</span>}
+            </div>
+            <p className="doc-step"><span>1</span> Destinataires</p>
             {!spontanee && (approval?.suggestions || []).length > 0 && !hasSendAttempt && (
               <div className="mail-suggestions">
                 <strong>Adresses écrites dans l’annonce</strong>
@@ -1228,6 +1237,7 @@ function CandidaturesView({ mission = 'annonce' }) {
               onRemove={index => removeRecipient(selected, index)}
               onSave={() => saveRecipients(selected)}
             />
+            <p className="doc-step"><span>2</span> Pièces jointes</p>
             <label className="lettre-jointe">
               <input
                 type="checkbox"
@@ -1243,9 +1253,10 @@ function CandidaturesView({ mission = 'annonce' }) {
                 : 'Seul le CV partira. La lettre reste dans le dossier, elle n’est pas supprimée.'}
             </p>
             {lettreJointe[selected]?.error && (
-              <p className="approval-note" style={{ color: '#fb7185' }}>{lettreJointe[selected].error}</p>
+              <p className="approval-note approval-note--error">{lettreJointe[selected].error}</p>
             )}
 
+            <p className="doc-step"><span>3</span> Approbation</p>
             {approval?.approved ? (
               <>
                 <span className="badge-approved"><ShieldCheck /> Envoi approuvé</span>
@@ -1270,6 +1281,7 @@ function CandidaturesView({ mission = 'annonce' }) {
             )}
             {hasRecipients && backendOk && (
               <div className="send-brevo-zone">
+                <p className="doc-step"><span>4</span> Envoi</p>
                 {sendBrevo[selected]?.ok ? (
                   <span className="badge-approved"><CircleCheck /> Envoyé à {sendBrevo[selected].to}{sendBrevo[selected].cc?.length ? ` · Cc : ${sendBrevo[selected].cc.join(', ')}` : ''}</span>
                 ) : (
@@ -1283,7 +1295,7 @@ function CandidaturesView({ mission = 'annonce' }) {
                   </button>
                 )}
                 {sendBrevo[selected]?.error && (
-                  <p className="approval-note" style={{ color: '#fb7185' }}>{sendBrevo[selected].error}</p>
+                  <p className="approval-note approval-note--error">{sendBrevo[selected].error}</p>
                 )}
               </div>
             )}
@@ -1297,7 +1309,7 @@ function CandidaturesView({ mission = 'annonce' }) {
         )}
 
         {/* Bouton / badge postulé dans la vue détail */}
-        <div className="postule-zone">
+        <div className="postule-zone doc-section doc-section--ok">
           {!backendOk && (
             <span className="postule-offline"><TriangleAlert /> Backend indisponible — statut non sauvegardé</span>
           )}
@@ -1325,12 +1337,19 @@ function CandidaturesView({ mission = 'annonce' }) {
           {apiError && <span className="postule-error">{apiError}</span>}
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <button className="copy-btn" onClick={() => copyLettre(c?.lettre || '')}>
+        <section className="doc-section doc-section--accent" aria-labelledby="lettre-title">
+        <div className="doc-head">
+          <h2 id="lettre-title"><FileText /> Texte de la lettre</h2>
+          {editLettre[selected]?.editing
+            ? <span className="doc-state doc-state--accent">En édition</span>
+            : c?.metadata?.files?.motivation_letter_pdf && <span className="doc-state doc-state--ok">PDF prêt</span>}
+        </div>
+        <div className="doc-actions">
+          <button className="copy-btn is-copy" onClick={() => copyLettre(c?.lettre || '')}>
             {copied ? <><Check /> Copié !</> : <><Clipboard /> Copier la lettre</>}
           </button>
           <button
-            className="copy-btn"
+            className="copy-btn is-edit"
             onClick={() => {
               const st = editLettre[selected] || {}
               setEditLettre(prev => ({ ...prev, [selected]: { ...st, editing: !st.editing, value: st.value ?? c?.lettre ?? '' } }))
@@ -1345,7 +1364,7 @@ function CandidaturesView({ mission = 'annonce' }) {
               </a>
               <button
                 type="button"
-                className="copy-btn"
+                className="copy-btn is-regen"
                 onClick={() => handleRegenLettre(selected)}
                 disabled={lettreRegen[selected]?.pending}
                 title="Régénère le PDF depuis lettre_motivation.md (édition hors interface)"
@@ -1387,9 +1406,9 @@ function CandidaturesView({ mission = 'annonce' }) {
               value={editLettre[selected]?.value || ''}
               onChange={e => setEditLettre(prev => ({ ...prev, [selected]: { ...prev[selected], value: e.target.value } }))}
               rows={16}
-              style={{ width: '100%', marginTop: '0.5rem', fontFamily: 'inherit', fontSize: '0.9rem', lineHeight: 1.5, padding: '0.6rem', border: '1px solid var(--border-strong)', borderRadius: 6, background: 'var(--surface)' }}
+              className="doc-textarea"
             />
-            <div style={{ display: 'flex', gap: '0.5rem', margin: '0.5rem 0' }}>
+            <div className="doc-actions doc-actions--editor">
               <button
                 className="prepare-btn"
                 onClick={() => saveDoc(selected, 'lettre')}
@@ -1404,21 +1423,25 @@ function CandidaturesView({ mission = 'annonce' }) {
           </>
         )}
         {editLettre[selected]?.saved && !editLettre[selected]?.editing && (
-          <p className="approval-note" style={{ color: '#0F6E66' }}><CircleCheck /> Lettre enregistrée — PDF régénéré depuis ta version.</p>
+          <p className="approval-note approval-note--ok"><CircleCheck /> Lettre enregistrée — PDF régénéré depuis ta version.</p>
         )}
         {editLettre[selected]?.error && (
-          <p className="approval-note" style={{ color: '#fb7185' }}>{editLettre[selected].error}</p>
+          <p className="approval-note approval-note--error">{editLettre[selected].error}</p>
         )}
         <pre className="lettre-content">{editLettre[selected]?.value ?? c?.lettre}</pre>
+        </section>
         {c?.mail && (
-          <>
-            <h2><Mail /> Email de candidature</h2>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <button className="copy-btn" onClick={() => copyLettre(c?.mail || '')}>
+          <section className="doc-section doc-section--info" aria-labelledby="mail-title">
+            <div className="doc-head">
+              <h2 id="mail-title"><Mail /> Email de candidature</h2>
+              {editMail[selected]?.editing && <span className="doc-state doc-state--info">En édition</span>}
+            </div>
+            <div className="doc-actions">
+              <button className="copy-btn is-copy" onClick={() => copyLettre(c?.mail || '')}>
                 {copied ? <><Check /> Copié !</> : <><Clipboard /> Copier l'email</>}
               </button>
               <button
-                className="copy-btn"
+                className="copy-btn is-edit"
                 onClick={() => {
                   const st = editMail[selected] || {}
                   setEditMail(prev => ({ ...prev, [selected]: { ...st, editing: !st.editing, value: st.value ?? c?.mail ?? '' } }))
@@ -1433,9 +1456,9 @@ function CandidaturesView({ mission = 'annonce' }) {
                   value={editMail[selected]?.value || ''}
                   onChange={e => setEditMail(prev => ({ ...prev, [selected]: { ...prev[selected], value: e.target.value } }))}
                   rows={12}
-                  style={{ width: '100%', marginTop: '0.5rem', fontFamily: 'inherit', fontSize: '0.9rem', lineHeight: 1.5, padding: '0.6rem', border: '1px solid var(--border-strong)', borderRadius: 6, background: 'var(--surface)' }}
+                  className="doc-textarea"
                 />
-                <div style={{ display: 'flex', gap: '0.5rem', margin: '0.5rem 0' }}>
+                <div className="doc-actions doc-actions--editor">
                   <button
                     className="prepare-btn"
                     onClick={() => saveDoc(selected, 'mail')}
@@ -1450,16 +1473,16 @@ function CandidaturesView({ mission = 'annonce' }) {
               </>
             )}
             {editMail[selected]?.saved && !editMail[selected]?.editing && (
-              <p className="approval-note" style={{ color: '#0F6E66' }}><CircleCheck /> Email enregistré — c'est ce texte qui partira.</p>
+              <p className="approval-note approval-note--ok"><CircleCheck /> Email enregistré — c'est ce texte qui partira.</p>
             )}
             {editMail[selected]?.error && (
-              <p className="approval-note" style={{ color: '#fb7185' }}>{editMail[selected].error}</p>
+              <p className="approval-note approval-note--error">{editMail[selected].error}</p>
             )}
             <pre className="lettre-content">{editMail[selected]?.value ?? c?.mail}</pre>
-          </>
+          </section>
         )}
 
-        <section className="cv-generator-panel" aria-labelledby="cv-generator-title">
+        <section className="cv-generator-panel doc-section doc-section--neutral" aria-labelledby="cv-generator-title">
           <div className="cv-generator-heading">
             <h2 id="cv-generator-title"><Target /> CV personnalisé</h2>
             <span className={`cv-publication-badge ${cvState}`}>
@@ -1474,7 +1497,7 @@ function CandidaturesView({ mission = 'annonce' }) {
             value={cvReco[selected] ?? ''}
             onChange={e => setCvReco(prev => ({ ...prev, [selected]: e.target.value }))}
             rows={3}
-            style={{ width: '100%', marginBottom: '0.5rem', fontFamily: 'inherit', fontSize: '0.85rem', padding: '0.6rem', border: '1px solid var(--border-strong)', borderRadius: 6, background: 'var(--surface)' }}
+            className="doc-textarea doc-textarea--compact"
           />
           <div className="cv-actions">
             <button
@@ -1491,7 +1514,7 @@ function CandidaturesView({ mission = 'annonce' }) {
                   : <><Target /> Générer le CV personnalisé</>}
             </button>
             {cvPendingId === selected && cvProgress?.label && (
-              <p className="cv-progress-line" aria-live="polite" style={{ margin: '0.25rem 0 0', fontSize: '0.8rem', color: 'var(--text-muted, #666)' }}>
+              <p className="cv-progress-line" aria-live="polite">
                 Étape {cvProgress.index}/{cvProgress.total} — {cvProgress.label}
                 {cvProgress.detail ? ` · ${cvProgress.detail}` : ''}
               </p>

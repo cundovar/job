@@ -68,7 +68,7 @@ export default function RecipientEditor({
       <p className="approval-note">
         Une adresse suffit : elle part en To. Les suivantes s’ajoutent en Cc.
       </p>
-      {error && <p className="approval-note" style={{ color: '#fb7185' }}>{error}</p>}
+      {error && <p className="approval-note approval-note--error">{error}</p>}
       {!saved && <p className="approval-note">La liste a changé : enregistre-la puis réapprouve l&apos;envoi.</p>}
     </div>
   )
