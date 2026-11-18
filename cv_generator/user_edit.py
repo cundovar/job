@@ -311,6 +311,46 @@ def reset_user_edit(dossier: Path) -> List[str]:
     return removed
 
 
+def catalog_entries(master: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+    """Expériences et projets du profil maître, au format du CV éditable.
+
+    Proposés dans l'éditeur (demande Cundo 18/11/2026) : un clic ajoute
+    l'entrée au CV, que le candidat modifie ensuite librement. Les
+    expériences retirées du profil ne sont pas proposées.
+    """
+    from .utils import period_to_text
+
+    experiences = []
+    for exp_id, item in (master.get("experience_catalog") or {}).items():
+        if not isinstance(item, dict) or item.get("retired"):
+            continue
+        entry = _experience({
+            "id": exp_id,
+            "organization": item.get("organization"),
+            "title": item.get("title"),
+            "period": period_to_text(item.get("period")),
+            "bullets": item.get("highlights") or [],
+            "links": item.get("links") or [],
+        })
+        if entry:
+            experiences.append(entry)
+    projects = []
+    for project_id, item in (master.get("project_catalog") or {}).items():
+        if not isinstance(item, dict) or item.get("retired"):
+            continue
+        entry = _project({
+            "id": project_id,
+            "title": item.get("title"),
+            "year": item.get("year"),
+            "description": item.get("description"),
+            "technologies": item.get("technologies") or [],
+            "links": item.get("links") or [],
+        })
+        if entry:
+            projects.append(entry)
+    return {"experiences": experiences, "projects": projects}
+
+
 def _master_path() -> Path:
     return Path(__file__).resolve().parent.parent / "data" / "cv_master_profile.json"
 
@@ -339,6 +379,8 @@ def main(argv: List[str] | None = None) -> int:
                 # Ce que la rubrique affiche réellement, même quand elle est
                 # choisie automatiquement : l'éditeur part de là.
                 "online_work_effective": [{"label": label, "url": url} for label, url in _online_work(cv)],
+                # Ce que le profil maître propose d'ajouter d'un clic.
+                "catalog": catalog_entries(load_json(_master_path()) if _master_path().is_file() else {}),
             }, ensure_ascii=False))
             return 0
         if args.reset:

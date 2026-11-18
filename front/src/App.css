@@ -2488,3 +2488,20 @@ h3 > .lucide {
 .presentation-attachments { border: 1px solid rgba(120, 132, 129, 0.35); border-radius: 8px; padding: 8px 12px 10px;
   display: flex; flex-direction: column; gap: 8px; margin: 4px 0; }
 .presentation-attachments legend { font-weight: 600; padding: 0 4px; }
+
+/* Éditeur du CV : entrées du profil à ajouter d'un clic */
+.cvb-catalog { margin: 0 0 8px; font-size: 12px; }
+.cvb-catalog > summary { cursor: pointer; color: #2F6F62; display: inline-flex; align-items: center; gap: 4px; list-style: none; }
+.cvb-catalog > summary::-webkit-details-marker { display: none; }
+.cvb-catalog > summary svg { width: 13px; height: 13px; }
+.cvb-catalog-count { background: #2F6F62; color: #fff; border-radius: 999px; padding: 0 6px; font-size: 10.5px; }
+.cvb-catalog ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.cvb-catalog-item { position: relative; width: 100%; text-align: left; display: flex; flex-direction: column; gap: 2px;
+  border: 1px dashed #b9c6c2; background: #F7FAF9; border-radius: 6px; padding: 6px 26px 6px 8px; cursor: pointer;
+  color: #2F3634; font: inherit; }
+.cvb-catalog-item:hover:not(:disabled) { border-style: solid; border-color: #2F6F62; background: #EEF3F1; }
+.cvb-catalog-title { font-weight: 700; color: #1D2321; }
+.cvb-catalog-meta { color: #2F6F62; font-size: 11px; }
+.cvb-catalog-preview { color: #58615E; font-size: 11px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cvb-catalog-plus { position: absolute; top: 6px; right: 6px; width: 14px; height: 14px; color: #2F6F62; }

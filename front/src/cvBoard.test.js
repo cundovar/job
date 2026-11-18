@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { boardSectionOrder, fromBoard, moveByKey, toBoard } from './cvBoard'
+import { availableFromCatalog, boardSectionOrder, catalogEntryToItem, fromBoard, moveByKey, toBoard } from './cvBoard'
 
 const CV = {
   title: 'Animateur',
@@ -58,5 +58,30 @@ describe('éditeur visuel du CV', () => {
     const cv = { ...CV }
     delete cv.section_order
     expect(fromBoard(toBoard(cv)).section_order).toEqual(['profile', 'skills', 'experiences', 'projects', 'education'])
+  })
+})
+
+describe('profil : entrées à ajouter', () => {
+  const catalog = {
+    experiences: [
+      { id: 'pole_s', organization: 'Le Pôle S', title: 'Formateur', period: '2024', bullets: ['Un.'], links: [] },
+      { id: 'bioconcept', organization: 'Bioconcept', title: 'Gardien / Hôte d’accueil', period: '2023 – 2025', bullets: ['Accueil.'], links: [] },
+    ],
+    projects: [{ id: 'mediateur', title: 'Mediateur', year: '2026', description: 'Site.', technologies: ['Vue'], links: [] }],
+  }
+
+  it('propose seulement ce qui n’est pas déjà sur la page', () => {
+    const board = toBoard(CV)
+    expect(availableFromCatalog(catalog, board, 'experiences').map(e => e.id)).toEqual(['bioconcept'])
+    expect(availableFromCatalog(catalog, board, 'projects').map(e => e.id)).toEqual(['mediateur'])
+  })
+
+  it('une entrée ajoutée devient un bloc modifiable et part au serveur', () => {
+    const board = toBoard(CV)
+    const item = catalogEntryToItem('experiences', catalog.experiences[1])
+    expect(item._key).toBeTruthy()
+    item.title = 'Hôte d’accueil'
+    const out = fromBoard({ ...board, experiences: [...board.experiences, item] })
+    expect(out.experiences.at(-1)).toMatchObject({ id: 'bioconcept', title: 'Hôte d’accueil', bullets: ['Accueil.'] })
   })
 })
