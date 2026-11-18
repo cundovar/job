@@ -1,75 +1,332 @@
-import { useEffect, useState } from 'react'
-import { ArrowDown, ArrowUp, CircleCheck, PenLine, Plus, Trash2, TriangleAlert } from 'lucide-react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
-  emptyEducationForm,
-  emptyExperienceForm,
-  emptyProjectForm,
-  emptySkillForm,
-  fromForm,
-  moveItem,
-  removeItem,
-  replaceItem,
-  toForm,
-} from './cvEdit'
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  pointerWithin,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { CircleCheck, FileDown, GripVertical, PenLine, Plus, Trash2, TriangleAlert } from 'lucide-react'
+import {
+  ITEM_FACTORIES,
+  SECTION_LABELS,
+  emptyBullet,
+  fromBoard,
+  moveByKey,
+  toBoard,
+} from './cvBoard'
 
-// Éditeur du CV (demande Cundo 22/10/2026) : tu as la main sur tout le
-// contenu, y compris une expérience absente du profil. Ta version est rendue
-// en PDF sans IA et remplace le CV généré à l'envoi. Elle n'est pas jugée par
-// le contrôle de véracité : c'est ta parole, comme un PDF que tu ajoutes.
+// Éditeur du CV, version visuelle (demande Cundo 18/11/2026) : la page
+// ressemble au CV (colonne teintée à gauche, colonne principale à droite),
+// chaque texte se modifie là où il s'affiche, et rubriques, blocs et puces se
+// réordonnent par glisser-déposer (poignée ⋮⋮, souris, doigt ou clavier).
+//
+// Règles inchangées depuis le 22/10/2026 : tout est modifiable, y compris une
+// expérience absente du profil. Ta version est rendue en PDF sans IA et
+// remplace le CV généré à l'envoi ; elle n'est pas jugée par le contrôle de
+// véracité, c'est ta parole.
 
-function ListControls({ index, length, onMove, onRemove, disabled, label }) {
-  return (
-    <span className="cv-edit-controls">
-      <button type="button" className="annuler-btn" disabled={disabled || index === 0} onClick={() => onMove(index, -1)} aria-label={`Monter ${label}`}><ArrowUp /></button>
-      <button type="button" className="annuler-btn" disabled={disabled || index === length - 1} onClick={() => onMove(index, 1)} aria-label={`Descendre ${label}`}><ArrowDown /></button>
-      <button type="button" className="annuler-btn" disabled={disabled} onClick={() => onRemove(index)} aria-label={`Supprimer ${label}`}><Trash2 /></button>
-    </span>
+// Les rubriques sont hautes : on suit le pointeur plutôt que le centre du
+// bloc déplacé, sinon il faudrait le traîner bien au-delà de sa cible. Les
+// blocs et puces, de tailles proches, restent sur closestCenter.
+function pointerFirst(args) {
+  const hits = pointerWithin(args)
+  return hits.length ? hits : closestCenter(args)
+}
+
+function useDndSensors() {
+  return useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 }
 
-function Field({ label, value, onChange, disabled, rows, placeholder }) {
+// Liste réordonnable : un contexte par liste, pour qu'une puce ne puisse
+// jamais tomber dans une autre rubrique.
+function SortableList({ items, onReorder, children, disabled }) {
+  const sensors = useDndSensors()
+  const keys = items.map(item => item._key)
   return (
-    <label className="consignes-label">
-      {label}
-      {rows ? (
-        <textarea className="agency-consignes" rows={rows} value={value} disabled={disabled} placeholder={placeholder} onChange={e => onChange(e.target.value)} />
-      ) : (
-        <input type="text" value={value} disabled={disabled} placeholder={placeholder} onChange={e => onChange(e.target.value)} />
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={({ active, over }) => {
+        if (!disabled && over && active.id !== over.id) onReorder(moveByKey(items, active.id, over.id))
+      }}
+    >
+      <SortableContext items={keys} strategy={verticalListSortingStrategy} disabled={disabled}>
+        {children}
+      </SortableContext>
+    </DndContext>
+  )
+}
+
+function SortableBlock({ id, className = '', handleLabel, onRemove, removeLabel, disabled, children }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id, disabled })
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`cvb-block ${className} ${isDragging ? 'is-dragging' : ''}`}
+    >
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        className="cvb-handle"
+        aria-label={handleLabel}
+        title="Glisser pour déplacer"
+        disabled={disabled}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical />
+      </button>
+      <div className="cvb-block-body">{children}</div>
+      {onRemove && (
+        <button type="button" className="cvb-remove" aria-label={removeLabel} title={removeLabel} disabled={disabled} onClick={onRemove}>
+          <Trash2 />
+        </button>
       )}
-    </label>
+    </div>
+  )
+}
+
+// Texte modifiable sur place : sans cadre, il se lit comme le CV ; le cadre
+// n'apparaît qu'au survol et au focus.
+function fitHeight(el) {
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
+}
+
+function Inline({ value, onChange, placeholder, className = '', disabled, multiline = false, onKeyDown, inputRef, label }) {
+  const ref = useRef(null)
+  useLayoutEffect(() => {
+    if (!multiline) return undefined
+    const el = ref.current
+    fitHeight(el)
+    // La largeur change (panneau ouvert, fenêtre redimensionnée, police
+    // chargée) : la hauteur suit.
+    if (!el || typeof ResizeObserver === 'undefined') return undefined
+    let width = el.clientWidth
+    const observer = new ResizeObserver(() => {
+      if (el.clientWidth !== width) { width = el.clientWidth; fitHeight(el) }
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [value, multiline])
+  const common = {
+    ref: el => {
+      ref.current = el
+      if (typeof inputRef === 'function') inputRef(el)
+    },
+    className: `cvb-inline ${className}`,
+    value,
+    placeholder,
+    disabled,
+    'aria-label': label || placeholder,
+    onChange: e => onChange(e.target.value),
+    onKeyDown,
+  }
+  return multiline ? <textarea rows={1} {...common} /> : <input type="text" {...common} />
+}
+
+function Bullets({ bullets, onChange, disabled }) {
+  const refs = useRef({})
+  const [focusKey, setFocusKey] = useState(null)
+  useEffect(() => {
+    if (focusKey && refs.current[focusKey]) {
+      refs.current[focusKey].focus()
+      setFocusKey(null)
+    }
+  }, [focusKey, bullets])
+
+  const update = (key, text) => onChange(bullets.map(b => (b._key === key ? { ...b, text } : b)))
+  const insertAfter = key => {
+    const index = bullets.findIndex(b => b._key === key)
+    const bullet = emptyBullet()
+    onChange([...bullets.slice(0, index + 1), bullet, ...bullets.slice(index + 1)])
+    setFocusKey(bullet._key)
+  }
+  const remove = key => {
+    const index = bullets.findIndex(b => b._key === key)
+    const next = bullets.filter(b => b._key !== key)
+    onChange(next)
+    const previous = next[Math.max(0, index - 1)]
+    if (previous) setFocusKey(previous._key)
+  }
+
+  return (
+    <div className="cvb-bullets">
+      <SortableList items={bullets} onReorder={onChange} disabled={disabled}>
+        {bullets.map(bullet => (
+          <SortableBlock key={bullet._key} id={bullet._key} className="cvb-bullet" disabled={disabled}
+            handleLabel="Déplacer la puce" onRemove={() => remove(bullet._key)} removeLabel="Supprimer la puce">
+            <span className="cvb-dot" aria-hidden="true">•</span>
+            <Inline
+              multiline
+              value={bullet.text}
+              disabled={disabled}
+              placeholder="Une réalisation, une mission…"
+              label="Puce"
+              inputRef={el => { refs.current[bullet._key] = el }}
+              onChange={text => update(bullet._key, text)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); insertAfter(bullet._key) }
+                if (e.key === 'Backspace' && !bullet.text) { e.preventDefault(); remove(bullet._key) }
+              }}
+            />
+          </SortableBlock>
+        ))}
+      </SortableList>
+      <button type="button" className="cvb-add cvb-add--small" disabled={disabled}
+        onClick={() => onChange([...bullets, emptyBullet()])}>
+        <Plus /> Puce
+      </button>
+    </div>
+  )
+}
+
+function ExperienceBlock({ item, patch, disabled }) {
+  return (
+    <>
+      <Inline className="cvb-item-title" value={item.title} disabled={disabled} placeholder="Intitulé du poste" onChange={title => patch({ title })} />
+      <div className="cvb-item-meta">
+        <Inline value={item.organization} disabled={disabled} placeholder="Structure" onChange={organization => patch({ organization })} />
+        <span aria-hidden="true">·</span>
+        <Inline className="cvb-period" value={item.period} disabled={disabled} placeholder="2026-01 – Aujourd’hui" label="Période" onChange={period => patch({ period })} />
+      </div>
+      <Bullets bullets={item.bullets} disabled={disabled} onChange={bullets => patch({ bullets })} />
+      <Inline className="cvb-links" multiline value={item.linksText} disabled={disabled} placeholder="Liens (un par ligne, facultatif)" label="Liens" onChange={linksText => patch({ linksText })} />
+    </>
+  )
+}
+
+function ProjectBlock({ item, patch, disabled }) {
+  return (
+    <>
+      <Inline className="cvb-item-title" value={item.title} disabled={disabled} placeholder="Titre du projet" onChange={title => patch({ title })} />
+      <Inline multiline value={item.description} disabled={disabled} placeholder="Description" onChange={description => patch({ description })} />
+      <Inline className="cvb-tech" value={item.technologiesText} disabled={disabled} placeholder="Technologies, séparées par des virgules" label="Technologies" onChange={technologiesText => patch({ technologiesText })} />
+      <Inline className="cvb-links" multiline value={item.linksText} disabled={disabled} placeholder="Liens (un par ligne, facultatif)" label="Liens" onChange={linksText => patch({ linksText })} />
+    </>
+  )
+}
+
+function SkillBlock({ item, patch, disabled }) {
+  return (
+    <>
+      <Inline className="cvb-skill-title" value={item.title} disabled={disabled} placeholder="Groupe de compétences" onChange={title => patch({ title })} />
+      <Inline multiline value={item.itemsText} disabled={disabled} placeholder="Compétences, séparées par des virgules" label="Compétences" onChange={itemsText => patch({ itemsText })} />
+    </>
+  )
+}
+
+function EducationBlock({ item, patch, disabled }) {
+  return (
+    <>
+      <div className="cvb-edu-line">
+        <Inline className="cvb-year" value={item.year} disabled={disabled} placeholder="Année" onChange={year => patch({ year })} />
+        <Inline className="cvb-item-title" value={item.title} disabled={disabled} placeholder="Intitulé du diplôme" onChange={title => patch({ title })} />
+      </div>
+      <div className="cvb-item-meta">
+        <Inline value={item.level} disabled={disabled} placeholder="Niveau" onChange={level => patch({ level })} />
+        <span aria-hidden="true">·</span>
+        <Inline value={item.school} disabled={disabled} placeholder="Établissement" onChange={school => patch({ school })} />
+      </div>
+      <Inline className="cvb-status" value={item.status} disabled={disabled} placeholder="Statut (ex. VAE en cours) — vide = rien" label="Statut" onChange={status => patch({ status })} />
+    </>
+  )
+}
+
+const BLOCKS = {
+  experiences: { Component: ExperienceBlock, noun: 'l’expérience', add: 'Expérience' },
+  projects: { Component: ProjectBlock, noun: 'le projet', add: 'Projet' },
+  skills: { Component: SkillBlock, noun: 'le groupe', add: 'Groupe' },
+  education: { Component: EducationBlock, noun: 'le diplôme', add: 'Diplôme' },
+}
+
+function MainSection({ name, board, setList, disabled }) {
+  const items = board[name]
+  const { Component, noun, add } = BLOCKS[name]
+  const isEmpty = items.length === 0
+  return (
+    <>
+      <div className="cvb-section-head">
+        <h3 className="cvb-section-title">{SECTION_LABELS[name]}</h3>
+        <button type="button" className="cvb-add" disabled={disabled} onClick={() => setList(name, [...items, ITEM_FACTORIES[name]()])}>
+          <Plus /> {add}
+        </button>
+      </div>
+      {isEmpty && <p className="cvb-empty">Rubrique vide : elle n’apparaîtra pas sur le CV.</p>}
+      <SortableList items={items} onReorder={list => setList(name, list)} disabled={disabled}>
+        {items.map((item, index) => (
+          <SortableBlock key={item._key} id={item._key} className="cvb-item" disabled={disabled}
+            handleLabel={`Déplacer ${noun}`} removeLabel={`Supprimer ${noun}`}
+            onRemove={() => setList(name, items.filter((_, i) => i !== index))}>
+            <Component item={item} disabled={disabled}
+              patch={p => setList(name, items.map((it, i) => (i === index ? { ...it, ...p } : it)))} />
+          </SortableBlock>
+        ))}
+      </SortableList>
+    </>
+  )
+}
+
+function SideField({ title, children }) {
+  return (
+    <div className="cvb-side-block">
+      <h3 className="cvb-side-title">{title}</h3>
+      {children}
+    </div>
   )
 }
 
 export default function CvEditor({ id, cvStatus, locked, onSaved }) {
   const [open, setOpen] = useState(false)
-  const [form, setForm] = useState(null)
+  const [board, setBoard] = useState(null)
   const [meta, setMeta] = useState({ edited: false, warnings: [] })
-  const [state, setState] = useState({ loading: false, saving: false, error: null, saved: false })
+  const [state, setState] = useState({ loading: false, saving: false, error: null, saved: false, dirty: false })
+  const sensors = useDndSensors()
   const status = cvStatus?.status
   const hasGenerated = Boolean(cvStatus?.files?.['cv_content.json'])
   const edited = status === 'edited'
 
   useEffect(() => {
-    if (!open || form) return
-    setState(prev => ({ ...prev, loading: true, error: null }))
+    if (!open || board) return
+    queueMicrotask(() => setState(prev => ({ ...prev, loading: true, error: null })))
     fetch(`/api/applications/${id}/cv/edit`)
       .then(async res => {
         const payload = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
-        setForm(toForm(payload.cv, payload.online_work_effective))
+        setBoard(toBoard(payload.cv, payload.online_work_effective))
         setMeta({ edited: payload.edited, warnings: payload.warnings || [] })
-        setState(prev => ({ ...prev, loading: false }))
+        setState(prev => ({ ...prev, loading: false, dirty: false }))
       })
       .catch(err => setState(prev => ({ ...prev, loading: false, error: err.message })))
-  }, [open, form, id])
+  }, [open, board, id])
 
   // Une régénération ou un retrait change la base : on relira au prochain affichage.
-  useEffect(() => { setForm(null) }, [id, cvStatus?.generation?.completed_at])
+  useEffect(() => { queueMicrotask(() => setBoard(null)) }, [id, cvStatus?.generation?.completed_at])
 
   if (!hasGenerated && !edited) return null
 
   const disabled = locked || state.saving || state.loading
-  const set = patch => { setForm(prev => ({ ...prev, ...patch })); setState(prev => ({ ...prev, saved: false })) }
+  const set = patch => {
+    setBoard(prev => ({ ...prev, ...patch }))
+    setState(prev => ({ ...prev, saved: false, dirty: true }))
+  }
   const setList = (key, list) => set({ [key]: list })
 
   const save = async () => {
@@ -78,12 +335,12 @@ export default function CvEditor({ id, cvStatus, locked, onSaved }) {
       const res = await fetch(`/api/applications/${id}/cv/edit`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cv: fromForm(form) }),
+        body: JSON.stringify({ cv: fromBoard(board) }),
       })
       const payload = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
       setMeta({ edited: true, warnings: payload.warnings || [] })
-      setState(prev => ({ ...prev, saving: false, saved: true }))
+      setState(prev => ({ ...prev, saving: false, saved: true, dirty: false }))
       onSaved?.(id, payload)
     } catch (err) {
       setState(prev => ({ ...prev, saving: false, error: err.message || 'Enregistrement impossible.' }))
@@ -97,14 +354,19 @@ export default function CvEditor({ id, cvStatus, locked, onSaved }) {
       const res = await fetch(`/api/applications/${id}/cv/edit`, { method: 'DELETE' })
       const payload = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
-      setForm(null)
+      setBoard(null)
       setMeta({ edited: false, warnings: [] })
-      setState(prev => ({ ...prev, saving: false }))
+      setState(prev => ({ ...prev, saving: false, dirty: false }))
       onSaved?.(id, payload)
     } catch (err) {
       setState(prev => ({ ...prev, saving: false, error: err.message || 'Retrait impossible.' }))
     }
   }
+
+  const contact = (key, label, placeholder) => (
+    <Inline value={board.contact[key]} disabled={disabled} placeholder={placeholder} label={label}
+      onChange={value => set({ contact: { ...board.contact, [key]: value } })} />
+  )
 
   return (
     <details className="consignes-details cv-editor" open={open || undefined} onToggle={e => setOpen(e.currentTarget.open)}>
@@ -113,114 +375,79 @@ export default function CvEditor({ id, cvStatus, locked, onSaved }) {
       </summary>
       <div className="consignes-editor">
         <p className="approval-note">
-          Tout est modifiable, y compris une expérience absente de ton profil. Ta version est mise en page sans IA
-          et remplace le CV généré à l’envoi. Régénérer le CV met ta version de côté.
-          {edited && <> <a href={`/api/applications/${id}/cv/download/cv_edit.pdf`}>Voir ta version (PDF)</a></>}
+          Clique sur un texte pour le modifier. Attrape la poignée <GripVertical className="cvb-inline-icon" /> pour
+          déplacer une rubrique, un bloc ou une puce. Entrée ajoute une puce, Retour arrière sur une puce vide la supprime.
+          Ta version est mise en page sans IA et remplace le CV généré à l’envoi.
         </p>
         {state.loading && <p className="approval-note">Chargement…</p>}
-        {form && (
+        {board && (
           <>
-            <Field label="Titre du CV" value={form.title} disabled={disabled} onChange={title => set({ title })} />
-            <Field label="Accroche" rows={3} value={form.profile} disabled={disabled} onChange={profile => set({ profile })} />
-
-            <h4>Coordonnées</h4>
-            <Field label="Email" value={form.contact.email} disabled={disabled} onChange={email => set({ contact: { ...form.contact, email } })} />
-            <Field label="Téléphone" value={form.contact.phone} disabled={disabled} onChange={phone => set({ contact: { ...form.contact, phone } })} />
-            <Field label="Ville / zone" value={form.location} disabled={disabled} onChange={location => set({ location })} />
-            <Field label="Site / portfolio (https://…, vide = aucun)" value={form.contact.portfolio} disabled={disabled} onChange={portfolio => set({ contact: { ...form.contact, portfolio } })} />
-            <Field label="GitHub (https://…, vide = aucun)" value={form.contact.github} disabled={disabled} onChange={github => set({ contact: { ...form.contact, github } })} />
-            <Field label="LinkedIn (https://…, vide = aucun)" value={form.contact.linkedin} disabled={disabled} onChange={linkedin => set({ contact: { ...form.contact, linkedin } })} />
-
-            <h4>Expériences</h4>
-            {form.experiences.map((exp, index) => (
-              <fieldset key={index} className="cv-edit-item">
-                <legend>
-                  {exp.title || exp.organization || `Expérience ${index + 1}`}
-                  <ListControls index={index} length={form.experiences.length} disabled={disabled} label="l’expérience"
-                    onMove={(i, d) => setList('experiences', moveItem(form.experiences, i, d))}
-                    onRemove={i => setList('experiences', removeItem(form.experiences, i))} />
-                </legend>
-                <Field label="Intitulé" value={exp.title} disabled={disabled} onChange={title => setList('experiences', replaceItem(form.experiences, index, { title }))} />
-                <Field label="Structure" value={exp.organization} disabled={disabled} onChange={organization => setList('experiences', replaceItem(form.experiences, index, { organization }))} />
-                <Field label="Période" value={exp.period} disabled={disabled} placeholder="2026-01 – Aujourd’hui" onChange={period => setList('experiences', replaceItem(form.experiences, index, { period }))} />
-                <Field label="Puces (une par ligne)" rows={4} value={exp.bulletsText} disabled={disabled} onChange={bulletsText => setList('experiences', replaceItem(form.experiences, index, { bulletsText }))} />
-                <Field label="Liens (un par ligne)" rows={2} value={exp.linksText} disabled={disabled} onChange={linksText => setList('experiences', replaceItem(form.experiences, index, { linksText }))} />
-              </fieldset>
-            ))}
-            <button type="button" className="copy-btn" disabled={disabled} onClick={() => setList('experiences', [...form.experiences, emptyExperienceForm()])}><Plus /> Ajouter une expérience</button>
-
-            <h4>Projets personnels</h4>
-            {form.projects.map((project, index) => (
-              <fieldset key={index} className="cv-edit-item">
-                <legend>
-                  {project.title || `Projet ${index + 1}`}
-                  <ListControls index={index} length={form.projects.length} disabled={disabled} label="le projet"
-                    onMove={(i, d) => setList('projects', moveItem(form.projects, i, d))}
-                    onRemove={i => setList('projects', removeItem(form.projects, i))} />
-                </legend>
-                <Field label="Titre" value={project.title} disabled={disabled} onChange={title => setList('projects', replaceItem(form.projects, index, { title }))} />
-                <Field label="Description" rows={3} value={project.description} disabled={disabled} onChange={description => setList('projects', replaceItem(form.projects, index, { description }))} />
-                <Field label="Technologies (séparées par des virgules, vide = aucune)" value={project.technologiesText} disabled={disabled} onChange={technologiesText => setList('projects', replaceItem(form.projects, index, { technologiesText }))} />
-                <Field label="Liens (un par ligne)" rows={2} value={project.linksText} disabled={disabled} onChange={linksText => setList('projects', replaceItem(form.projects, index, { linksText }))} />
-              </fieldset>
-            ))}
-            <button type="button" className="copy-btn" disabled={disabled} onClick={() => setList('projects', [...form.projects, emptyProjectForm()])}><Plus /> Ajouter un projet</button>
-
-            <h4>Compétences</h4>
-            {form.skills.map((group, index) => (
-              <fieldset key={index} className="cv-edit-item">
-                <legend>
-                  {group.title || `Groupe ${index + 1}`}
-                  <ListControls index={index} length={form.skills.length} disabled={disabled} label="le groupe"
-                    onMove={(i, d) => setList('skills', moveItem(form.skills, i, d))}
-                    onRemove={i => setList('skills', removeItem(form.skills, i))} />
-                </legend>
-                <Field label="Titre du groupe" value={group.title} disabled={disabled} onChange={title => setList('skills', replaceItem(form.skills, index, { title }))} />
-                <Field label="Compétences (séparées par des virgules)" value={group.itemsText} disabled={disabled} onChange={itemsText => setList('skills', replaceItem(form.skills, index, { itemsText }))} />
-              </fieldset>
-            ))}
-            <button type="button" className="copy-btn" disabled={disabled} onClick={() => setList('skills', [...form.skills, emptySkillForm()])}><Plus /> Ajouter un groupe</button>
-
-            <h4>Formation</h4>
-            {form.education.map((edu, index) => (
-              <fieldset key={index} className="cv-edit-item">
-                <legend>
-                  {edu.title || `Diplôme ${index + 1}`}
-                  <ListControls index={index} length={form.education.length} disabled={disabled} label="le diplôme"
-                    onMove={(i, d) => setList('education', moveItem(form.education, i, d))}
-                    onRemove={i => setList('education', removeItem(form.education, i))} />
-                </legend>
-                <Field label="Année" value={edu.year} disabled={disabled} onChange={year => setList('education', replaceItem(form.education, index, { year }))} />
-                <Field label="Intitulé" value={edu.title} disabled={disabled} onChange={title => setList('education', replaceItem(form.education, index, { title }))} />
-                <Field label="Niveau" value={edu.level} disabled={disabled} onChange={level => setList('education', replaceItem(form.education, index, { level }))} />
-                <Field label="Établissement" value={edu.school} disabled={disabled} onChange={school => setList('education', replaceItem(form.education, index, { school }))} />
-                <Field label="Statut (vide = rien d’affiché)" value={edu.status} disabled={disabled} onChange={status => setList('education', replaceItem(form.education, index, { status }))} />
-              </fieldset>
-            ))}
-            <button type="button" className="copy-btn" disabled={disabled} onClick={() => setList('education', [...form.education, emptyEducationForm()])}><Plus /> Ajouter un diplôme</button>
-
-            <h4>Réalisations en ligne</h4>
-            <Field label="Une par ligne : libellé | https://… (vide = rubrique masquée)" rows={3} value={form.onlineWorkText} disabled={disabled}
-              placeholder="mediateur.varascundo.com | https://mediateur.varascundo.com/"
-              onChange={onlineWorkText => set({ onlineWorkText, onlineWorkCustom: true })} />
-            <p className="approval-note">
-              {form.onlineWorkCustom
-                ? 'Liste choisie par toi : c’est elle qui s’affiche.'
-                : 'Liste calculée automatiquement à partir de tes expériences et projets. Modifie-la pour la fixer.'}
-            </p>
-
-            <h4>Langues</h4>
-            <Field label="Une par ligne : langue | niveau" rows={2} value={form.languagesText} disabled={disabled}
-              placeholder="Français | courant"
-              onChange={languagesText => set({ languagesText })} />
-
-            <div className="cv-edit-actions">
-              <button type="button" className="copy-btn" disabled={disabled} onClick={save}>
-                {state.saving ? 'Enregistrement…' : 'Enregistrer ma version'}
+            <div className="cvb-toolbar">
+              <button type="button" className="prepare-btn" disabled={disabled || !state.dirty} onClick={save}>
+                {state.saving ? 'Enregistrement…' : state.dirty ? 'Enregistrer ma version' : (meta.edited || edited) ? 'Enregistré' : 'Aucune modification'}
               </button>
               {(meta.edited || edited) && (
-                <button type="button" className="annuler-btn" disabled={disabled} onClick={reset}>Revenir au CV généré</button>
+                <>
+                  <a className="copy-btn" href={`/api/applications/${id}/cv/download/cv_edit.pdf`} target="_blank" rel="noreferrer">
+                    <FileDown /> Voir le PDF de ta version
+                  </a>
+                  <button type="button" className="annuler-btn" disabled={disabled} onClick={reset}>Revenir au CV généré</button>
+                </>
               )}
+              {state.dirty && <span className="cvb-dirty">Modifications non enregistrées</span>}
+            </div>
+
+            <div className="cvb-page">
+              <aside className="cvb-side">
+                <SideField title="Profil">
+                  <Inline multiline value={board.profile} disabled={disabled} placeholder="Ton accroche en quelques lignes" label="Accroche" onChange={profile => set({ profile })} />
+                </SideField>
+                <SideField title="Contact">
+                  {contact('email', 'Email', 'email')}
+                  {contact('phone', 'Téléphone', 'téléphone')}
+                  <Inline value={board.location} disabled={disabled} placeholder="ville / zone" label="Ville" onChange={location => set({ location })} />
+                  {contact('portfolio', 'Site / portfolio', 'site (https://…) — vide = aucun')}
+                  {contact('github', 'GitHub', 'GitHub (https://…) — vide = aucun')}
+                  {contact('linkedin', 'LinkedIn', 'LinkedIn (https://…) — vide = aucun')}
+                </SideField>
+                <SideField title="Réalisations en ligne">
+                  <Inline multiline value={board.onlineWorkText} disabled={disabled}
+                    placeholder="libellé | https://… (une par ligne, vide = rubrique masquée)" label="Réalisations en ligne"
+                    onChange={onlineWorkText => set({ onlineWorkText, onlineWorkCustom: true })} />
+                  <p className="cvb-hint">
+                    {board.onlineWorkCustom ? 'Liste choisie par toi.' : 'Calculée automatiquement — modifie-la pour la fixer.'}
+                  </p>
+                </SideField>
+                <SideField title="Langues">
+                  <Inline multiline value={board.languagesText} disabled={disabled} placeholder="Français | courant (une par ligne)" label="Langues"
+                    onChange={languagesText => set({ languagesText })} />
+                </SideField>
+              </aside>
+
+              <main className="cvb-main">
+                <header className="cvb-header">
+                  <div className="cvb-name">Facundo Varas</div>
+                  <Inline className="cvb-title" value={board.title} disabled={disabled} placeholder="Titre du CV" label="Titre du CV" onChange={title => set({ title })} />
+                </header>
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={pointerFirst}
+                  onDragEnd={({ active, over }) => {
+                    if (!disabled && over && active.id !== over.id) {
+                      set({ mainOrder: moveByKey(board.mainOrder, active.id, over.id, name => name) })
+                    }
+                  }}
+                >
+                  <SortableContext items={board.mainOrder} strategy={verticalListSortingStrategy} disabled={disabled}>
+                    {board.mainOrder.map(name => (
+                      <SortableBlock key={name} id={name} className="cvb-section" disabled={disabled}
+                        handleLabel={`Déplacer la rubrique ${SECTION_LABELS[name]}`}>
+                        <MainSection name={name} board={board} setList={setList} disabled={disabled} />
+                      </SortableBlock>
+                    ))}
+                  </SortableContext>
+                </DndContext>
+              </main>
             </div>
           </>
         )}
