@@ -2485,3 +2485,6 @@ h3 > .lucide {
   .cvb-main { padding: 16px 10px; }
   .cvb-handle, .cvb-remove { opacity: 0.8; }
 }
+.presentation-attachments { border: 1px solid rgba(120, 132, 129, 0.35); border-radius: 8px; padding: 8px 12px 10px;
+  display: flex; flex-direction: column; gap: 8px; margin: 4px 0; }
+.presentation-attachments legend { font-weight: 600; padding: 0 4px; }

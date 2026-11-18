@@ -7,7 +7,12 @@ par dossier. Ils vivent dans ``job.json`` :
 
 - ``show_website`` (bool) : afficher une ligne « Portfolio : … » ;
 - ``website_url`` (str) : le site affiché quand la case est cochée ;
-- ``display_title`` (str) : le titre sous le nom dans la signature du mail HTML.
+- ``display_title`` (str) : le titre sous le nom dans la signature du mail HTML ;
+- ``show_attachments`` (bool) : afficher l'encadré « CV joint / Lettre jointe »
+  du mail (défaut : oui) ;
+- ``cv_label`` (str) : le libellé après « CV joint : » (vide = garder l'actuel) ;
+- ``letter_label`` (str) : libellé de la ligne « Lettre de motivation jointe : »
+  (vide = pas de ligne).
 
 Sans choix explicite, la famille du poste décide (comportement d'avant pour
 le développement, rien pour la médiation, l'accueil, la logistique…).
@@ -42,6 +47,7 @@ WEBSITE_CHOICES = (
 )
 TITLE_MAX = 120
 URL_MAX = 200
+LABEL_MAX = 120
 
 #: Familles où le site apparaît par défaut (comportement historique).
 _WEBSITE_FAMILIES = frozenset({"developpement", "webmaster", "formation", "autre"})
@@ -86,7 +92,11 @@ def presentation_for(job: Dict[str, Any]) -> Dict[str, Any]:
     show = job["show_website"] if explicit else family in _WEBSITE_FAMILIES
     url = clean_url(job.get("website_url")) or DEFAULT_WEBSITE
     title = str(job.get("display_title") or "").strip()[:TITLE_MAX]
+    attachments = job.get("show_attachments")
     return {
+        "show_attachments": attachments if isinstance(attachments, bool) else True,
+        "cv_label": str(job.get("cv_label") or "").strip()[:LABEL_MAX],
+        "letter_label": str(job.get("letter_label") or "").strip()[:LABEL_MAX],
         "show_website": bool(show),
         "website_url": url,
         "display_title": title or _DEFAULT_TITLES.get(family, _DEFAULT_TITLES["autre"]),
@@ -139,6 +149,66 @@ def apply_website_line(text: str, presentation: Dict[str, Any]) -> str:
                     out.pop()
                 out.append(line_text)
         result = "\n".join(out)
+    return result + ("\n" if trailing_newline and not result.endswith("\n") else "")
+
+
+_CV_LINE_RE = re.compile(r"^\s*cv joint\s*:?", re.I)
+_LETTER_LINE_RE = re.compile(r"^\s*lettre (de motivation )?jointe\s*:?", re.I)
+_CLOSING_RE = re.compile(r"disposition|échange|ravirai de vous", re.I)
+
+
+def attachment_labels(text: str) -> Dict[str, str]:
+    """Libellés actuels des lignes « CV joint » et « Lettre jointe » du mail."""
+    found = {"cv": "", "letter": ""}
+    for line in (text or "").splitlines():
+        value = line.split(":", 1)[1].strip() if ":" in line else ""
+        if _CV_LINE_RE.match(line) and not found["cv"]:
+            found["cv"] = value
+        elif _LETTER_LINE_RE.match(line) and not found["letter"]:
+            found["letter"] = value or "Lettre de motivation"
+    return found
+
+
+def apply_attachment_lines(text: str, presentation: Dict[str, Any]) -> str:
+    """Encadré des pièces jointes du mail : lignes « CV joint » et « Lettre jointe ».
+
+    Masqué : les deux lignes disparaissent. Affiché : la ligne CV prend le
+    libellé choisi (sinon garde le sien) ; la ligne lettre n'existe que si un
+    libellé est donné. Une ligne ajoutée se place avant « Portfolio », sinon
+    avant la phrase de clôture. Le reste du mail n'est pas touché.
+    """
+    trailing_newline = (text or "").endswith("\n")
+    lines = (text or "").splitlines()
+    current = attachment_labels(text)
+    kept = [line for line in lines if not (_CV_LINE_RE.match(line) or _LETTER_LINE_RE.match(line))]
+    if presentation.get("show_attachments", True):
+        wanted = []
+        cv_label = presentation.get("cv_label") or current["cv"]
+        if cv_label:
+            wanted.append(f"CV joint : {cv_label}")
+        if presentation.get("letter_label"):
+            wanted.append(f"Lettre jointe : {presentation['letter_label']}")
+        if wanted:
+            # Là où était l'ancienne ligne CV, sinon avant Portfolio, sinon
+            # comme bloc avant la phrase de clôture.
+            old_index = next((i for i, line in enumerate(lines) if _CV_LINE_RE.match(line) or _LETTER_LINE_RE.match(line)), None)
+            if old_index is not None:
+                position = len([line for line in lines[:old_index] if not (_CV_LINE_RE.match(line) or _LETTER_LINE_RE.match(line))])
+                kept[position:position] = wanted
+            else:
+                portfolio = next((i for i, line in enumerate(kept) if _PORTFOLIO_LINE_RE.match(line)), None)
+                if portfolio is not None:
+                    kept[portfolio:portfolio] = wanted
+                else:
+                    closing = next((i for i, line in enumerate(kept) if _CLOSING_RE.search(line)), len(kept))
+                    kept[closing:closing] = [*wanted, ""]
+    # Pas de double ligne vide laissée par un retrait.
+    cleaned = []
+    for line in kept:
+        if not line.strip() and cleaned and not cleaned[-1].strip():
+            continue
+        cleaned.append(line)
+    result = "\n".join(cleaned)
     return result + ("\n" if trailing_newline and not result.endswith("\n") else "")
 
 
@@ -196,6 +266,17 @@ def update_dossier_presentation(directory: str | Path, changes: Dict[str, Any]) 
             job["website_url"] = url
         else:
             job.pop("website_url", None)
+    if "show_attachments" in changes:
+        if not isinstance(changes["show_attachments"], bool):
+            raise ValueError("show_attachments doit valoir true ou false.")
+        job["show_attachments"] = changes["show_attachments"]
+    for key in ("cv_label", "letter_label"):
+        if key in changes:
+            label = re.sub(r"[\r\n]+", " ", str(changes.get(key) or "")).strip()[:LABEL_MAX]
+            if label:
+                job[key] = label
+            else:
+                job.pop(key, None)
     if "display_title" in changes:
         title = str(changes.get("display_title") or "").strip()[:TITLE_MAX]
         if title:
@@ -223,7 +304,7 @@ def update_dossier_presentation(directory: str | Path, changes: Dict[str, Any]) 
     mail_path = directory / "mail_candidature.md"
     if mail_path.is_file():
         mail = mail_path.read_text(encoding="utf-8")
-        updated_mail = apply_website_line(mail, presentation)
+        updated_mail = apply_attachment_lines(apply_website_line(mail, presentation), presentation)
         if updated_mail != mail:
             mail_path.write_text(updated_mail, encoding="utf-8")
 
@@ -241,7 +322,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args[1] == "--show":
             job = _read_json(directory / "job.json")
-            result = {"ok": True, "presentation": presentation_for(job)}
+            mail_path = directory / "mail_candidature.md"
+            mail = mail_path.read_text(encoding="utf-8") if mail_path.is_file() else ""
+            result = {"ok": True, "presentation": presentation_for(job), "attachments_current": attachment_labels(mail)}
         else:
             changes = json.loads(args[2] if len(args) > 2 else "{}")
             if not isinstance(changes, dict):

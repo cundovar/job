@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from utils.presentation import presentation_for
+from utils.presentation import apply_attachment_lines, presentation_for
 
 
 MAIL_NOTE_MAX = 1000
@@ -93,7 +93,7 @@ def generate_application_email(
     note = _job_value(job, "mail_personal_note")[:MAIL_NOTE_MAX]
     note_block = [note, ""] if note else []
 
-    return "\n".join([
+    return apply_attachment_lines("\n".join([
         objet,
         "",
         "Bonjour,",
@@ -111,4 +111,4 @@ def generate_application_email(
         "Cordialement,",
         str(candidate_name),
         "",
-    ])
+    ]), presentation)
