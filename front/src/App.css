@@ -2505,3 +2505,13 @@ h3 > .lucide {
 .cvb-catalog-meta { color: #2F6F62; font-size: 11px; }
 .cvb-catalog-preview { color: #58615E; font-size: 11px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .cvb-catalog-plus { position: absolute; top: 6px; right: 6px; width: 14px; height: 14px; color: #2F6F62; }
+.cvb-skill-picker-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; font-size: 12px; }
+.cvb-skill-picker-bar label { display: inline-flex; gap: 6px; align-items: center; }
+.cvb-skill-picker-bar select, .cvb-skill-picker-bar input {
+  font: inherit; font-size: 12px; padding: 3px 6px; border: 1px solid #D6DFDC; border-radius: 6px; background: #fff; color: #2F3634; }
+.cvb-skill-chips { display: flex; flex-wrap: wrap; gap: 5px; max-height: 220px; overflow-y: auto; padding: 2px; }
+.cvb-skill-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px dashed #b9c6c2; background: #F7FAF9;
+  color: #1D2321; border-radius: 999px; padding: 2px 9px; font: inherit; font-size: 11.5px; cursor: pointer; }
+.cvb-skill-chip svg { width: 11px; height: 11px; color: #2F6F62; }
+.cvb-skill-chip:hover:not(:disabled) { border-style: solid; border-color: #2F6F62; background: #EEF3F1; }
+.cvb-skill-level { color: #58615E; font-size: 10px; font-style: italic; }

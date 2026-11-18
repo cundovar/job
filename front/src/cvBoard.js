@@ -160,6 +160,22 @@ export function availableFromCatalog(catalog, board, section) {
   })
 }
 
+// Compétences du profil absentes de tous les groupes de la page.
+export function availableSkills(catalog, board) {
+  const used = new Set(board.skills.flatMap(group => csvToList(group.itemsText)).map(normTitle))
+  return ((catalog || {}).skills || []).filter(skill => skill.name && !used.has(normTitle(skill.name)))
+}
+
+/** Ajoute une compétence au groupe d'index groupIndex (-1 : nouveau groupe). */
+export function addSkillToBoard(skills, groupIndex, name, newGroupTitle = 'Autres compétences') {
+  if (groupIndex < 0 || groupIndex >= skills.length) {
+    return [...skills, { _key: newKey('skill'), title: newGroupTitle, itemsText: name }]
+  }
+  return skills.map((group, i) => (i === groupIndex
+    ? { ...group, itemsText: [...csvToList(group.itemsText), name].join(', ') }
+    : group))
+}
+
 /** Une entrée du profil devient un bloc de la page, modifiable comme les autres. */
 export function catalogEntryToItem(section, entry) {
   return toBoard({ [section]: [entry] })[section][0]

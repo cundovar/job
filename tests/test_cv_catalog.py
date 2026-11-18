@@ -11,6 +11,7 @@ MASTER = {
         {"year": 2012, "title": "CAP Petite Enfance", "school": "Cours du soir"},
         {"year": 2026, "title": "Titre Professionnel CDA", "level": "niveau 6", "status": "VAE en cours"},
     ]},
+    "skills_confidence": {"Animation d'ateliers": "pratique", "Python": "bases"},
     "project_catalog": {
         "mediateur": {"title": "Mediateur", "year": 2026, "description": "Site de formation.",
                       "technologies": ["Vue.js"], "links": ["https://mediateur.varascundo.com/"]},
@@ -29,10 +30,17 @@ def test_catalogue_au_format_du_cv_sans_les_experiences_retirees():
 
 
 def test_catalogue_vide_sans_profil():
-    assert catalog_entries({}) == {"experiences": [], "projects": [], "education": []}
+    assert catalog_entries({}) == {"experiences": [], "projects": [], "education": [], "skills": []}
 
 
 def test_diplomes_proposes_avec_leur_statut():
     education = catalog_entries(MASTER)["education"]
     assert education[0] == {"year": "2012", "title": "CAP Petite Enfance", "school": "Cours du soir"}
     assert education[1]["status"] == "VAE en cours"
+
+
+def test_competences_proposees_avec_leur_niveau():
+    assert catalog_entries(MASTER)["skills"] == [
+        {"name": "Animation d'ateliers", "level": "pratique"},
+        {"name": "Python", "level": "bases"},
+    ]
