@@ -168,3 +168,49 @@ def test_apercu_identique_au_html_envoye(tmp_path, monkeypatch):
     subject, body = _mail_parts(d / "mail_candidature.md")
     assert result["html"] == dossier_mail_html(d, subject, body, sender_email="contact@varascundo.com")
     assert "Animateur – accueil des publics" in result["html"]
+
+
+# ── Encadré « pièces jointes » du mail ──────────────────────────────────────
+
+from utils.presentation import apply_attachment_lines, attachment_labels  # noqa: E402
+
+MAIL = (
+    "Objet : Candidature\n\nBonjour,\n\nJe postule.\n\n"
+    "CV joint : Formateur / Accompagnement numérique\n\n"
+    "Je me tiens à votre disposition pour un échange.\n\nCordialement,\nFacundo Varas\n"
+)
+
+
+def test_encadre_masque_retire_les_lignes_et_l_html_n_a_plus_d_encadre():
+    out = apply_attachment_lines(MAIL, {"show_attachments": False})
+    assert "CV joint" not in out and "\n\n\n" not in out
+    html = render_mail_html("Objet", out.split("\n", 1)[1], sender_email="x@y.fr")
+    assert "CV joint" not in html
+    assert "border-left:3px solid #0F6E66" not in html  # encadré absent
+
+
+def test_libelle_du_cv_modifie_et_lettre_ajoutee():
+    out = apply_attachment_lines(MAIL, {"show_attachments": True, "cv_label": "CV – Facundo Varas", "letter_label": "Lettre de motivation"})
+    assert "CV joint : CV – Facundo Varas" in out
+    assert out.index("CV joint") < out.index("Lettre jointe : Lettre de motivation") < out.index("Je me tiens")
+    html = render_mail_html("Objet", out.split("\n", 1)[1], sender_email="x@y.fr")
+    assert "CV – Facundo Varas" in html and "Lettre de motivation jointe" in html
+    assert attachment_labels(out) == {"cv": "CV – Facundo Varas", "letter": "Lettre de motivation"}
+
+
+def test_libelle_vide_garde_l_actuel_et_reaffiche():
+    hidden = apply_attachment_lines(MAIL, {"show_attachments": False})
+    assert "CV joint" not in hidden
+    shown = apply_attachment_lines(MAIL, {"show_attachments": True, "cv_label": ""})
+    assert shown == MAIL
+
+
+def test_ligne_ajoutee_avant_la_cloture_si_absente():
+    out = apply_attachment_lines(MAIL.replace("CV joint : Formateur / Accompagnement numérique\n\n", ""),
+                                 {"show_attachments": True, "cv_label": "Mon CV"})
+    assert out.index("CV joint : Mon CV") < out.index("Je me tiens")
+
+
+def test_generation_du_mail_respecte_l_encadre_masque():
+    job = {"title": "Animateur", "job_family": "mediation_sociale", "show_attachments": False}
+    assert "CV joint" not in generate_application_email(job, RECO, {})

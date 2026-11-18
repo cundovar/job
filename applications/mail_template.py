@@ -35,6 +35,7 @@ def parse_mail_body(body: str) -> dict:
     """
     salutation = None
     cv_intitule = None
+    lettre_intitule = None
     portfolio_url = None
     portfolio_label = None
     formule = None
@@ -62,6 +63,9 @@ def parse_mail_body(body: str) -> dict:
             if low.startswith("cv joint"):
                 cv_intitule = escape(line.split(":", 1)[1].strip() if ":" in line else line)
                 continue
+            if low.startswith("lettre jointe") or low.startswith("lettre de motivation jointe"):
+                lettre_intitule = escape(line.split(":", 1)[1].strip() if ":" in line else "Lettre de motivation")
+                continue
             if low.startswith("portfolio"):
                 found = re.search(r"(https?://\S+|[\w.-]+\.[a-z]{2,}[/\w.-]*)", line)
                 if found:
@@ -87,6 +91,7 @@ def parse_mail_body(body: str) -> dict:
         "salutation": escape(salutation) if salutation else None,
         "paragraphes": paragraphes,
         "cv_intitule": cv_intitule,
+        "lettre_intitule": lettre_intitule,
         "portfolio_url": portfolio_url,
         "portfolio_label": portfolio_label,
         "cloture": cloture,
@@ -112,6 +117,7 @@ def render_mail_html(subject: str, body: str, sender_email: str,
         "salutation": zones["salutation"],
         "paragraphes": zones["paragraphes"],
         "cv_intitule": zones["cv_intitule"],
+        "lettre_intitule": zones["lettre_intitule"],
         "portfolio_url": zones["portfolio_url"],
         "portfolio_label": zones["portfolio_label"],
         "cloture": zones["cloture"],
