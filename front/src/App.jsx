@@ -6,7 +6,8 @@ import {
   GraduationCap, LoaderCircle, MapPin, Mail, MessageCircle, Palette, PenLine,
   Rocket, RotateCw, ShieldCheck,
   Search, Send, Server, Snowflake, Sparkles, Star, Sun, Target, Thermometer,
-  TriangleAlert, Wrench,
+  TriangleAlert,
+  Users, Wrench,
 } from 'lucide-react'
 import './App.css'
 import ManualCvView from './ManualCvView'
@@ -3381,7 +3382,11 @@ function App() {
                   className={`tab ${cat === activeCategory ? 'active' : ''}`}
                   onClick={() => setActiveCategory(cat)}
                 >
-                  {cat === 'backend' ? <><Server /> Backend</> :
+                  {cat === 'mediation' ? <><Users /> Médiation numérique</> :
+                   cat === 'animation' ? <><Sparkles /> Animation &amp; accueil</> :
+                   cat === 'formation_ia' ? <><GraduationCap /> Formation &amp; IA</> :
+                   cat === 'web' ? <><Globe /> Web</> :
+                   cat === 'backend' ? <><Server /> Backend</> :
                    cat === 'frontend' ? <><Palette /> Frontend</> :
                    cat === 'webmaster_formateur' ? <><GraduationCap /> Web &amp; Formateur</> :
                    cat === 'nouvelles_portes' ? <><DoorOpen /> Nouvelles Portes</> :

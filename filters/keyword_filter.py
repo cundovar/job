@@ -3,6 +3,7 @@ Keyword filtering for job titles and descriptions.
 """
 from __future__ import annotations
 
+import re
 from typing import Dict, List
 from utils.text import fold
 
@@ -25,6 +26,26 @@ def _red_flags(criteria: Dict) -> List[str]:
     hard_tech = red_flags_cfg.get("hard_exclude_keywords_tech", [])
     combined = [*keywords, *hard, *hard_tech]
     return [_normalize(kw) for kw in combined if isinstance(kw, str) and kw.strip()]
+
+
+def _title_excludes(criteria: Dict) -> List[str]:
+    """Mots qui écartent une offre quand ils sont dans son TITRE (18/11/2026)."""
+    words = criteria.get("red_flags", {}).get("title_exclude_keywords", []) or []
+    return [_normalize(kw) for kw in words if isinstance(kw, str) and kw.strip()]
+
+
+def title_excluded(job: Dict, criteria: Dict) -> str:
+    """Le mot du titre qui écarte l'offre, ou une chaîne vide.
+
+    Comparaison par mots entiers : « responsable » n'attrape pas
+    « irresponsable », « alsh » n'attrape pas un mot plus long.
+    """
+    title = " " + re.sub(r"[^a-z0-9']+", " ", _title(job)) + " "
+    for word in _title_excludes(criteria):
+        token = " " + re.sub(r"[^a-z0-9']+", " ", word).strip() + " "
+        if token.strip() and token in title:
+            return word
+    return ""
 
 
 def _target_keyword_groups(criteria: Dict) -> List[List[str]]:
@@ -53,6 +74,8 @@ def filter_by_keywords(jobs: List[Dict], criteria: Dict) -> List[Dict]:
         title = _title(job)
         # Exclure seulement les red flags (stage, alternance, etc.)
         if any(flag in text for flag in red_flags):
+            continue
+        if title_excluded(job, criteria):
             continue
         if exclude_if and any(kw in text for kw in exclude_if):
             if keep_if and any(kw in text for kw in keep_if):
