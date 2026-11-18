@@ -30,7 +30,8 @@ class EmploiESSScraper(BaseScraper):
     def _search(self, keyword: str) -> str:
         resp = self.session.get(
             self.BASE_URL,
-            params={"m": keyword},
+            # l=12 : Île-de-France (filtre du site, vérifié le 18/11/2026).
+            params={"m": keyword, "l": "12"},
             timeout=self.timeout_seconds,
         )
         resp.raise_for_status()
@@ -40,8 +41,12 @@ class EmploiESSScraper(BaseScraper):
         jobs: List[Dict] = []
         seen = set()
 
+        # Le moteur du site cherche l'expression exacte et contient peu
+        # d'offres : « conseiller numerique » ne renvoie rien, « numérique »
+        # oui. On ajoute donc des mots larges couvrant les quatre axes.
+        broad = ["animateur", "numérique", "accueil", "formateur", "médiation", "centre social", "web"]
         allocations = balanced_keyword_limits(
-            keywords,
+            [*broad, *keywords],
             self.max_jobs,
             self.max_keywords,
         )

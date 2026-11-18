@@ -117,6 +117,9 @@ text_normalization:
 #   B. Animation socioculturelle, ateliers et accueil des publics
 #   C. Web (webmaster, contenu, WordPress) puis développement junior
 #   D. Formation web / numérique / IA et automatisation
+# Les TROIS PREMIERS mots-clés de chaque poste sont ceux envoyés aux sites
+# d'annonces (pipeline.extract_search_keywords) : des termes distincts et
+# productifs, pas des variantes d'orthographe. Les suivants servent au tri.
 target_positions:
   # --- AXE A : médiation et inclusion numérique ---
   - name: "Médiation numérique / inclusion numérique"
@@ -124,11 +127,11 @@ target_positions:
     priority: 1
     keywords:
       - "mediateur numerique"
+      - "conseiller numerique"
+      - "france services"
       - "mediatrice numerique"
       - "mediation numerique"
-      - "conseiller numerique"
       - "conseillere numerique"
-      - "france services"
       - "inclusion numerique"
       - "aidant numerique"
       - "aidants connect"
@@ -150,6 +153,8 @@ target_positions:
     priority: 1
     keywords:
       - "animateur centre social"
+      - "referent famille"
+      - "animateur multimedia"
       - "animatrice centre social"
       - "animateur socioculturel"
       - "animatrice socioculturelle"
@@ -159,12 +164,10 @@ target_positions:
       - "animatrice famille"
       - "animateur familles"
       - "animatrice familles"
-      - "referent famille"
       - "referente famille"
       - "referent familles"
       - "referente familles"
       - "animation collective famille"
-      - "animateur multimedia"
       - "animatrice multimedia"
       - "animateur numerique"
       - "animatrice numerique"
@@ -181,13 +184,13 @@ target_positions:
     priority: 1
     keywords:
       - "agent d'accueil"
-      - "agente d'accueil"
       - "charge d'accueil"
+      - "accueil du public"
+      - "agente d'accueil"
       - "chargee d'accueil"
       - "hote d'accueil"
       - "hotesse d'accueil"
       - "accueil et orientation"
-      - "accueil du public"
       - "accueil des publics"
     score_weight: 70
 
@@ -197,6 +200,7 @@ target_positions:
     priority: 1
     keywords:
       - "webmaster"
+      - "charge de contenu web"
       - "webmestre"
       - "administrateur web"
       - "administratrice web"
@@ -204,7 +208,6 @@ target_positions:
       - "administratrice de site"
       - "gestionnaire de site"
       - "gestionnaire de contenu"
-      - "charge de contenu web"
       - "chargee de contenu web"
       - "charge de contenus web"
       - "redacteur web"
@@ -220,13 +223,13 @@ target_positions:
     priority: 2
     keywords:
       - "integrateur web"
+      - "developpeur wordpress"
+      - "integrateur wordpress"
       - "integratrice web"
       - "integrateur html"
-      - "integrateur wordpress"
       - "integrateur front"
       - "integrateur email"
       - "integrateur emailing"
-      - "developpeur wordpress"
       - "developpeur integrateur"
     score_weight: 68
 
@@ -235,10 +238,11 @@ target_positions:
     priority: 2
     keywords:
       - "developpeur web"
+      - "developpeur php"
+      - "developpeur junior"
       - "developpeuse web"
       - "dev web"
       - "web developer"
-      - "developpeur php"
       - "developpeur symfony"
       - "developpeur fullstack"
       - "developpeur full-stack"
@@ -246,7 +250,6 @@ target_positions:
       - "developpeur frontend"
       - "developpeur react"
       - "developpeur vue"
-      - "developpeur junior"
     score_weight: 62
 
   # --- AXE D : formation et IA ---
@@ -255,12 +258,12 @@ target_positions:
     priority: 1
     keywords:
       - "formateur web"
+      - "formateur ia"
+      - "formateur informatique"
       - "formatrice web"
       - "formateur developpement web"
       - "formateur developpement"
-      - "formateur informatique"
       - "formateur bureautique"
-      - "formateur ia"
       - "formatrice ia"
       - "formateur intelligence artificielle"
       - "formateur outils ia"
@@ -285,10 +288,10 @@ target_positions:
     keywords:
       - "n8n"
       - "automatisation ia"
+      - "agents ia"
       - "automatisation"
       - "workflow automation"
       - "automation"
-      - "agents ia"
       - "agent ia"
       - "low-code"
       - "no-code"
@@ -873,6 +876,12 @@ red_flags:
     - "cheffe de projet"
     - "senior"
     - "tech lead"
+    # Bruit relevé à la revue des sources du 18/11/2026
+    - "ingenieur"
+    - "ingenieure"
+    - "business analyst"
+    - "forward deployed"
+    - "accueil bancaire"
 
   hard_exclude_keywords_tech:
     - "crypto"

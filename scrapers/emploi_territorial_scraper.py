@@ -34,9 +34,15 @@ class EmploiTerritorialRssScraper(BaseScraper):
             urls.append(single)
         return urls or [self.DEFAULT_RSS_URL]
 
+    # Le flux RSS est national et ignore les mots-clés : sans filtre, il
+    # remontait des offres de toute la France. Défaut : Île-de-France
+    # (codes de référence O075, O077, O078, O091 à O095).
+    DEFAULT_ALLOWED_DEPTS = ["075", "077", "078", "091", "092", "093", "094", "095"]
+
     def _load_allowed_depts(self) -> List[str]:
         raw = os.getenv("EMPLOI_TERRITORIAL_ALLOWED_DEPTS", "")
-        return [d.strip() for d in raw.split(",") if d.strip()]
+        depts = [d.strip() for d in raw.split(",") if d.strip()]
+        return depts or list(self.DEFAULT_ALLOWED_DEPTS)
 
     def _extract_dept(self, text: str) -> str | None:
         if not text:
