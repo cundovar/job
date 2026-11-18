@@ -356,7 +356,14 @@ def catalog_entries(master: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
             if not (isinstance(item, dict) and item.get("retired"))
         ) if entry
     ]
-    return {"experiences": experiences, "projects": projects, "education": education}
+    # Compétences : une à une, avec le niveau déclaré dans le profil
+    # (« pratique », « bases », « notions »…) pour choisir en connaissance.
+    skills = [
+        {"name": _text(name, 120), "level": _text(level, 80)}
+        for name, level in (master.get("skills_confidence") or {}).items()
+        if _text(name, 120)
+    ]
+    return {"experiences": experiences, "projects": projects, "education": education, "skills": skills}
 
 
 def _master_path() -> Path:

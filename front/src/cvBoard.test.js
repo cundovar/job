@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { availableFromCatalog, boardSectionOrder, catalogEntryToItem, fromBoard, moveByKey, toBoard } from './cvBoard'
+import { addSkillToBoard, availableFromCatalog, availableSkills, boardSectionOrder, catalogEntryToItem, fromBoard, moveByKey, toBoard } from './cvBoard'
 
 const CV = {
   title: 'Animateur',
@@ -96,5 +96,21 @@ describe('profil : entrées à ajouter', () => {
     item.title = 'Hôte d’accueil'
     const out = fromBoard({ ...board, experiences: [...board.experiences, item] })
     expect(out.experiences.at(-1)).toMatchObject({ id: 'bioconcept', title: 'Hôte d’accueil', bullets: ['Accueil.'] })
+  })
+})
+
+describe('profil : compétences à ajouter', () => {
+  const catalog = { skills: [{ name: 'Jeux', level: 'pratique' }, { name: 'Gestion de conflits', level: 'pratique' }] }
+
+  it('propose les compétences absentes de tous les groupes', () => {
+    expect(availableSkills(catalog, toBoard(CV)).map(s => s.name)).toEqual(['Gestion de conflits'])
+  })
+
+  it('ajoute au groupe choisi ou crée un groupe', () => {
+    const board = toBoard(CV)
+    const inGroup = addSkillToBoard(board.skills, 0, 'Gestion de conflits')
+    expect(fromBoard({ ...board, skills: inGroup }).skills[0].items).toEqual(['ateliers', 'jeux', 'Gestion de conflits'])
+    const newGroup = addSkillToBoard(board.skills, -1, 'Gestion de conflits')
+    expect(fromBoard({ ...board, skills: newGroup }).skills.at(-1)).toEqual({ title: 'Autres compétences', items: ['Gestion de conflits'] })
   })
 })

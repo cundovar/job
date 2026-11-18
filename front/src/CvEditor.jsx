@@ -21,7 +21,9 @@ import {
   CATALOG_SECTIONS,
   ITEM_FACTORIES,
   SECTION_LABELS,
+  addSkillToBoard,
   availableFromCatalog,
+  availableSkills,
   catalogEntryToItem,
   emptyBullet,
   fromBoard,
@@ -292,6 +294,50 @@ function CatalogPicker({ name, catalog, board, onAdd, disabled }) {
   )
 }
 
+// Compétences du profil, une à une : un clic l'ajoute au groupe choisi.
+function SkillPicker({ catalog, board, setList, disabled }) {
+  const [target, setTarget] = useState(0)
+  const [query, setQuery] = useState('')
+  const available = availableSkills(catalog, board)
+  if (available.length === 0) return null
+  const q = query.trim().toLowerCase()
+  const shown = q ? available.filter(skill => skill.name.toLowerCase().includes(q)) : available
+  const groupIndex = target >= board.skills.length ? -1 : target
+  return (
+    <details className="cvb-catalog">
+      <summary>
+        <Plus /> Ajouter depuis ton profil <span className="cvb-catalog-count">{available.length}</span>
+      </summary>
+      <div className="cvb-skill-picker-bar">
+        <label>
+          Ajouter à
+          <select value={groupIndex < 0 ? 'new' : String(groupIndex)} disabled={disabled}
+            onChange={e => setTarget(e.target.value === 'new' ? board.skills.length : Number(e.target.value))}>
+            {board.skills.map((group, i) => <option key={group._key} value={String(i)}>{group.title || `Groupe ${i + 1}`}</option>)}
+            <option value="new">Nouveau groupe « Autres compétences »</option>
+          </select>
+        </label>
+        <input type="search" placeholder="Filtrer…" value={query} onChange={e => setQuery(e.target.value)} aria-label="Filtrer les compétences" />
+      </div>
+      <div className="cvb-skill-chips">
+        {shown.map(skill => (
+          <button key={skill.name} type="button" className="cvb-skill-chip" disabled={disabled}
+            title={skill.level ? `Niveau déclaré : ${skill.level}` : 'Ajouter'}
+            onClick={() => {
+              const next = addSkillToBoard(board.skills, groupIndex, skill.name)
+              setList('skills', next)
+              if (groupIndex < 0) setTarget(next.length - 1)
+            }}>
+            <Plus /> {skill.name}
+            {skill.level && <span className="cvb-skill-level">{skill.level}</span>}
+          </button>
+        ))}
+        {shown.length === 0 && <span className="cvb-hint">Aucune compétence ne correspond.</span>}
+      </div>
+    </details>
+  )
+}
+
 function MainSection({ name, board, setList, disabled, catalog }) {
   const items = board[name]
   const { Component, noun, add } = BLOCKS[name]
@@ -304,6 +350,7 @@ function MainSection({ name, board, setList, disabled, catalog }) {
           <Plus /> {add}
         </button>
       </div>
+      {name === 'skills' && <SkillPicker catalog={catalog} board={board} setList={setList} disabled={disabled} />}
       <CatalogPicker name={name} catalog={catalog} board={board} disabled={disabled}
         onAdd={entry => setList(name, [...items, catalogEntryToItem(name, entry)])} />
       {isEmpty && <p className="cvb-empty">Rubrique vide : elle n’apparaîtra pas sur le CV.</p>}
@@ -415,8 +462,8 @@ export default function CvEditor({ id, cvStatus, locked, onSaved }) {
       <div className="consignes-editor">
         <p className="approval-note">
           Clique sur un texte pour le modifier. Attrape la poignée <GripVertical className="cvb-inline-icon" /> pour
-          déplacer une rubrique, un bloc ou une puce. « Ajouter depuis ton profil » reprend une expérience, un
-          projet ou un diplôme de ton profil, que tu modifies ensuite. Entrée ajoute une puce, Retour arrière sur une puce vide la supprime.
+          déplacer une rubrique, un bloc ou une puce. « Ajouter depuis ton profil » reprend une compétence, une
+          expérience, un projet ou un diplôme de ton profil, que tu modifies ensuite. Entrée ajoute une puce, Retour arrière sur une puce vide la supprime.
           Ta version est mise en page sans IA et remplace le CV généré à l’envoi.
         </p>
         {state.loading && <p className="approval-note">Chargement…</p>}
