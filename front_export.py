@@ -19,40 +19,41 @@ from utils.text import words
 
 FRONT_DATA_DIR = Path(__file__).resolve().parent / "front" / "public" / "data"
 
-# Les categories sont explicites : "Nouvelles Portes" vise les postes hybrides
-# et l'automatisation IA. Les offres inconnues ont leur propre onglet afin de ne
-# plus mélanger des rôles développeur avec ces opportunités.
+# Les catégories suivent les quatre axes de recherche (refonte du 18/11/2026) :
+# A médiation numérique, B animation / accueil, D formation et IA, C web.
+# Le titre est lu d'abord, dans cet ordre ; puis la description. Les offres
+# inconnues ont leur propre onglet.
 CATEGORY_KEYWORDS = {
-    "webmaster_formateur": [
-        "webmaster", "wordpress", "woocommerce", "formateur", "formatrice",
-        "ingénieur pédagogique", "ingenieur pedagogique", "pédagogie", "pedagogie",
+    "mediation": [
+        "médiateur numérique", "mediateur numerique", "médiatrice numérique",
+        "médiation numérique", "mediation numerique", "conseiller numérique",
+        "conseillère numérique", "conseiller numerique", "inclusion numérique",
+        "inclusion numerique", "france services", "epn", "espace public numérique",
+        "espace numérique", "aidant numérique", "aidants connect",
+        "accompagnement numérique", "démarches en ligne", "référent numérique",
+        "formateur numérique", "formatrice numérique",
     ],
-    "nouvelles_portes": [
-        "ai ops automation", "ia ops automation", "ai automation", "ia automation",
-        "automation engineer", "automation developer", "automation specialist",
-        "n8n developer", "n8n", "workflow automation", "agent automation",
-        "agents ia", "agent ia", "ai agent", "agents ai", "low-code", "low code",
-        "no-code", "no code", "citizen developer", "ai operations", "ia operations",
-        "growth engineer automation", "growth engineering automation",
-        "power automate", "power apps", "power platform", "copilot studio", "dataverse",
-        "prompt engineering", "claude code", "consultant ia", "consultant ai",
-        "chatbot", "assistants ia", "assistant ia", "product owner", "amoa",
-        "médiateur numérique", "mediateur numerique", "médiation numérique",
-        "mediation numerique", "conseiller numérique", "conseiller numerique",
-        "accessibilité numérique", "accessibilite numerique", "rgaa",
-        "coordinateur numérique", "coordinateur numerique", "devrel",
-        "technical writer",
+    "animation": [
+        "animateur", "animatrice", "animation", "centre social", "socioculturel",
+        "socioculturelle", "référent famille", "référente famille", "familles",
+        "agent d'accueil", "agente d'accueil", "hôte d'accueil", "hôtesse d'accueil",
+        "chargé d'accueil", "chargée d'accueil", "médiateur social", "médiatrice sociale",
     ],
-    "frontend": [
-        "react", "vue.js", "vuejs", "nuxt", "next.js", "javascript", "typescript",
-        "frontend", "front-end", "front end",
+    "formation_ia": [
+        "formateur", "formatrice", "intervenant", "intervenante", "enseignant",
+        "formation ia", "n8n", "ai automation", "ia automation", "automation engineer",
+        "automation developer", "automation specialist", "workflow automation",
+        "automatisation", "agents ia", "agent ia", "ai agent", "low-code", "low code",
+        "no-code", "no code", "prompt engineering", "claude code", "consultant ia",
+        "consultant ai", "assistant ia", "assistants ia", "chatbot", "power automate",
+        "copilot studio",
     ],
-    "backend": [
-        "php", "symfony", "node.js", "node ", "mysql", "mariadb",
-        "backend", "back-end", "back end", "développeur api", "developpeur api",
-        "java", "python", ".net", "dotnet", "c#", "fullstack", "full-stack",
-        "full stack", "software engineer", "software developer", "développeur",
-        "developpeur", "developer", "devops",
+    "web": [
+        "webmaster", "webmestre", "wordpress", "woocommerce", "contenu web",
+        "contenus web", "rédacteur web", "intégrateur", "integrateur", "intégratrice",
+        "développeur", "developpeur", "développeuse", "developer", "php", "symfony",
+        "react", "vue.js", "vuejs", "next.js", "javascript", "typescript", "frontend",
+        "front-end", "backend", "back-end", "fullstack", "full-stack", "full stack",
     ],
 }
 CATCHALL_CATEGORY = "non_classees"

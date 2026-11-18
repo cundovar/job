@@ -63,9 +63,8 @@ def test_export_accumulates_runs_from_the_same_day(tmp_path, monkeypatch):
     assert search["postuler"] == 2
     assert search["peut_etre"] == 1
     assert search["categories"] == {
-        "backend": {"count": 1},
-        "frontend": {"count": 1},
-        "webmaster_formateur": {"count": 1},
+        "web": {"count": 2},
+        "formation_ia": {"count": 1},
     }
 
 
@@ -81,7 +80,7 @@ def test_export_updates_duplicate_without_hiding_other_results(tmp_path, monkeyp
     index = json.loads((tmp_path / "index.json").read_text(encoding="utf-8"))
     assert index["searches"][0]["total"] == 2
     backend = json.loads(
-        (tmp_path / "2026-08-24" / "backend.json").read_text(encoding="utf-8")
+        (tmp_path / "2026-08-24" / "web.json").read_text(encoding="utf-8")
     )
     assert [job["title"] for job in backend["jobs"]] == ["Développeur API confirmé"]
     assert backend["jobs"][0]["description"] == "Développeur API confirmé"
@@ -90,13 +89,18 @@ def test_export_updates_duplicate_without_hiding_other_results(tmp_path, monkeyp
 @pytest.mark.parametrize(
     ("title", "description", "expected"),
     [
-        ("AI & Ops Automation", "Workflows n8n, agents IA et webhooks", "nouvelles_portes"),
-        ("AI Automation Engineer", "Notion, OpenAI et APIs internes", "nouvelles_portes"),
-        ("Chef de projets IT, solutions Low Code & IA", "Power Automate et Copilot Studio", "nouvelles_portes"),
-        ("Développeur No-code / IA – Chatbots", "Automatisation et assistants IA", "nouvelles_portes"),
-        ("Consultant IA", "Prompt Engineering, Claude Code et n8n", "nouvelles_portes"),
-        ("Lead Développeur Réact.js", "Applications web", "frontend"),
-        ("Développeur Full-Stack", "Développement logiciel", "backend"),
+        ("AI & Ops Automation", "Workflows n8n, agents IA et webhooks", "formation_ia"),
+        ("AI Automation Engineer", "Notion, OpenAI et APIs internes", "formation_ia"),
+        ("Chef de projets IT, solutions Low Code & IA", "Power Automate et Copilot Studio", "formation_ia"),
+        ("Développeur No-code / IA – Chatbots", "Automatisation et assistants IA", "formation_ia"),
+        ("Consultant IA", "Prompt Engineering, Claude Code et n8n", "formation_ia"),
+        ("Lead Développeur Réact.js", "Applications web", "web"),
+        ("Développeur Full-Stack", "Développement logiciel", "web"),
+        ("Conseiller numérique France Services", "Accompagnement des usagers", "mediation"),
+        ("Animateur famille du centre socioculturel", "Ateliers parents-enfants", "animation"),
+        ("Agent d'accueil", "Accueil et orientation du public", "animation"),
+        ("Formateur WordPress", "Formation d'adultes", "formation_ia"),
+        ("Webmaster", "Gestion du site", "web"),
         ("Responsable opérations", "Gestion quotidienne", "non_classees"),
     ],
 )
@@ -128,12 +132,12 @@ def test_export_separates_jobs_seen_on_a_previous_day(tmp_path, monkeypatch):
     assert current["total"] == 1
     assert current["already_seen"] == 1
     assert current["categories"] == {
-        "nouvelles_portes": {"count": 1},
+        "formation_ia": {"count": 1},
         "deja_vues": {"count": 1},
     }
 
     new_jobs = json.loads(
-        (tmp_path / "2026-08-26" / "nouvelles_portes.json").read_text(encoding="utf-8")
+        (tmp_path / "2026-08-26" / "formation_ia.json").read_text(encoding="utf-8")
     )["jobs"]
     seen_jobs = json.loads(
         (tmp_path / "2026-08-26" / "deja_vues.json").read_text(encoding="utf-8")
@@ -166,7 +170,7 @@ def test_export_preserves_the_source_publication_date(tmp_path, monkeypatch):
     front_export.export_front_data([job], "2026-08-26")
 
     exported = json.loads(
-        (tmp_path / "2026-08-26" / "nouvelles_portes.json").read_text(encoding="utf-8")
+        (tmp_path / "2026-08-26" / "formation_ia.json").read_text(encoding="utf-8")
     )["jobs"][0]
     assert exported["published_at"] == "2026-08-20T09:00:00Z"
     assert exported["scraped_at"] == "2026-08-24T12:00:00Z"

@@ -10,18 +10,22 @@ user_profile:
   tech_experience_years: 2
   overall_experience_years: 4
 
-  education: "RNCP niveau 5 / Bac+2 (Titre Développeur Web et Web Mobile, Doranco, 2022). VAE en cours : CDA Concepteur Développeur d'Applications (RNCP 37873, niveau 6 / Bac+3)"
+  education: "CAP Petite Enfance (2012) ; RNCP niveau 5 / Bac+2 (Titre Développeur Web et Web Mobile, Doranco, 2022). VAE en cours : CDA Concepteur Développeur d'Applications (RNCP 37873, niveau 6 / Bac+3)"
 
   status: "CSP - en recherche active d'emploi (CDI)"
   portfolio: "varascundo.com"
   tjm_cible: 450
-  salaire_cible: "35 000 – 45 000 € brut/an"
+  # Grilles de la fonction publique (catégorie C) et de l'ESS acceptées.
+  salaire_cible: "dès ~2 000 € brut/mois selon les grilles (fonction publique, ESS) ; 30 000 € brut/an et plus dans le privé"
 
+  # Mis à jour le 18/11/2026 depuis le profil maître (data/cv_master_profile.json),
+  # seule source de vérité : rien ici qui n'y figure pas.
   core_strengths:
-    - "Développeur full-stack freelance PHP/Symfony et Vue.js/React"
-    - "Ancien formateur en développement web (publics en insertion)"
-    - "Automatisation IA (n8n, Claude Code, agents MCP)"
-    - "WordPress headless / WooCommerce"
+    - "Formation d'adultes débutants au numérique et au web, dont publics en insertion (Le Pôle S)"
+    - "Accueil, information et orientation de publics (gardien / hôte d'accueil)"
+    - "Animation : animateur périscolaire (Mairie de Chelles, 2013-2018) ; CAP Petite Enfance"
+    - "Webmaster / développeur web WordPress, PHP/Symfony, Vue.js/React"
+    - "Automatisation IA (n8n, Claude Code, agents MCP) ; création de sites de formation (Mediateur, DevDoc)"
 
   skills:
     frontend:
@@ -32,7 +36,6 @@ user_profile:
       - React
       - Next.js
       - Vue.js
-      - Nuxt
       - Twig
     backend:
       - PHP 8
@@ -42,18 +45,22 @@ user_profile:
     other:
       - Git
       - Docker
-      - Pédagogie
-      - Formation adultes
+      - Pédagogie / formation d'adultes
+      - Accueil et orientation des publics
+      - Animation d'ateliers
       - WordPress / WooCommerce
       - n8n / automatisation IA
       - Figma / Canva
 
   experiences:
+    - "Le Pôle S, Pantin (janv. 2025 – mars 2026) : formateur développement web d'un groupe d'adultes éloignés de l'emploi (SIAE)"
+    - "Bioconcept Nettoyage (août 2023 – déc. 2025) : gardien / hôte d'accueil — accueil physique et téléphonique, orientation, suivi des demandes"
+    - "Mairie de Chelles (2013 – 2018) : animateur périscolaire (centre de loisirs, 3-12 ans)"
     - "Freelance WordPress (2023-2024) : développement web et gestion de sites WordPress/WooCommerce pour des clients réels (preuve en ligne : nat.varascundo.com)"
-    - "Le Pôle S (2025-2026) : Encadrant Technique Développeur — formateur web full-stack (1,5 an)"
-    - "DevDoc (varascundo.com) : plateforme pédagogique Vue.js, 15+ technos"
-    - "La Magicieuse (en cours) : freelance redesign WordPress/WooCommerce headless"
-    - "Qualiscope Formation (en cours) : mission bénévole Symfony 7.4, PHPStan, PHPUnit"
+    - "Hélène Massage & Ayurveda (avril – juin 2026) : développeur fullstack freelance Next.js / Symfony"
+    - "Qualiscope Formation (mars – août 2026) : contribution technique Symfony 7.4, PHPStan, PHPUnit"
+    - "Mediateur (mediateur.varascundo.com) : site gratuit de formation à la médiation numérique, conçu et développé seul"
+    - "DevDoc (devdoc.varascundo.com) : plateforme pédagogique Vue.js, 15+ technos"
     - "Pipeline n8n IA : génération automatique de sites WP via agents IA"
 
 # Normalisation / synonymes pour améliorer le matching
@@ -101,388 +108,196 @@ text_normalization:
       - "mixte"
       - "partiel"
 
-# Postes Recherchés (ordre de priorité)
+# Postes Recherchés — refonte du 18/11/2026 (demande Cundo)
+# Quatre axes, repris des tâches planifiées « Offres emploi », SANS l'axe
+# périscolaire / accueil de loisirs / enfance-jeunesse, et sans les métiers
+# jamais exercés (règle 0 : médiateur emploi, chargé d'insertion, conseiller
+# emploi, helpdesk, PO/AMOA, DevRel, LMS, responsable/manager…).
+#   A. Médiation et inclusion numérique
+#   B. Animation socioculturelle, ateliers et accueil des publics
+#   C. Web (webmaster, contenu, WordPress) puis développement junior
+#   D. Formation web / numérique / IA et automatisation
 target_positions:
-  # --- PRIORITÉ 2 : dev backend Symfony / PHP (dépriorisé 10/2026) ---
-  - name: "Développeur Backend PHP / Symfony"
-    priority: 2
-    keywords:
-      - "developpeur symfony"
-      - "dev symfony"
-      - "developpeur php symfony"
-      - "developpeur php"
-      - "dev php"
-      - "developpeur backend"
-      - "dev backend"
-      - "developpeur back"
-      - "dev back"
-      - "developpeur fullstack"
-      - "developpeur full-stack"
-      - "fullstack developer"
-      - "developpeur web"
-      - "dev web"
-      - "web developer"
-      - "developpeur ia"
-      - "developpeur intelligence artificielle"
-      - "prompt engineer"
-    score_weight: 66
-
-  # --- PRIORITÉ 1 : intégrateur web / HTML / emailing (position dédiée, re-scoring 10/2026) ---
-  - name: "Intégrateur web / HTML / emailing"
+  # --- AXE A : médiation et inclusion numérique ---
+  - name: "Médiation numérique / inclusion numérique"
+    axis: "A"
     priority: 1
     keywords:
-      - "integrateur web"
-      - "intégrateur web"
-      - "integrateur html"
-      - "intégrateur html"
-      - "integrateur css"
-      - "intégrateur css"
-      - "integrateur front"
-      - "intégrateur front"
-      - "integrateur frontend"
-      - "intégrateur frontend"
-      - "integrateur wordpress"
-      - "intégrateur wordpress"
-      - "integrateur email"
-      - "intégrateur email"
-      - "integrateur emailing"
-      - "intégrateur emailing"
-      - "integration web"
-      - "intégration web"
-      - "integration html"
-      - "intégration html"
-      - "integration css"
-      - "intégration css"
-      - "developpeur integrateur"
-      - "développeur intégrateur"
-      - "web integrator"
-      - "html integrator"
-      - "css integrator"
-      - "frontend integrator"
-      - "email integrator"
-      - "emailing integrator"
-    score_weight: 76
+      - "mediateur numerique"
+      - "mediatrice numerique"
+      - "mediation numerique"
+      - "conseiller numerique"
+      - "conseillere numerique"
+      - "france services"
+      - "inclusion numerique"
+      - "aidant numerique"
+      - "aidants connect"
+      - "accompagnement numerique"
+      - "accompagnement aux demarches"
+      - "demarches en ligne"
+      - "espace public numerique"
+      - "espace numerique"
+      - "epn"
+      - "animateur epn"
+      - "referent numerique"
+      - "formateur numerique"
+      - "formatrice numerique"
+    score_weight: 80
 
-  # --- PRIORITÉ 2 : dev frontend pur (React / Vue.js) — dépriorisé 10/2026 ---
-  - name: "Développeur Frontend React / Vue.js"
-    priority: 2
+  # --- AXE B : animation socioculturelle, ateliers, accueil (sans périscolaire) ---
+  - name: "Animation socioculturelle / centre social / familles"
+    axis: "B"
+    priority: 1
     keywords:
-      - "developpeur react"
-      - "dev react"
-      - "react developer"
-      - "developpeur vue"
-      - "dev vue"
-      - "vue developer"
-      - "developpeur vuejs"
-      - "developpeur vue.js"
-      - "developpeur front"
-      - "developpeur frontend"
-      - "dev front"
-      - "dev frontend"
-      - "frontend developer"
-      - "front-end developer"
-      - "developpeur javascript"
-      - "dev javascript"
-      - "developpeur typescript"
-      - "dev typescript"
-    score_weight: 68
+      - "animateur centre social"
+      - "animatrice centre social"
+      - "animateur socioculturel"
+      - "animatrice socioculturelle"
+      - "animateur social"
+      - "animatrice sociale"
+      - "animateur famille"
+      - "animatrice famille"
+      - "animateur familles"
+      - "animatrice familles"
+      - "referent famille"
+      - "referente famille"
+      - "referent familles"
+      - "referente familles"
+      - "animation collective famille"
+      - "animateur multimedia"
+      - "animatrice multimedia"
+      - "animateur numerique"
+      - "animatrice numerique"
+      - "atelier numerique"
+      - "ateliers numeriques"
+      - "animateur d'ateliers"
+      - "animatrice d'ateliers"
+      - "mediateur social"
+      - "mediatrice sociale"
+    score_weight: 78
 
-  # --- PRIORITÉ 1 : webmaster / webmestre / administrateur web ---
-  - name: "Webmaster / webmestre / administrateur web"
+  - name: "Accueil et orientation des publics"
+    axis: "B"
+    priority: 1
+    keywords:
+      - "agent d'accueil"
+      - "agente d'accueil"
+      - "charge d'accueil"
+      - "chargee d'accueil"
+      - "hote d'accueil"
+      - "hotesse d'accueil"
+      - "accueil et orientation"
+      - "accueil du public"
+      - "accueil des publics"
+    score_weight: 70
+
+  # --- AXE C : web ---
+  - name: "Webmaster / webmestre / contenu web"
+    axis: "C"
     priority: 1
     keywords:
       - "webmaster"
       - "webmestre"
       - "administrateur web"
       - "administratrice web"
-      - "admin web"
-      - "administrateur cms"
-      - "administratrice cms"
-      - "admin cms"
       - "administrateur de site"
       - "administratrice de site"
       - "gestionnaire de site"
       - "gestionnaire de contenu"
-      - "administrateur de contenu"
       - "charge de contenu web"
-      - "chargé de contenu web"
+      - "chargee de contenu web"
+      - "charge de contenus web"
+      - "redacteur web"
+      - "redactrice web"
       - "maintenance site web"
-      - "maintenance web"
       - "wordpress"
-      - "joomla"
-      - "drupal"
-      - "cms"
-      - "accessibilite"
-      - "rgaa"
-      - "seo technique"
       - "site institutionnel"
       - "portail web"
-    score_weight: 80
+    score_weight: 76
 
-  # --- PRIORITÉ 1 : formateur web ou formateur IA ---
-  - name: "Formateur web / formateur IA"
+  - name: "Intégrateur web / WordPress"
+    axis: "C"
+    priority: 2
+    keywords:
+      - "integrateur web"
+      - "integratrice web"
+      - "integrateur html"
+      - "integrateur wordpress"
+      - "integrateur front"
+      - "integrateur email"
+      - "integrateur emailing"
+      - "developpeur wordpress"
+      - "developpeur integrateur"
+    score_weight: 68
+
+  - name: "Développeur web junior (PHP/Symfony, Vue, React)"
+    axis: "C"
+    priority: 2
+    keywords:
+      - "developpeur web"
+      - "developpeuse web"
+      - "dev web"
+      - "web developer"
+      - "developpeur php"
+      - "developpeur symfony"
+      - "developpeur fullstack"
+      - "developpeur full-stack"
+      - "developpeur front"
+      - "developpeur frontend"
+      - "developpeur react"
+      - "developpeur vue"
+      - "developpeur junior"
+    score_weight: 62
+
+  # --- AXE D : formation et IA ---
+  - name: "Formateur web / numérique / IA"
+    axis: "D"
     priority: 1
     keywords:
       - "formateur web"
+      - "formatrice web"
       - "formateur developpement web"
       - "formateur developpement"
       - "formateur informatique"
-      - "formateur numerique"
+      - "formateur bureautique"
       - "formateur ia"
+      - "formatrice ia"
       - "formateur intelligence artificielle"
-      - "formateur prompt"
       - "formateur outils ia"
       - "formation ia"
       - "atelier ia"
       - "animateur atelier ia"
-      - "enseignant developpement web"
-      - "enseignant web"
       - "intervenant web"
+      - "intervenant numerique"
       - "intervenant ia"
-      - "mentor web"
-      - "mentor developpement"
+      - "formateur wordpress"
       - "formateur html"
-      - "formateur css"
-      - "formateur javascript"
       - "formateur php"
       - "formateur symfony"
-      - "formateur react"
-      - "formateur vue"
-      - "formateur wordpress"
-      - "bootcamp"
-      - "titre professionnel"
-      - "rncp"
-      - "formation adultes"
-      - "centre de formation"
-      - "organisme de formation"
-      - "ecole numerique"
-    score_weight: 78
+      - "formateur javascript"
+      - "enseignant developpement web"
+      - "mentor developpement"
+    score_weight: 80
 
-  # --- PRIORITÉ 2 : CMS / intégration web plus généraliste ---
-  - name: "Développeur web orienté CMS / intégration"
-    priority: 2
-    keywords:
-      - "developpeur wordpress"
-      - "developpeur cms"
-      - "integrateur html"
-      - "intégrateur html"
-      - "integrateur front"
-      - "intégrateur front"
-      - "integrateur frontend"
-      - "intégrateur frontend"
-      - "integrateur wordpress"
-      - "intégrateur wordpress"
-      - "integrateur web"
-      - "intégrateur web"
-      - "integrateur email"
-      - "intégrateur email"
-      - "integrateur emailing"
-      - "intégrateur emailing"
-      - "integration web"
-      - "intégration web"
-      - "integration html"
-      - "intégration html"
-      - "integration css"
-      - "intégration css"
-      - "developpeur integrateur"
-      - "développeur intégrateur"
-      - "web integrator"
-      - "html integrator"
-      - "css integrator"
-      - "frontend integrator"
-      - "email integrator"
-      - "emailing integrator"
-      - "developpeur front-end"
-      - "dev front-end"
-      - "dev front"
-      - "front-end developer"
-      - "frontend dev"
-      - "developpeur javascript"
-      - "developpeur php"
-      - "web developer"
-      - "frontend developer"
-      - "fullstack developer"
-    score_weight: 62
-
-  # --- PRIORITÉ 3 : support seulement si très proche du web ---
-  - name: "Support web / administrateur applicatif web"
-    priority: 3
-    keywords:
-      - "support web"
-      - "support site web"
-      - "support cms"
-      - "support wordpress"
-      - "administrateur applicatif web"
-      - "gestionnaire applicatif web"
-    score_weight: 15
-
-  # --- NOUVELLES PORTES : postes hybrides ---
-  - name: "Médiation numérique / inclusion numérique"
-    priority: 2
-    keywords:
-      - "mediateur numerique"
-      - "mediation numerique"
-      - "animateur numerique"
-      - "inclusion numerique"
-      - "conseiller numerique"
-      - "france services"
-      - "atelier numerique"
-      - "espace numerique"
-      - "espace public numerique"
-      - "epn"
-      - "bibliotheque numerique"
-      - "mediatheque numerique"
-      - "referent numerique"
-    score_weight: 65
-
-  - name: "Administration LMS / technicien pédagogique"
-    priority: 2
-    keywords:
-      - "administrateur moodle"
-      - "administration lms"
-      - "technicien pedagogique"
-      - "responsable lms"
-      - "e-learning manager"
-      - "learning manager"
-      - "digital learning manager"
-      - "responsable formation digitale"
-    score_weight: 68
-
-  - name: "Ingénieur pédagogique / Concepteur e-learning"
-    priority: 1
-    keywords:
-      - "ingenieur pedagogique"
-      - "ingénieur pédagogique"
-      - "concepteur e-learning"
-      - "instructional designer"
-      - "chef de projet pedagogique"
-      - "chef de projet formation"
-      - "digital learning"
-      - "e-learning"
-      - "lms"
-      - "moodle"
-    score_weight: 76
-
-  - name: "Accessibilité numérique / Référent RGAA"
-    priority: 1
-    keywords:
-      - "accessibilite numerique"
-      - "accessibilité numérique"
-      - "referent accessibilite"
-      - "référent accessibilité"
-      - "rgaa"
-      - "conformite rgaa"
-      - "auditeur accessibilite"
-      - "wcag"
-      - "a11y"
-    score_weight: 68
-
-  - name: "Product Owner / AMOA junior"
-    priority: 2
-    keywords:
-      - "product owner"
-      - "amoa"
-      - "assistance maitrise d'ouvrage"
-      - "po technique"
-      - "product manager junior"
-      - "coordinateur produit"
-    score_weight: 58
-
-  - name: "AI Ops / Automation"
-    priority: 1
-    keywords:
-      - "ai ops automation"
-      - "ai automation engineer"
-      - "automation developer"
-      - "automation specialist"
-      - "ai operations"
-      - "growth engineer automation"
-      - "growth engineering automation"
-      - "agent automation"
-      - "consultant ia automatisation"
-      - "assistant automatisation ia"
-    score_weight: 75
-
-  - name: "Low-code / Automatisation n8n"
+  - name: "IA & automatisation (n8n, agents IA)"
+    axis: "D"
     priority: 1
     keywords:
       - "n8n"
-      - "low-code"
-      - "low code"
-      - "make"
-      - "zapier"
+      - "automatisation ia"
       - "automatisation"
-      - "automatisation processus"
       - "workflow automation"
-      - "no-code"
-      - "no code"
-      - "citizen developer"
-      - "n8n developer"
+      - "automation"
       - "agents ia"
       - "agent ia"
+      - "low-code"
+      - "no-code"
+      - "zapier"
       - "claude code"
       - "prompt engineering"
-      - "power automate"
-      - "power apps"
-      - "copilot studio"
-      - "dataverse"
-    score_weight: 70
-
-  - name: "Consultant transformation digitale"
-    priority: 2
-    keywords:
-      - "charge de projet digital"
-      - "charge de mission digital"
-      - "consultant digital"
-      - "consultant numerique"
-      - "transformation digitale"
-      - "transformation numerique"
-      - "conseiller numerique"
-      - "charge de mission numerique"
-      - "accompagnement numerique"
-    score_weight: 60
-
-  - name: "DevRel / Technical Writer"
-    priority: 3
-    keywords:
-      - "developer advocate"
-      - "devrel"
-      - "developer relations"
-      - "technical writer"
-      - "redacteur technique"
-      - "redacteur documentation"
-      - "community manager technique"
-      - "developer experience"
-      - "dx engineer"
-    score_weight: 55
-
-  - name: "Développeur interne ONG / association"
-    priority: 2
-    keywords:
-      - "developpeur association"
-      - "developpeur ong"
-      - "developpeur fondation"
-      - "webmaster association"
-      - "webmaster ong"
-      - "webmaster fondation"
-      - "charge de projet web associatif"
-      - "developpeur humanitaire"
-    score_weight: 66
-
-  - name: "Coordinateur numérique"
-    priority: 4
-    keywords:
-      - "coordinateur numerique"
-      - "coordonnateur numerique"
-      - "referent numerique"
-      - "referent outils"
-      - "referent digital"
-      - "accompagnement utilisateurs"
-      - "formation utilisateurs"
-      - "gestion des outils"
-      - "intranet"
-      - "crm"
-    score_weight: 12
+      - "consultant ia"
+      - "assistant ia"
+    score_weight: 72
 
 # Scoring par compétences (bonus/malus)
 skills_matching:
@@ -558,6 +373,22 @@ skills_matching:
     - skill: "accompagnement"
       points: 6
       variants: ["accompagnement", "coaching", "suivi"]
+    # Axes A et B (18/11/2026)
+    - skill: "mediation_numerique"
+      points: 10
+      variants: ["mediation numerique", "inclusion numerique", "conseiller numerique", "france services", "fracture numerique", "demarches en ligne"]
+    - skill: "accueil_publics"
+      points: 6
+      variants: ["accueil du public", "accueil des publics", "accueil physique", "accueil telephonique", "orientation des publics", "information et orientation"]
+    - skill: "animation_ateliers"
+      points: 8
+      variants: ["animation d'ateliers", "animer des ateliers", "ateliers collectifs", "centre social", "animation collective", "projet social"]
+    - skill: "diplome_petite_enfance"
+      points: 6
+      variants: ["cap petite enfance", "cap aepe", "accompagnant educatif petite enfance"]
+    - skill: "creation_graphique"
+      points: 3
+      variants: ["canva", "supports de communication", "creation graphique"]
 
   mismatch_penalties:
     - keyword_group: "support_non_web"
@@ -751,8 +582,11 @@ contracts:
       score_weight: 7
       min_hours_per_week: 15
       required_volume_guarantee: true
-    - type: "Bénévolat"
+    - type: "Vacation"
       priority: 4
+      score_weight: 4
+    - type: "Bénévolat"
+      priority: 5
       score_weight: 1
 
   rejected:
@@ -917,13 +751,14 @@ red_flags:
     - keyword: "pilotage budget"
       points: -12
 
-    # Temps partiel (incompatible objectif salaire/stabilité)
+    # Temps partiel : malus léger (allégé le 18/11/2026, beaucoup de postes
+    # d'animation et de médiation sont à temps non complet)
     - keyword: "temps partiel"
-      points: -18
+      points: -6
     - keyword: "mi-temps"
-      points: -18
+      points: -6
     - keyword: "50%"
-      points: -18
+      points: -6
 
     # Autres malus utiles
     - keyword: "mobilisable en urgence"
@@ -993,6 +828,52 @@ red_flags:
     - keyword: "agenda d'accessibilité programmée"
       points: -40
 
+  # Exclusion sur le TITRE seulement (18/11/2026) : métiers écartés par
+  # Cundo ou jamais exercés (règle 0). Le titre seul, pour ne pas écarter
+  # une offre qui cite ces mots dans sa description (ex. un poste famille
+  # qui travaille avec l'accueil de loisirs).
+  title_exclude_keywords:
+    # Axe périscolaire retiré (décision Cundo 18/11/2026)
+    - "periscolaire"
+    - "peri-scolaire"
+    - "accueil de loisirs"
+    - "centre de loisirs"
+    - "alsh"
+    - "animateur enfance"
+    - "animatrice enfance"
+    - "enfance jeunesse"
+    - "enfance-jeunesse"
+    - "animateur jeunesse"
+    - "animatrice jeunesse"
+    - "animateur sejour"
+    - "colonie"
+    # Métiers jamais exercés (règle 0)
+    - "conseiller emploi"
+    - "conseillere emploi"
+    - "conseiller en insertion"
+    - "conseillere en insertion"
+    - "charge d'insertion"
+    - "chargee d'insertion"
+    - "mediateur emploi"
+    - "mediatrice emploi"
+    - "helpdesk"
+    - "help desk"
+    - "technicien support"
+    - "technicienne support"
+    - "support informatique"
+    - "technicien informatique"
+    - "administrateur systeme"
+    - "administrateur reseau"
+    - "product owner"
+    - "responsable"
+    - "manager"
+    - "directeur"
+    - "directrice"
+    - "chef de projet"
+    - "cheffe de projet"
+    - "senior"
+    - "tech lead"
+
   hard_exclude_keywords_tech:
     - "crypto"
     - "cryptocurrency"
@@ -1024,8 +905,9 @@ salary:
   filter_enabled: true
   # Objectif : viser 1800–2500 net ≈ 2300–3300 brut selon contextes
   preferences:
-    min_gross_monthly: 2300
-    target_gross_monthly: 2800
+    # Abaissé le 18/11/2026 : grilles fonction publique catégorie C et ESS
+    min_gross_monthly: 1900
+    target_gross_monthly: 2400
     max_gross_monthly: 3600
   scoring:
     salary_mentioned_bonus: 5

@@ -81,16 +81,18 @@ user_profile:
     assert Path("data/jobs_cache.json").exists()
 
 
-def test_search_keywords_include_ai_ops_automation_roles():
+def test_search_keywords_cover_the_four_axes():
+    """Refonte du 18/11/2026 : chaque axe (A médiation, B animation/accueil,
+    C web, D formation/IA) est cherché, et plus aucun mot périscolaire."""
     criteria = load_criteria()
     keywords = extract_search_keywords(criteria)
     categories = extract_search_keywords_by_category(criteria)
 
-    assert "ai ops automation" in keywords
-    assert "ai automation engineer" in keywords
-    assert "automation developer" in keywords
-    assert "n8n" in keywords
-    assert "ai ops automation" in categories["nouvelles_portes"]
+    for expected in ("mediateur numerique", "animateur centre social", "agent d'accueil",
+                     "webmaster", "formateur web", "n8n"):
+        assert expected in keywords
+    assert not any("periscolaire" in kw or "loisirs" in kw for kw in keywords)
+    assert "n8n" in categories["nouvelles_portes"]
 
 
 def test_ai_candidates_exclude_history_and_same_run_duplicates():
