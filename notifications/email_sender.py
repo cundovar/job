@@ -64,7 +64,9 @@ class EmailSender:
         msg["To"] = self.recipient
         msg.attach(MIMEText(body, "html"))
 
-        with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+        # Délai court : le SMTP sortant est bloqué sur le VPS, et sans délai
+        # chaque recherche attendait ~5 min avant d'échouer (constaté le 18/11/2026).
+        with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=20) as server:
             server.starttls()
             server.login(self.sender, self.password)
             server.sendmail(self.sender, self.recipient, msg.as_string())

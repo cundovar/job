@@ -10,6 +10,8 @@ from .emploi_territorial_scraper import EmploiTerritorialRssScraper
 from .jooble_scraper import JoobleScraper
 from .remoteok_scraper import RemoteOKScraper
 from .mail_alert_scraper import MailAlertScraper
+from .choisir_service_public_scraper import ChoisirServicePublicScraper
+from .hellowork_scraper import HelloworkScraper
 
 __all__ = [
     "LesJeudisScraper",
@@ -24,4 +26,6 @@ __all__ = [
     "JoobleScraper",
     "RemoteOKScraper",
     "MailAlertScraper",
+    "ChoisirServicePublicScraper",
+    "HelloworkScraper",
 ]

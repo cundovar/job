@@ -175,8 +175,14 @@ def load_seen_keys(
     current_day: str,
     history_days: int = 30,
     include_current_day: bool = False,
+    analyzed_only: bool = False,
 ) -> set[str]:
-    """Charge les identites vues dans la fenetre d'historique demandee."""
+    """Charge les identites vues dans la fenetre d'historique demandee.
+
+    ``analyzed_only`` : ne compte que les offres réellement jugées par l'IA.
+    Une offre restée hors du plafond d'un run (analyse de repli) doit
+    pouvoir être analysée au run suivant au lieu d'être considérée comme vue.
+    """
     seen: set[str] = set()
     if not FRONT_DATA_DIR.exists():
         return seen
@@ -212,8 +218,20 @@ def load_seen_keys(
                 continue
             for job in jobs:
                 if isinstance(job, dict):
+                    if analyzed_only and not was_ai_analyzed(job):
+                        continue
                     seen.update(_job_identity_keys(job))
     return seen
+
+
+FALLBACK_REASON = "Analyse IA non disponible sur ce run."
+
+
+def was_ai_analyzed(job: Dict[str, Any]) -> bool:
+    analysis = job.get("ai_analysis")
+    if not isinstance(analysis, dict):
+        return False
+    return not analysis.get("ia_non_analysee") and analysis.get("raison_breve") != FALLBACK_REASON
 
 
 def is_job_seen(job: Dict[str, Any], seen_keys: set[str]) -> bool:

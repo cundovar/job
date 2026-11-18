@@ -1,17 +1,27 @@
 # Source activation for job search scraping.
+# Revue du 18/11/2026 : chaque source testée en direct depuis le serveur.
 enabled_sources:
-  france_travail: true
-  adzuna: true
-  emploi_territorial: true
-  apec: true
-  indeed: false
-  wttj: false
-  emploi_asso: false
-  emploi_ess: true
-  lesjeudis: false
-  mail_alerts: true
-  jooble: false
-  remoteok: false
+  france_travail: true          # API officielle — OK
+  adzuna: true                  # API — OK
+  choisir_service_public: true  # ajouté le 18/11/2026 — emploi public d'État, territorial et hospitalier, filtre Île-de-France
+  hellowork: true               # ajouté le 18/11/2026 — annonces privées, associatives et publiques, Île-de-France
+  emploi_territorial: true      # flux RSS national (pas de mot-clé) : limité aux départements d'Île-de-France
+  emploi_ess: true              # portail ESS de l'UDES — filtre Île-de-France, peu d'offres
+  mail_alerts: true             # alertes mail reçues sur la boîte IMAP
+  apec: false                   # 403 Forbidden à chaque appel depuis le 11/2026 (et postes cadres)
+  indeed: false                 # 403 Forbidden (anti-robot)
+  wttj: false                   # API privée changée : réponse illisible
+  emploi_asso: false            # 404 : adresse de recherche supprimée par le site
+  lesjeudis: false              # site d'offres tech, hors axes
+  jooble: false                 # demande une clé API gratuite (JOOBLE_API_KEY) : à demander sur jooble.org/api/about
+  remoteok: false               # offres internationales en anglais, hors axes
+
+# Limites de collecte (priment sur les variables d'environnement du déploiement).
+# 24 mots-clés = les 3 premiers de chacun des 8 postes de criteria.yaml.
+limits:
+  max_keywords_per_source: 24
+  max_jobs_per_site: 240
+  max_detail_pages: 40          # fiches lues en entier par Choisir le service public et Hellowork
 
 remoteok:
   max_jobs: 50

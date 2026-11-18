@@ -88,16 +88,22 @@ def test_emploi_ess_uses_current_query_and_markup(monkeypatch):
         def raise_for_status(self):
             return None
 
+    calls = []
+
     def fake_get(url, **kwargs):
         captured.update(kwargs)
+        calls.append(kwargs["params"])
         return Response()
 
     scraper = EmploiESSScraper()
+    scraper.max_keywords = 2  # deux requêtes suffisent (pause de 2 s entre chaque)
     monkeypatch.setattr(scraper.session, "get", fake_get)
 
     jobs = scraper.scrape(["numérique"])
 
-    assert captured["params"] == {"m": "numérique"}
+    # Mots larges d'abord (le site cherche l'expression exacte), filtre
+    # Île-de-France (l=12) ; la même offre n'est comptée qu'une fois.
+    assert calls == [{"m": "animateur", "l": "12"}, {"m": "numérique", "l": "12"}]
     assert len(jobs) == 1
     assert jobs[0]["title"] == "Chef de projet numérique Objectif Terres F/H"
     assert jobs[0]["location"] == "Île-de-France"

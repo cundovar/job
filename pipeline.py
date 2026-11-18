@@ -25,6 +25,7 @@ import yaml
 from analyzers import AIAnalyzer, calculate_score
 from front_export import _job_identity_keys, export_front_data, is_job_seen, load_seen_keys
 from filters import (
+    filter_by_age,
     filter_by_contract,
     filter_by_keywords,
     filter_by_location,
@@ -34,6 +35,8 @@ from notifications import EmailSender
 from scrapers import (
     AdzunaScraper,
     APECScraper,
+    ChoisirServicePublicScraper,
+    HelloworkScraper,
     EmploiAssoScraper,
     EmploiESSScraper,
     EmploiTerritorialRssScraper,
@@ -72,8 +75,29 @@ def load_sources(path: str = "config/sources.yaml") -> Dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
+def apply_source_limits(sources: Dict[str, Any]) -> None:
+    """Limites de collecte lues dans config/sources.yaml (bloc ``limits``).
+
+    Elles priment sur les variables d'environnement du déploiement : le
+    fichier versionné dit combien de mots-clés et d'offres chaque source
+    traite (refonte du 18/11/2026 : 24 mots-clés pour couvrir les 4 axes).
+    """
+    limits = sources.get("limits") or {}
+    mapping = {
+        "max_keywords_per_source": "MAX_KEYWORDS_PER_SOURCE",
+        "max_jobs_per_site": "MAX_JOBS_PER_SITE",
+        "max_detail_pages": "CSP_MAX_DETAIL_PAGES",
+    }
+    for key, env_name in mapping.items():
+        if limits.get(key) is not None:
+            os.environ[env_name] = str(int(limits[key]))
+    if limits.get("max_detail_pages") is not None:
+        os.environ["HELLOWORK_MAX_DETAIL_PAGES"] = str(int(limits["max_detail_pages"]))
+
+
 def build_scrapers(sources: Dict[str, Any] | None = None) -> List[Any]:
     sources = sources or load_sources()
+    apply_source_limits(sources)
     enabled = sources.get("enabled_sources", {})
     scrapers: List[Any] = []
 
@@ -81,6 +105,10 @@ def build_scrapers(sources: Dict[str, Any] | None = None) -> List[Any]:
         scrapers.append(FranceTravailScraper())
     if enabled.get("adzuna", True):
         scrapers.append(AdzunaScraper())
+    if enabled.get("choisir_service_public", False):
+        scrapers.append(ChoisirServicePublicScraper())
+    if enabled.get("hellowork", False):
+        scrapers.append(HelloworkScraper())
     if enabled.get("emploi_territorial", True):
         scrapers.append(EmploiTerritorialRssScraper())
     if enabled.get("apec", True):
@@ -237,7 +265,8 @@ def run_job_search(
         except Exception as exc:
             logger.error(f"{scraper.__class__.__name__} failed: {exc}")
 
-    filtered = filter_by_keywords(all_jobs, criteria)
+    filtered = filter_by_age(all_jobs, criteria)
+    filtered = filter_by_keywords(filtered, criteria)
     filtered = filter_by_location(filtered, criteria)
     filtered = filter_by_contract(filtered, criteria)
     filtered = filter_by_sector(filtered, criteria)
@@ -249,7 +278,9 @@ def run_job_search(
     max_ai_jobs = int(os.getenv("MAX_AI_JOBS_PER_RUN", "12"))
     history_days = int(os.getenv("CACHE_DURATION_DAYS", "30"))
     current_day = datetime.now(timezone.utc).date().isoformat()
-    seen_keys = load_seen_keys(current_day, history_days=history_days, include_current_day=True)
+    seen_keys = load_seen_keys(
+        current_day, history_days=history_days, include_current_day=True, analyzed_only=True
+    )
 
     ranked_candidates = sorted(
         [job for job in filtered if job.get("score", 0) >= threshold],
@@ -289,6 +320,9 @@ def run_job_search(
                     "recommandation": recommendation,
                     "angle_motivation": "",
                     "raison_breve": "Analyse IA non disponible sur ce run.",
+                    # Pas analysée par l'IA (plafond du run atteint ou IA
+                    # indisponible) : elle reste candidate au run suivant.
+                    "ia_non_analysee": True,
                 }
             except Exception:
                 job["ai_analysis"] = {"recommandation": "PEUT-ÊTRE"}
@@ -297,7 +331,10 @@ def run_job_search(
     storage.save(filtered)
 
     dry_run = os.getenv("DRY_RUN", "false").lower() == "true"
-    should_send_outputs = not dry_run if send_outputs is None else send_outputs
+    # email.send_daily: false coupe le récap par mail (décision du 18/11/2026) ;
+    # seul un appel explicite avec send_outputs=True l'envoie encore.
+    mail_enabled = bool(criteria.get("email", {}).get("send_daily", True))
+    should_send_outputs = (not dry_run and mail_enabled) if send_outputs is None else send_outputs
     max_email_jobs = int(criteria.get("email", {}).get("content", {}).get("max_jobs_in_email", 5))
     unsent_jobs = storage.get_unsent_jobs(filtered)
     top_jobs = sorted(unsent_jobs, key=lambda x: x.get("score", 0), reverse=True)[:max_email_jobs]
