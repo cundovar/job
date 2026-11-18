@@ -467,7 +467,8 @@ export default function createApplicationsRouter(repo) {
   // GET /api/applications/:id/presentation — site affiché ou non, adresse,
   //     titre de la signature du mail (choix du dossier, sinon défauts).
   // PUT /api/applications/:id/presentation — { show_website, website_url,
-  //     display_title } : enregistre, ajoute/retire la ligne Portfolio de la
+  //     display_title, show_attachments, cv_label, letter_label } : enregistre,
+  //     ajoute/retire la ligne Portfolio et l'encadré « CV joint » de la
   //     lettre (et son PDF) et du mail, sans IA. L'approbation tombe.
   // GET /api/applications/:id/mail/preview — le HTML exact qui partirait.
   function parsePythonJson(stdout) {
@@ -503,6 +504,12 @@ export default function createApplicationsRouter(repo) {
       }
       if ('website_url' in body) changes.website_url = String(body.website_url ?? '').slice(0, 200);
       if ('display_title' in body) changes.display_title = String(body.display_title ?? '').slice(0, 120);
+      if ('show_attachments' in body) {
+        if (typeof body.show_attachments !== 'boolean') return res.status(400).json({ error: 'show_attachments doit valoir true ou false.' });
+        changes.show_attachments = body.show_attachments;
+      }
+      if ('cv_label' in body) changes.cv_label = String(body.cv_label ?? '').slice(0, 120);
+      if ('letter_label' in body) changes.letter_label = String(body.letter_label ?? '').slice(0, 120);
       if (!Object.keys(changes).length) return res.status(400).json({ error: 'Aucun changement.' });
       const stdout = await runPython(
         ['-m', 'utils.presentation', dir, '--set', JSON.stringify(changes)],

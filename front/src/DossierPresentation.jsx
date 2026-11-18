@@ -19,10 +19,15 @@ export default function DossierPresentation({ id, refreshKey = 0, onApplied, loc
       .then(d => {
         if (cancelled) return
         const p = d.presentation || {}
+        const current = d.attachments_current || {}
         setForm({
           show: !!p.show_website,
           websiteUrl: p.website_url || '',
           displayTitle: p.display_title || '',
+          showAttachments: p.show_attachments !== false,
+          cvLabel: p.cv_label || current.cv || '',
+          showLetter: Boolean(p.letter_label || current.letter),
+          letterLabel: p.letter_label || current.letter || 'Lettre de motivation',
         })
       })
       .catch(err => { if (!cancelled) setState(s => ({ ...s, error: err.message })) })
@@ -50,6 +55,9 @@ export default function DossierPresentation({ id, refreshKey = 0, onApplied, loc
           show_website: form.show,
           website_url: form.show ? form.websiteUrl : '',
           display_title: form.displayTitle,
+          show_attachments: form.showAttachments,
+          cv_label: form.cvLabel,
+          letter_label: form.showAttachments && form.showLetter ? form.letterLabel : '',
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -104,6 +112,57 @@ export default function DossierPresentation({ id, refreshKey = 0, onApplied, loc
               onChange={e => setForm(f => ({ ...f, displayTitle: e.target.value }))}
             />
           </label>
+          <fieldset className="presentation-attachments">
+            <legend>Encadré « pièces jointes » du mail</legend>
+            <label className="presentation-check">
+              <input
+                type="checkbox"
+                checked={form.showAttachments}
+                disabled={locked || state.pending}
+                onChange={e => setForm(f => ({ ...f, showAttachments: e.target.checked }))}
+              />
+              Afficher l’encadré dans le mail
+            </label>
+            {form.showAttachments && (
+              <>
+                <label className="consignes-label">
+                  Libellé du CV (après « CV joint : »)
+                  <input
+                    type="text"
+                    maxLength={120}
+                    value={form.cvLabel}
+                    disabled={locked || state.pending}
+                    placeholder="ex. CV – Facundo Varas, ou vide pour garder l’actuel"
+                    onChange={e => setForm(f => ({ ...f, cvLabel: e.target.value }))}
+                  />
+                </label>
+                <label className="presentation-check">
+                  <input
+                    type="checkbox"
+                    checked={form.showLetter}
+                    disabled={locked || state.pending}
+                    onChange={e => setForm(f => ({ ...f, showLetter: e.target.checked }))}
+                  />
+                  Mentionner la lettre de motivation
+                </label>
+                {form.showLetter && (
+                  <label className="consignes-label">
+                    Libellé de la lettre (après « Lettre de motivation jointe : »)
+                    <input
+                      type="text"
+                      maxLength={120}
+                      value={form.letterLabel}
+                      disabled={locked || state.pending}
+                      onChange={e => setForm(f => ({ ...f, letterLabel: e.target.value }))}
+                    />
+                  </label>
+                )}
+              </>
+            )}
+            <p className="cvb-hint">
+              Seul le texte du mail change. Les noms des fichiers joints se règlent dans « Noms des fichiers PDF ».
+            </p>
+          </fieldset>
           <div className="prepare-actions">
             <button className="prepare-btn" onClick={apply} disabled={locked || state.pending}>
               {state.pending ? 'Application…' : <><RotateCw /> Appliquer à la lettre et au mail</>}
