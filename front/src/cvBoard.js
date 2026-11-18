@@ -146,11 +146,18 @@ export function fromBoard(board) {
 
 // Entrées du profil maître proposées à l'ajout (expériences, projets) : celles
 // dont l'identifiant n'est pas déjà sur la page.
-export const CATALOG_SECTIONS = ['experiences', 'projects']
+export const CATALOG_SECTIONS = ['experiences', 'projects', 'education']
+
+// Les diplômes n'ont pas d'identifiant : on les reconnaît à leur intitulé.
+const normTitle = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+const catalogKey = (section, entry) => (section === 'education' ? normTitle(entry.title) : entry.id)
 
 export function availableFromCatalog(catalog, board, section) {
-  const used = new Set((board[section] || []).map(item => item.id).filter(Boolean))
-  return ((catalog || {})[section] || []).filter(entry => entry.id && !used.has(entry.id))
+  const used = new Set((board[section] || []).map(item => catalogKey(section, item)).filter(Boolean))
+  return ((catalog || {})[section] || []).filter(entry => {
+    const key = catalogKey(section, entry)
+    return key && !used.has(key)
+  })
 }
 
 /** Une entrée du profil devient un bloc de la page, modifiable comme les autres. */

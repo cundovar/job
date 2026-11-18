@@ -272,14 +272,14 @@ function CatalogPicker({ name, catalog, board, onAdd, disabled }) {
       </summary>
       <ul>
         {available.map(entry => (
-          <li key={entry.id}>
+          <li key={entry.id || entry.title}>
             <button type="button" className="cvb-catalog-item" disabled={disabled} onClick={() => onAdd(entry)}
               title="Ajouter au CV">
               <span className="cvb-catalog-title">{entry.title || entry.organization}</span>
               <span className="cvb-catalog-meta">
-                {name === 'experiences'
-                  ? [entry.organization, entry.period].filter(Boolean).join(' · ')
-                  : [entry.year, (entry.technologies || []).slice(0, 4).join(', ')].filter(Boolean).join(' · ')}
+                {name === 'experiences' && [entry.organization, entry.period].filter(Boolean).join(' · ')}
+                {name === 'projects' && [entry.year, (entry.technologies || []).slice(0, 4).join(', ')].filter(Boolean).join(' · ')}
+                {name === 'education' && [entry.year, entry.level, entry.school, entry.status].filter(Boolean).join(' · ')}
               </span>
               {name === 'experiences' && entry.bullets?.[0] && <span className="cvb-catalog-preview">{entry.bullets[0]}</span>}
               {name === 'projects' && entry.description && <span className="cvb-catalog-preview">{entry.description}</span>}
@@ -415,8 +415,8 @@ export default function CvEditor({ id, cvStatus, locked, onSaved }) {
       <div className="consignes-editor">
         <p className="approval-note">
           Clique sur un texte pour le modifier. Attrape la poignée <GripVertical className="cvb-inline-icon" /> pour
-          déplacer une rubrique, un bloc ou une puce. « Ajouter depuis ton profil » reprend une expérience ou un
-          projet de ton profil, que tu modifies ensuite. Entrée ajoute une puce, Retour arrière sur une puce vide la supprime.
+          déplacer une rubrique, un bloc ou une puce. « Ajouter depuis ton profil » reprend une expérience, un
+          projet ou un diplôme de ton profil, que tu modifies ensuite. Entrée ajoute une puce, Retour arrière sur une puce vide la supprime.
           Ta version est mise en page sans IA et remplace le CV généré à l’envoi.
         </p>
         {state.loading && <p className="approval-note">Chargement…</p>}

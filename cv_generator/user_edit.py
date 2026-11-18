@@ -312,7 +312,7 @@ def reset_user_edit(dossier: Path) -> List[str]:
 
 
 def catalog_entries(master: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
-    """Expériences et projets du profil maître, au format du CV éditable.
+    """Expériences, projets et diplômes du profil maître, au format du CV éditable.
 
     Proposés dans l'éditeur (demande Cundo 18/11/2026) : un clic ajoute
     l'entrée au CV, que le candidat modifie ensuite librement. Les
@@ -348,7 +348,15 @@ def catalog_entries(master: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
         })
         if entry:
             projects.append(entry)
-    return {"experiences": experiences, "projects": projects}
+    # Diplômes : sans identifiant dans le profil, reconnus par leur intitulé.
+    # Le statut (« VAE en cours ») vient du profil : jamais présenté comme obtenu.
+    education = [
+        entry for entry in (
+            _education(item) for item in ((master.get("person") or {}).get("education") or [])
+            if not (isinstance(item, dict) and item.get("retired"))
+        ) if entry
+    ]
+    return {"experiences": experiences, "projects": projects, "education": education}
 
 
 def _master_path() -> Path:

@@ -68,12 +68,25 @@ describe('profil : entrées à ajouter', () => {
       { id: 'bioconcept', organization: 'Bioconcept', title: 'Gardien / Hôte d’accueil', period: '2023 – 2025', bullets: ['Accueil.'], links: [] },
     ],
     projects: [{ id: 'mediateur', title: 'Mediateur', year: '2026', description: 'Site.', technologies: ['Vue'], links: [] }],
+    education: [
+      { year: '2010', title: 'CAP petite enfance' },
+      { year: '2026', title: 'Titre Professionnel CDA', level: 'niveau 6', status: 'VAE en cours' },
+    ],
   }
 
   it('propose seulement ce qui n’est pas déjà sur la page', () => {
     const board = toBoard(CV)
     expect(availableFromCatalog(catalog, board, 'experiences').map(e => e.id)).toEqual(['bioconcept'])
     expect(availableFromCatalog(catalog, board, 'projects').map(e => e.id)).toEqual(['mediateur'])
+    // diplômes reconnus par l'intitulé, sans tenir compte de la casse
+    expect(availableFromCatalog(catalog, board, 'education').map(e => e.title)).toEqual(['Titre Professionnel CDA'])
+  })
+
+  it('un diplôme ajouté garde son statut', () => {
+    const board = toBoard(CV)
+    const item = catalogEntryToItem('education', catalog.education[1])
+    const out = fromBoard({ ...board, education: [...board.education, item] })
+    expect(out.education.at(-1)).toEqual({ year: '2026', title: 'Titre Professionnel CDA', level: 'niveau 6', school: '', status: 'VAE en cours' })
   })
 
   it('une entrée ajoutée devient un bloc modifiable et part au serveur', () => {
