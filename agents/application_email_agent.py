@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from utils.presentation import presentation_for
+
 
 MAIL_NOTE_MAX = 1000
 
@@ -21,7 +23,11 @@ def generate_application_email(
 ) -> str:
     profile = user_profile or {}
     candidate_name = profile.get("name", "Facundo Varas")
-    portfolio = profile.get("portfolio", "varascundo.com")
+    # Site affiché ou non : choix du dossier (case « Ajouter un site web »),
+    # sinon défaut de la famille du poste. Plus de varascundo.com imposé.
+    presentation = presentation_for(job)
+    portfolio = presentation["website_url"] if presentation["show_website"] else ""
+    family = _job_value(job, "job_family")
     title = _job_value(job, "title", "le poste proposé")
     company = _job_value(job, "company")
     company_line = f" au sein de {company}" if company else ""
@@ -47,6 +53,22 @@ def generate_application_email(
             "Ancien encadrant technique en développement web auprès de publics "
             "en insertion, je conçois également des ressources pédagogiques "
             "interactives (DevDoc, 15+ technologies couvertes)."
+        )
+    elif family in {"mediation_sociale", "accueil"}:
+        # Postes d'accueil, d'animation, de lien avec les familles : seuls
+        # des faits du profil maître (CAP, Mairie de Chelles, Pôle S,
+        # Bioconcept), sans technique.
+        pitch = (
+            "Titulaire d'un CAP Petite Enfance, j'ai été animateur périscolaire "
+            "à la Mairie de Chelles, puis formateur auprès d'adultes en insertion "
+            "au Pôle S. J'ai également assuré l'accueil et l'orientation de publics "
+            "comme gardien et hôte d'accueil."
+        )
+    elif family == "mediation_numerique":
+        pitch = (
+            "Formateur auprès d'adultes en insertion au Pôle S, j'ai conçu "
+            "Mediateur, un site gratuit de formation à la médiation numérique "
+            "(mediateur.varascundo.com)."
         )
     else:
         pitch = (
@@ -82,7 +104,7 @@ def generate_application_email(
         "",
         *note_block,
         f"CV joint : {recommendation.cv_name}",
-        f"Portfolio : {portfolio}",
+        *([f"Portfolio : {portfolio}"] if portfolio else []),
         "",
         "Je me tiens à votre disposition pour un échange.",
         "",

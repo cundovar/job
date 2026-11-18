@@ -104,12 +104,14 @@ def _write_letter_pdf(motivation_letter_path: Path, directory: Path, job: Dict[s
     try:
         from cv_generator.exporters import lettre_to_pdf
 
-        kwargs: Dict[str, Any] = {}
-        # Poste de médiation : pas de portfolio dans le bandeau du PDF
-        # (mediateur.varascundo.com est cité dans le corps de la lettre).
-        if candidate_rules.is_mediation_job(job):
-            kwargs["contact_line"] = "Paris 20e · contact@varascundo.com"
-        lettre_to_pdf(motivation_letter_path, lettre_pdf_path, **kwargs)
+        # Le bandeau suit le choix du dossier : site affiché ou non (par
+        # défaut, rien pour la médiation, l'accueil… ; voir presentation.py).
+        from utils.presentation import contact_line, presentation_for
+
+        lettre_to_pdf(
+            motivation_letter_path, lettre_pdf_path,
+            contact_line=contact_line(presentation_for(job)),
+        )
     except Exception:
         _LOG.exception("Export PDF de la lettre impossible : %s", lettre_pdf_path)
         return None

@@ -25,7 +25,7 @@ from typing import Any, Dict, List
 from company_analysis.duplicate import duplicate_check
 
 from .application_tracker import ApplicationTracker
-from .mail_template import render_mail_html
+from .mail_template import dossier_mail_html, render_mail_html
 from .sender import EmailSender, SendResult, _attachment_label, labeled
 
 CONTACT_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -354,7 +354,7 @@ def send_dossier(
 
     send_result: SendResult = sender.send(
         to=address, cc=cc, subject=subject, body=body, attachments=attachments,
-        html=render_mail_html(subject, body, sender_email=getattr(sender, "sender", "") or ""),
+        html=dossier_mail_html(dossier_path, subject, body, sender_email=getattr(sender, "sender", "") or ""),
     )
     if send_result.ok:
         tracker.mark_sent(

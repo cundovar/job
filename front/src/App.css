@@ -2389,3 +2389,17 @@ h3 > .lucide {
 .offre-panel summary svg { width: 15px; height: 15px; vertical-align: -2px; }
 .offre-panel a svg { vertical-align: -1px; }
 .offre-texte { white-space: pre-wrap; max-height: 28rem; overflow-y: auto; margin-top: 0.5rem; line-height: 1.5; font-size: 0.92rem; }
+
+/* Présentation du dossier : site web, titre du mail, aperçu HTML */
+.presentation-fields { display: flex; flex-direction: column; gap: 10px; margin: 10px 0; }
+.presentation-fields select,
+.presentation-fields input[type="text"] {
+  width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid rgba(120, 132, 129, 0.45); background: inherit; color: inherit; font: inherit;
+}
+.presentation-check { display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
+.presentation-preview-title { font-size: 0.95rem; margin: 16px 0 8px; }
+.mail-preview-frame {
+  width: 100%; height: 720px; border: 1px solid rgba(120, 132, 129, 0.45);
+  border-radius: 10px; background: #EFEDE8;
+}

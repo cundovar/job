@@ -88,14 +88,18 @@
                     CV joint&nbsp;: <span style="color:#57534E;">{{ cv_intitule }}</span>
                   </p>
                   {% endif %}
+                  {% if portfolio_url or github_url %}
                   <p style="margin:0;">
+                    {% if portfolio_url %}
                     Portfolio&nbsp;:
-                    <a href="{{ portfolio_url | default('https://varascundo.com') }}" style="color:#0F6E66; text-decoration:underline;">{{ portfolio_label | default("varascundo.com") }}</a>
+                    <a href="{{ portfolio_url }}" style="color:#0F6E66; text-decoration:underline;">{{ portfolio_label }}</a>
+                    {% endif %}
                     {% if github_url %}
-                    &nbsp;·&nbsp;
+                    {% if portfolio_url %}&nbsp;·&nbsp;{% endif %}
                     <a href="{{ github_url }}" style="color:#0F6E66; text-decoration:underline;">{{ github_label | default("GitHub") }}</a>
                     {% endif %}
                   </p>
+                  {% endif %}
                 </td>
               </tr>
             </table>

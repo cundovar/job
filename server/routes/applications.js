@@ -337,6 +337,16 @@ export default function createApplicationsRouter(repo) {
     delete cleanJob.mail_personal_note;
     if (consignes) cleanJob.candidate_instructions = consignes;
     if (mailNote) cleanJob.mail_personal_note = mailNote;
+    // Présentation du dossier (case « Ajouter un site web », site, titre du
+    // mail) : bornée ici, validée et appliquée par utils/presentation.py.
+    delete cleanJob.show_website;
+    delete cleanJob.website_url;
+    delete cleanJob.display_title;
+    if (typeof job.show_website === 'boolean') cleanJob.show_website = job.show_website;
+    const websiteUrl = String(job.website_url || '').trim().slice(0, 200);
+    if (websiteUrl) cleanJob.website_url = websiteUrl;
+    const displayTitle = String(job.display_title || '').trim().slice(0, 120);
+    if (displayTitle) cleanJob.display_title = displayTitle;
     const task = enqueuePrepareTask(() => repo.prepareFromJob(cleanJob));
     res.status(202).json({
       accepted: true,
@@ -449,6 +459,81 @@ export default function createApplicationsRouter(repo) {
       const job = JSON.parse(fs.readFileSync(jobPath, 'utf-8'));
       res.json({ recommandations: String(job.candidate_instructions || '') });
     } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Présentation du dossier (demande Cundo 18/11/2026) ─────────────────
+  // GET /api/applications/:id/presentation — site affiché ou non, adresse,
+  //     titre de la signature du mail (choix du dossier, sinon défauts).
+  // PUT /api/applications/:id/presentation — { show_website, website_url,
+  //     display_title } : enregistre, ajoute/retire la ligne Portfolio de la
+  //     lettre (et son PDF) et du mail, sans IA. L'approbation tombe.
+  // GET /api/applications/:id/mail/preview — le HTML exact qui partirait.
+  function parsePythonJson(stdout) {
+    const start = stdout.indexOf('{');
+    return JSON.parse(start >= 0 ? stdout.slice(start) : stdout);
+  }
+
+  router.get('/applications/:id/presentation', async (req, res) => {
+    try {
+      const dir = applicationDir(req.params.id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      const stdout = await runPython(['-m', 'utils.presentation', dir, '--show'], { timeout: 30000, acceptOutputOnError: true });
+      const result = parsePythonJson(stdout);
+      if (!result.ok) return res.status(400).json({ error: result.error || 'Présentation illisible.' });
+      res.json({ ...result, locked: hasSendRecord(req.params.id) });
+    } catch (err) {
+      console.error('[GET /applications/:id/presentation]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.put('/applications/:id/presentation', async (req, res) => {
+    try {
+      const id = req.params.id;
+      const dir = applicationDir(id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${id}` });
+      if (hasSendRecord(id)) return res.status(409).json({ error: 'Ce dossier possède déjà une tentative d’envoi : sa présentation est verrouillée.' });
+      const body = req.body || {};
+      const changes = {};
+      if ('show_website' in body) {
+        if (typeof body.show_website !== 'boolean') return res.status(400).json({ error: 'show_website doit valoir true ou false.' });
+        changes.show_website = body.show_website;
+      }
+      if ('website_url' in body) changes.website_url = String(body.website_url ?? '').slice(0, 200);
+      if ('display_title' in body) changes.display_title = String(body.display_title ?? '').slice(0, 120);
+      if (!Object.keys(changes).length) return res.status(400).json({ error: 'Aucun changement.' });
+      const stdout = await runPython(
+        ['-m', 'utils.presentation', dir, '--set', JSON.stringify(changes)],
+        { timeout: 60000, acceptOutputOnError: true },
+      );
+      const result = parsePythonJson(stdout);
+      if (!result.ok) return res.status(400).json({ error: result.error || 'Présentation refusée.' });
+      writeApprovalStatus(id, false);
+      try {
+        await rebuildCandidaturesIndex();
+      } catch (err) {
+        console.error('[PUT /applications/:id/presentation] index', err.message);
+      }
+      res.json({ ...result, approved: false });
+    } catch (err) {
+      console.error('[PUT /applications/:id/presentation]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/applications/:id/mail/preview', async (req, res) => {
+    try {
+      const dir = applicationDir(req.params.id);
+      if (!fs.existsSync(dir)) return res.status(404).json({ error: `Dossier candidature introuvable : ${req.params.id}` });
+      const stdout = await runPython(['-m', 'applications.mail_preview', dir], { timeout: 30000, acceptOutputOnError: true });
+      const result = parsePythonJson(stdout);
+      if (!result.ok) return res.status(404).json({ error: result.error || 'Aperçu impossible.' });
+      res.set('Cache-Control', 'no-store');
+      res.json({ subject: result.subject, html: result.html });
+    } catch (err) {
+      console.error('[GET /applications/:id/mail/preview]', err.message);
       res.status(500).json({ error: err.message });
     }
   });
