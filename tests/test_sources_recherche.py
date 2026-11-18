@@ -100,3 +100,9 @@ def test_offre_hors_plafond_ia_reste_candidate():
     assert not was_ai_analyzed({"ai_analysis": {"raison_breve": "Analyse IA non disponible sur ce run."}})
     assert not was_ai_analyzed({"ai_analysis": {"ia_non_analysee": True, "raison_breve": "x"}})
     assert not was_ai_analyzed({})
+
+
+def test_recap_par_mail_coupe_par_defaut():
+    """Décision du 18/11/2026 : plus de récap par mail à chaque recherche."""
+    criteria = pipeline.load_criteria("config/criteria.yaml")
+    assert criteria["email"]["send_daily"] is False

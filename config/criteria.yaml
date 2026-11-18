@@ -986,7 +986,9 @@ scraping:
 
 # Configuration Email
 email:
-  send_daily: true
+  # Coupé le 18/11/2026 (décision Cundo) : le récap de chaque recherche ne
+  # part plus par mail ; les offres se lisent dans l'interface.
+  send_daily: false
   send_time_utc: "07:00" # 8h Paris hiver
   recipient: "varas.cundo@gmail.com"
 

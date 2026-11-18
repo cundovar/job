@@ -331,7 +331,10 @@ def run_job_search(
     storage.save(filtered)
 
     dry_run = os.getenv("DRY_RUN", "false").lower() == "true"
-    should_send_outputs = not dry_run if send_outputs is None else send_outputs
+    # email.send_daily: false coupe le récap par mail (décision du 18/11/2026) ;
+    # seul un appel explicite avec send_outputs=True l'envoie encore.
+    mail_enabled = bool(criteria.get("email", {}).get("send_daily", True))
+    should_send_outputs = (not dry_run and mail_enabled) if send_outputs is None else send_outputs
     max_email_jobs = int(criteria.get("email", {}).get("content", {}).get("max_jobs_in_email", 5))
     unsent_jobs = storage.get_unsent_jobs(filtered)
     top_jobs = sorted(unsent_jobs, key=lambda x: x.get("score", 0), reverse=True)[:max_email_jobs]
