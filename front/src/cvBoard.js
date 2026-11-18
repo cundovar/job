@@ -144,6 +144,20 @@ export function fromBoard(board) {
   return editablePayload(cv)
 }
 
+// Entrées du profil maître proposées à l'ajout (expériences, projets) : celles
+// dont l'identifiant n'est pas déjà sur la page.
+export const CATALOG_SECTIONS = ['experiences', 'projects']
+
+export function availableFromCatalog(catalog, board, section) {
+  const used = new Set((board[section] || []).map(item => item.id).filter(Boolean))
+  return ((catalog || {})[section] || []).filter(entry => entry.id && !used.has(entry.id))
+}
+
+/** Une entrée du profil devient un bloc de la page, modifiable comme les autres. */
+export function catalogEntryToItem(section, entry) {
+  return toBoard({ [section]: [entry] })[section][0]
+}
+
 /** Déplace l'élément de clé activeKey à la place de overKey (glisser-déposer). */
 export function moveByKey(list, activeKey, overKey, keyOf = item => item._key) {
   const from = list.findIndex(item => keyOf(item) === activeKey)

@@ -18,8 +18,11 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { CircleCheck, FileDown, GripVertical, PenLine, Plus, Trash2, TriangleAlert } from 'lucide-react'
 import {
+  CATALOG_SECTIONS,
   ITEM_FACTORIES,
   SECTION_LABELS,
+  availableFromCatalog,
+  catalogEntryToItem,
   emptyBullet,
   fromBoard,
   moveByKey,
@@ -257,7 +260,39 @@ const BLOCKS = {
   education: { Component: EducationBlock, noun: 'le diplôme', add: 'Diplôme' },
 }
 
-function MainSection({ name, board, setList, disabled }) {
+// Ce que ton profil contient et que la page n'affiche pas : un clic l'ajoute
+// en bas de la rubrique, où il se modifie et se déplace comme le reste.
+function CatalogPicker({ name, catalog, board, onAdd, disabled }) {
+  const available = availableFromCatalog(catalog, board, name)
+  if (!CATALOG_SECTIONS.includes(name) || available.length === 0) return null
+  return (
+    <details className="cvb-catalog">
+      <summary>
+        <Plus /> Ajouter depuis ton profil <span className="cvb-catalog-count">{available.length}</span>
+      </summary>
+      <ul>
+        {available.map(entry => (
+          <li key={entry.id}>
+            <button type="button" className="cvb-catalog-item" disabled={disabled} onClick={() => onAdd(entry)}
+              title="Ajouter au CV">
+              <span className="cvb-catalog-title">{entry.title || entry.organization}</span>
+              <span className="cvb-catalog-meta">
+                {name === 'experiences'
+                  ? [entry.organization, entry.period].filter(Boolean).join(' · ')
+                  : [entry.year, (entry.technologies || []).slice(0, 4).join(', ')].filter(Boolean).join(' · ')}
+              </span>
+              {name === 'experiences' && entry.bullets?.[0] && <span className="cvb-catalog-preview">{entry.bullets[0]}</span>}
+              {name === 'projects' && entry.description && <span className="cvb-catalog-preview">{entry.description}</span>}
+              <Plus className="cvb-catalog-plus" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </details>
+  )
+}
+
+function MainSection({ name, board, setList, disabled, catalog }) {
   const items = board[name]
   const { Component, noun, add } = BLOCKS[name]
   const isEmpty = items.length === 0
@@ -269,6 +304,8 @@ function MainSection({ name, board, setList, disabled }) {
           <Plus /> {add}
         </button>
       </div>
+      <CatalogPicker name={name} catalog={catalog} board={board} disabled={disabled}
+        onAdd={entry => setList(name, [...items, catalogEntryToItem(name, entry)])} />
       {isEmpty && <p className="cvb-empty">Rubrique vide : elle n’apparaîtra pas sur le CV.</p>}
       <SortableList items={items} onReorder={list => setList(name, list)} disabled={disabled}>
         {items.map((item, index) => (
@@ -296,6 +333,7 @@ function SideField({ title, children }) {
 export default function CvEditor({ id, cvStatus, locked, onSaved }) {
   const [open, setOpen] = useState(false)
   const [board, setBoard] = useState(null)
+  const [catalog, setCatalog] = useState(null)
   const [meta, setMeta] = useState({ edited: false, warnings: [] })
   const [state, setState] = useState({ loading: false, saving: false, error: null, saved: false, dirty: false })
   const sensors = useDndSensors()
@@ -311,6 +349,7 @@ export default function CvEditor({ id, cvStatus, locked, onSaved }) {
         const payload = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
         setBoard(toBoard(payload.cv, payload.online_work_effective))
+        setCatalog(payload.catalog || null)
         setMeta({ edited: payload.edited, warnings: payload.warnings || [] })
         setState(prev => ({ ...prev, loading: false, dirty: false }))
       })
@@ -376,7 +415,8 @@ export default function CvEditor({ id, cvStatus, locked, onSaved }) {
       <div className="consignes-editor">
         <p className="approval-note">
           Clique sur un texte pour le modifier. Attrape la poignée <GripVertical className="cvb-inline-icon" /> pour
-          déplacer une rubrique, un bloc ou une puce. Entrée ajoute une puce, Retour arrière sur une puce vide la supprime.
+          déplacer une rubrique, un bloc ou une puce. « Ajouter depuis ton profil » reprend une expérience ou un
+          projet de ton profil, que tu modifies ensuite. Entrée ajoute une puce, Retour arrière sur une puce vide la supprime.
           Ta version est mise en page sans IA et remplace le CV généré à l’envoi.
         </p>
         {state.loading && <p className="approval-note">Chargement…</p>}
@@ -442,7 +482,7 @@ export default function CvEditor({ id, cvStatus, locked, onSaved }) {
                     {board.mainOrder.map(name => (
                       <SortableBlock key={name} id={name} className="cvb-section" disabled={disabled}
                         handleLabel={`Déplacer la rubrique ${SECTION_LABELS[name]}`}>
-                        <MainSection name={name} board={board} setList={setList} disabled={disabled} />
+                        <MainSection name={name} board={board} setList={setList} disabled={disabled} catalog={catalog} />
                       </SortableBlock>
                     ))}
                   </SortableContext>
