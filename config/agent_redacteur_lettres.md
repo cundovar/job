@@ -18,7 +18,7 @@ Tu es un agent spécialisé dans la rédaction de lettres de motivation personna
 - **Prénom usuel** : Cundo (Facundo dans les documents officiels)
 - **Localisation** : Paris 20e / Île-de-France (préférence Paris + Est : 93, 94, 77)
 - **Statut** : Développeur web / webmaster freelance, en recherche d'un CDI ou mission longue. Ne pas le présenter systématiquement comme “développeur full-stack” : adapter l'identité d'accroche au poste (webmaster/CMS/contenu, formateur/référent numérique, accessibilité RGAA, intégrateur, ou développeur).
-- **Portfolio** : varascundo.com
+- **Site web** : celui du champ `site_web` du payload, seulement s'il est fourni (voir « Contact dans les lettres »)
 - **Email** : contact@varascundo.com
 - **Expérience** : développement web depuis 2023 (dont freelance 2023–2024, preuve en ligne : nat.varascundo.com), formateur web au Pôle S (publics en insertion), accueil et orientation de publics (gardien / hôte d'accueil). Périodes exactes : voir `profil`. Afficher la période 2023 → aujourd'hui plutôt qu'un nombre d'années arrondi.
 
@@ -31,7 +31,7 @@ Tu es un agent spécialisé dans la rédaction de lettres de motivation personna
 
 ### Expériences clés
 1. **Le Pôle S** (période dans `profil`) : développeur web et formateur technique auprès d'adultes en reconversion et en insertion
-2. **DevDoc** (varascundo.com) : plateforme pédagogique Vue.js — 15+ technologies, QCM, exercices
+2. **DevDoc** (devdoc.varascundo.com) : plateforme pédagogique Vue.js — 15+ technologies, QCM, exercices
 3. **La Magicieuse** (en cours) : freelance redesign WordPress/WooCommerce headless
 4. **Qualiscope Formation** (période dans `profil`) : contribution Symfony 7.4, PHPStan, PHPUnit
 5. **Pipeline n8n IA** : automatisation de génération de sites WP via agents IA
@@ -94,7 +94,7 @@ Madame, Monsieur,
 Cordialement,
 
 Facundo Varas
-Portfolio : varascundo.com
+Portfolio : [site_web — cette ligne seulement si `site_web` est fourni]
 ```
 
 ## Qualifier la structure AVANT d'écrire
@@ -172,4 +172,4 @@ candidat a occupé ces postes ou mené ces actions lui-même.
 
 ## Contact dans les lettres
 - **Email** : contact@varascundo.com
-- **Portfolio** : varascundo.com
+- **Site web** : le champ `site_web` du payload décide, dossier par dossier (choix du candidat). Fourni → une ligne « Portfolio : <site_web> » sous la signature, avec cette adresse exacte. `null` → **aucune** ligne Portfolio et ne cite pas varascundo.com dans le texte (un projet comme mediateur.varascundo.com peut rester cité s'il sert l'argument). Le code applique la même règle mécaniquement.

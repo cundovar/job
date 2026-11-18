@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { FileDown, Globe, LoaderCircle, RotateCw, Sparkles, TriangleAlert } from 'lucide-react'
 import CvAssessment from './CvAssessment'
+import PresentationFields from './PresentationFields'
+import { EMPTY_PREPARE_PRESENTATION, presentationToJob } from './presentation'
 
 const POLL_INTERVAL_MS = 2500
 const GENERATION_TIMEOUT_MS = 30 * 60 * 1000
@@ -98,6 +100,7 @@ function loadLastResult() {
 
 export default function ManualCvView({ onOpenCandidatures }) {
   const [form, setForm] = useState(initialForm)
+  const [presentation, setPresentation] = useState(EMPTY_PREPARE_PRESENTATION)
   const [stage, setStage] = useState('idle')
   // Dernier statut reçu pendant le polling : c'est lui qui porte l'étape
   // courante du pipeline, sans attendre la fin de la génération.
@@ -250,6 +253,7 @@ export default function ManualCvView({ onOpenCandidatures }) {
       contract_type: '',
       candidate_instructions: form.candidate_instructions.trim(),
       description,
+      ...presentationToJob(presentation),
     }
 
     try {
@@ -415,6 +419,8 @@ export default function ManualCvView({ onOpenCandidatures }) {
             Préférences éditoriales uniquement : elles ne permettent pas d’inventer une expérience.
           </small>
         </label>
+
+        <PresentationFields value={presentation} onChange={setPresentation} disabled={isBusy} />
 
         <label className="manual-cv-description">
           Texte complet de l’annonce <strong>obligatoire</strong>

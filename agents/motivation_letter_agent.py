@@ -17,6 +17,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Dict
 
+from utils.presentation import apply_website_line, hidden_site_mentions, presentation_for
 from cv_generator import rules as candidate_rules
 from cv_generator.utils import period_to_text
 from utils.cli_agent_bridge import CLIAgentBridgeClient
@@ -56,6 +57,12 @@ def apply_mediation_poste_rules(letter: str, job: Any) -> str:
       été suivi et que la lettre doit être refaite avant envoi.
     """
     if not is_mediation_poste(job):
+        return letter
+    if _as_job(job).get("show_website") is True:
+        # Le candidat a coché « Ajouter un site web » pour ce dossier : son
+        # choix prime sur la règle de famille (presentation.py le réapplique).
+        if _PROJET_INTERDIT in letter:
+            _LOG.warning("Lettre de médiation mentionnant %s : à regénérer.", _PROJET_INTERDIT)
         return letter
     lines = letter.splitlines()
     kept = [line for line in lines if not line.strip().lower().startswith("portfolio")]
@@ -201,7 +208,12 @@ def candidate_profile(master: Dict[str, Any], variant_id: str, show_diploma_stat
 
 
 def _public_profile(user_profile: Dict[str, Any] | None) -> Dict[str, Any]:
-    return {key: value for key, value in (user_profile or {}).items() if key not in _PRIVATE_PROFILE_KEYS}
+    # Le portfolio du profil n'est plus imposé : le site du dossier part dans
+    # le champ `site_web` du payload, et rien quand le candidat l'a masqué.
+    return {
+        key: value for key, value in (user_profile or {}).items()
+        if key not in _PRIVATE_PROFILE_KEYS and key != "portfolio"
+    }
 
 
 def _build_payload(
@@ -211,7 +223,13 @@ def _build_payload(
     master: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     variant_id = str(getattr(recommendation, "cv_id", "") or "")
+    presentation = presentation_for(job)
+    site = presentation["website_url"] if presentation["show_website"] else None
     return {
+        # Site à afficher en signature (« Portfolio : <site_web> »), choisi
+        # par le candidat pour ce dossier. null : aucune ligne Portfolio et
+        # aucune mention de varascundo.com.
+        "site_web": site,
         "offre": {
             key: job.get(key)
             for key in ("title", "company", "location", "contract", "url", "description", "score", "company_type")
@@ -333,4 +351,12 @@ def generate_motivation_letter_with_report(
         raise MotivationLetterError("L'agent IA n'a pas renvoyé de lettre.")
     report = _consignes_report(payload["consignes_candidat"], result.data)
     letter = apply_mediation_poste_rules(_stamp_place_and_date(letter), job)
+    presentation = presentation_for(job)
+    letter = apply_website_line(letter, presentation)
+    if hidden_site_mentions(letter, presentation):
+        # Pas de réécriture : retirer une phrase inventerait. On le dit.
+        report = {**report, "avertissement_site": (
+            "Site masqué pour ce dossier, mais la lettre cite varascundo.com dans son texte."
+        )}
+        _LOG.warning("Lettre citant varascundo.com alors que le site est masqué.")
     return letter, report

@@ -22,6 +22,9 @@ import CvEditor from './CvEditor'
 import EcartsPanel from './EcartsPanel'
 import OffrePanel from './OffrePanel'
 import { saveLastConsignes } from './consignes'
+import PresentationFields from './PresentationFields'
+import DossierPresentation from './DossierPresentation'
+import { hasPresentationChoice, presentationToJob } from './presentation'
 import { A_DECIDER, decisionCounts, matchesDecision, useAgencyDecisions } from './agencyDecisions'
 
 const DATA_URL = '/data'
@@ -513,6 +516,7 @@ function CandidaturesView({ mission = 'annonce' }) {
   const [pdfNames, setPdfNames] = useState({})          // { [id]: { cv, lettre, pending, saved, error } }
   const [cvUpload, setCvUpload] = useState({})          // { [id]: { pending, error } }
   const [cvValidation, setCvValidation] = useState({})  // { [id]: { pending, error } }
+  const [mailPreviewTick, setMailPreviewTick] = useState({}) // { [id]: n } — rafraîchit l'aperçu HTML
   const [regenLettre, setRegenLettre] = useState({})    // { [id]: { consignes, mailNote, pending, ok, error } }
   const cvPollControllerRef = useRef(null)
 
@@ -1004,6 +1008,7 @@ function CandidaturesView({ mission = 'annonce' }) {
       const payload = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`)
       setter(prev => ({ ...prev, [id]: { ...prev[id], editing: false, pending: false, saved: true } }))
+      setMailPreviewTick(prev => ({ ...prev, [id]: (prev[id] || 0) + 1 }))
     } catch (err) {
       setter(prev => ({ ...prev, [id]: { ...prev[id], pending: false, error: err.message || 'Enregistrement impossible.' } }))
     }
@@ -1037,6 +1042,7 @@ function CandidaturesView({ mission = 'annonce' }) {
       setEditMail(prev => ({ ...prev, [id]: undefined }))
       setCvReco(prev => ({ ...prev, [id]: consignes }))
       setRegenLettre(prev => ({ ...prev, [id]: { ...prev[id], pending: false, ok: true } }))
+      setMailPreviewTick(prev => ({ ...prev, [id]: (prev[id] || 0) + 1 }))
       refreshApproval(id)
     } catch (err) {
       setRegenLettre(prev => ({ ...prev, [id]: { ...prev[id], pending: false, error: err.message || 'Régénération impossible.' } }))
@@ -1480,6 +1486,24 @@ function CandidaturesView({ mission = 'annonce' }) {
             )}
             <pre className="lettre-content">{editMail[selected]?.value ?? c?.mail}</pre>
           </section>
+        )}
+        {c?.mail && (
+          <DossierPresentation
+            key={selected}
+            id={selected}
+            refreshKey={mailPreviewTick[selected] || 0}
+            locked={hasSendAttempt}
+            onApplied={data => {
+              // Lettre et mail ont gagné ou perdu leur ligne Portfolio : on
+              // affiche les nouveaux textes et on vide les éditeurs locaux.
+              setCandidatures(prev => prev.map(item => (item.id === selected
+                ? { ...item, ...(data.lettre != null ? { lettre: data.lettre } : {}), ...(data.mail != null ? { mail: data.mail } : {}) }
+                : item)))
+              setEditLettre(prev => ({ ...prev, [selected]: undefined }))
+              setEditMail(prev => ({ ...prev, [selected]: undefined }))
+              refreshApproval(selected)
+            }}
+          />
         )}
 
         <section className="cv-generator-panel doc-section doc-section--neutral" aria-labelledby="cv-generator-title">
@@ -3208,6 +3232,7 @@ function App() {
     const payloadJob = { ...job }
     if (consignes.trim()) payloadJob.candidate_instructions = consignes.trim()
     if (mailNote.trim()) payloadJob.mail_personal_note = mailNote.trim()
+    Object.assign(payloadJob, presentationToJob(jobConsignes[key]?.presentation))
     saveLastConsignes({ consignes, mailNote })
     try {
       const res = await fetch('/api/applications/prepare', {
@@ -3420,13 +3445,19 @@ function App() {
                       <details className="consignes-details">
                         <summary>
                           Personnaliser la lettre et le mail <span className="consignes-optional">(optionnel)</span>
-                          {(jobConsignes[prepareKey]?.consignes?.trim() || jobConsignes[prepareKey]?.mailNote?.trim()) && (
+                          {(jobConsignes[prepareKey]?.consignes?.trim() || jobConsignes[prepareKey]?.mailNote?.trim()
+                            || hasPresentationChoice(jobConsignes[prepareKey]?.presentation)) && (
                             <span className="consignes-dot" aria-label="consignes saisies" />
                           )}
                         </summary>
                         <ConsignesEditor
                           value={jobConsignes[prepareKey]}
-                          onChange={next => setJobConsignes(prev => ({ ...prev, [prepareKey]: next }))}
+                          onChange={next => setJobConsignes(prev => ({ ...prev, [prepareKey]: { ...prev[prepareKey], ...next } }))}
+                          disabled={isPreparing}
+                        />
+                        <PresentationFields
+                          value={jobConsignes[prepareKey]?.presentation}
+                          onChange={presentation => setJobConsignes(prev => ({ ...prev, [prepareKey]: { ...prev[prepareKey], presentation } }))}
                           disabled={isPreparing}
                         />
                       </details>

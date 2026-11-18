@@ -96,13 +96,18 @@ def parse_mail_body(body: str) -> dict:
 
 def render_mail_html(subject: str, body: str, sender_email: str,
                      candidate_name: str = "Facundo Varas",
-                     candidate_titre: str = "Développeur web &amp; formateur — Paris") -> str:
-    """Rend le corps texte édité dans le gabarit HTML de Cundo."""
+                     candidate_titre: str = "Développeur web & formateur — Paris") -> str:
+    """Rend le corps texte édité dans le gabarit HTML de Cundo.
+
+    ``candidate_titre`` est du texte brut (choisi par le candidat dans
+    l'interface) : il est échappé ici. Sans ligne « Portfolio » dans le
+    corps, le gabarit n'affiche aucun site.
+    """
     zones = parse_mail_body(body)
     context = {
         "objet": subject,
         "expediteur_nom": escape(candidate_name),
-        "expediteur_titre": candidate_titre,
+        "expediteur_titre": escape(candidate_titre or ""),
         "email": escape(sender_email),
         "salutation": zones["salutation"],
         "paragraphes": zones["paragraphes"],
@@ -115,3 +120,22 @@ def render_mail_html(subject: str, body: str, sender_email: str,
     }
     environment = Environment(autoescape=False)
     return environment.from_string(TEMPLATE_PATH.read_text(encoding="utf-8")).render(**context)
+
+
+def dossier_mail_html(dossier_path, subject: str, body: str, sender_email: str) -> str:
+    """Le HTML exact d'un dossier : utilisé à l'envoi ET par l'aperçu.
+
+    Une seule fonction pour les deux, pour que l'aperçu ne puisse jamais
+    montrer autre chose que ce qui part.
+    """
+    import json
+
+    from utils.presentation import presentation_for
+
+    job_path = Path(dossier_path) / "job.json"
+    try:
+        job = json.loads(job_path.read_text(encoding="utf-8")) if job_path.is_file() else {}
+    except (OSError, ValueError):
+        job = {}
+    titre = presentation_for(job if isinstance(job, dict) else {})["display_title"]
+    return render_mail_html(subject, body, sender_email=sender_email, candidate_titre=titre)
